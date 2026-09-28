@@ -2,6 +2,8 @@
 
 Android companion for past events on the signed-in account's primary Google Calendar.
 
+The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.
+
 ## Build and share a test APK
 
 Build on the same Mac used for the current phone install so the APK keeps the same Android debug signing certificate:

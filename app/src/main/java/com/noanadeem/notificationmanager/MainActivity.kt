@@ -273,7 +273,7 @@ private fun CalendarLoginScreen(
                         }.sortedByDescending { it.start }
                         actionError = null
                     } catch (e: Exception) {
-                        actionError = e.message ?: "Could not move the event."
+                        actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
                     } finally {
                         committingMoveIds = committingMoveIds - action.event.id
                     }
@@ -298,11 +298,13 @@ private fun CalendarLoginScreen(
                                 }
                                 driveError = null
                             } catch (e: Exception) {
-                                driveError = "Dismissal saved on this phone; Drive sync failed: ${e.message}"
+                                driveError = "Dismissal of “${action.event.title}” was saved on this phone, but Drive sync failed: ${e.message}"
                             }
-                        } ?: run { driveError = "Dismissal saved on this phone; reconnect to sync with Drive." }
+                        } ?: run {
+                            driveError = "Dismissal of “${action.event.title}” was saved on this phone; reconnect to sync with Drive."
+                        }
                     } catch (e: Exception) {
-                        actionError = e.message ?: "Could not save dismissal."
+                        actionError = "Could not dismiss “${action.event.title}”: ${e.message ?: "Saving failed."}"
                     }
                 }
             }
@@ -364,7 +366,7 @@ private fun CalendarLoginScreen(
         if (accessToken.isNullOrEmpty()) {
             loading = false
             if (move != null) {
-                actionError = "Google did not authorize the event move."
+                actionError = "Google did not authorize moving “${move.event.title}”."
                 pendingMove = null
                 movingEventId = null
             } else if (refreshing) {
@@ -449,9 +451,10 @@ private fun CalendarLoginScreen(
         if (result.resultCode != Activity.RESULT_OK) {
             loading = false
             if (pendingMove != null) {
+                val title = pendingMove?.event?.title
                 pendingMove = null
                 movingEventId = null
-                actionError = "Event move was cancelled."
+                actionError = "Move cancelled for “$title”."
             } else {
                 errorMessage = "Google authorization was cancelled."
             }
@@ -464,9 +467,10 @@ private fun CalendarLoginScreen(
             } catch (e: Exception) {
                 loading = false
                 if (pendingMove != null) {
+                    val title = pendingMove?.event?.title
                     pendingMove = null
                     movingEventId = null
-                    actionError = e.message ?: "Could not authorize event move."
+                    actionError = "Could not authorize moving “$title”: ${e.message ?: "Authorization failed."}"
                 } else {
                     errorMessage = e.message ?: "Authorization failed."
                 }
@@ -543,7 +547,7 @@ private fun CalendarLoginScreen(
                     if (pendingIntent == null) {
                         pendingMove = null
                         movingEventId = null
-                        actionError = "Google authorization was unavailable."
+                        actionError = "Google authorization to move “${event.title}” was unavailable."
                     } else {
                         authorizationLauncher.launch(
                             IntentSenderRequest.Builder(pendingIntent.intentSender).build()
@@ -556,7 +560,7 @@ private fun CalendarLoginScreen(
             .addOnFailureListener { e ->
                 pendingMove = null
                 movingEventId = null
-                actionError = e.message ?: "Could not authorize event move."
+                actionError = "Could not authorize moving “${event.title}”: ${e.message ?: "Authorization failed."}"
             }
     }
 
@@ -868,9 +872,18 @@ private fun CalendarConnectedScreen(
             SelectableLinkedText(message, modifier = Modifier.padding(top = 16.dp))
         }
         actionError?.let { message ->
-            Text(
+            SelectableLinkedText(
                 message,
                 color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        eventsError?.let { message ->
+            SelectableLinkedText(
+                message,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
@@ -882,17 +895,26 @@ private fun CalendarConnectedScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        storageEstimate?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
+        storageEstimate?.let {
+            Text(
+                it,
+                color = if (it.startsWith("Could not") || it.startsWith("Reconnect"))
+                    MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
         when {
             eventsLoading && !searchActive -> CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
-            eventsError != null && !searchActive -> Text(eventsError, modifier = Modifier.padding(top = 16.dp))
-            events.isEmpty() && !searchActive -> Text("No events started in the last $lookbackDays days.", modifier = Modifier.padding(top = 16.dp))
+            events.isEmpty() && !searchActive -> Text(
+                if (eventsError != null) "Events could not be loaded. Use Refresh in the menu to try again."
+                else "No events started in the last $lookbackDays days.",
+                modifier = Modifier.padding(top = 16.dp)
+            )
             else -> LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 if (eventsLoading) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) }
-                if (eventsError != null) item { Text(eventsError, modifier = Modifier.padding(16.dp)) }
                 items(filteredEvents, key = { "${it.calendarId}/${it.id}" }) { event ->
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id

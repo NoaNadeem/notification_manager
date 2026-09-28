@@ -15,13 +15,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+internal data class CalendarSearchResults(val events: List<CalendarEvent>, val hasMore: Boolean)
+
 internal data class CalendarEvent(
     val calendarId: String,
     val id: String,
     val title: String,
     val start: Instant,
     val allDayDate: LocalDate?,
-    val calendarZone: ZoneId
+    val calendarZone: ZoneId,
+    val htmlLink: String? = null
 ) {
     fun ageDescription(now: Instant = Instant.now()): String {
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
@@ -38,6 +41,11 @@ internal data class CalendarEvent(
 internal sealed interface MoveTarget {
     data class After(val duration: Duration) : MoveTarget
     data class OnDate(val date: LocalDate) : MoveTarget
+}
+
+internal fun filterLoadedEvents(events: List<CalendarEvent>, query: String): List<CalendarEvent> {
+    val term = query.trim()
+    return if (term.isEmpty()) events else events.filter { it.title.contains(term, ignoreCase = true) }
 }
 
 internal suspend fun fetchRecentEvents(
@@ -64,47 +72,94 @@ internal suspend fun fetchRecentEvents(
             .build()
             .toString()
         val response = getCalendarJson(url, accessToken)
-        val calendarZone = runCatching { ZoneId.of(response.optString("timeZone")) }
-            .getOrDefault(ZoneId.systemDefault())
-        val items = response.optJSONArray("items")
-        if (items != null) {
-            for (index in 0 until items.length()) {
-                val item = items.getJSONObject(index)
-                if (item.optString("status") == "cancelled") continue
-                val startObject = item.optJSONObject("start") ?: continue
-                val dateTime = startObject.optString("dateTime")
-                val allDay = dateTime.isBlank()
-                val start = if (allDay) {
-                    val date = startObject.optString("date")
-                    if (date.isBlank()) continue
-                    LocalDate.parse(date).atStartOfDay(calendarZone).toInstant()
-                } else {
-                    runCatching { OffsetDateTime.parse(dateTime).toInstant() }
-                        .getOrElse {
-                            val zone = runCatching {
-                                ZoneId.of(startObject.optString("timeZone"))
-                            }.getOrDefault(calendarZone)
-                            LocalDateTime.parse(dateTime).atZone(zone).toInstant()
-                        }
-                }
-                // timeMin filters by end time, so check the start time ourselves.
-                if (!isInPastWindow(start, now, lookbackDays)) continue
-                val id = item.optString("id")
-                if (id.isBlank()) continue
-                events += CalendarEvent(
-                    calendarId = primaryCalendarId,
-                    id = id,
-                    title = item.optString("summary").ifBlank { "(Untitled event)" },
-                    start = start,
-                    allDayDate = if (allDay) LocalDate.parse(startObject.getString("date")) else null,
-                    calendarZone = calendarZone
-                )
-            }
-        }
+        // timeMin filters by end time, so check the start time ourselves.
+        events += parseCalendarPage(response, primaryCalendarId)
+            .filter { isInPastWindow(it.start, now, lookbackDays) }
         eventPage = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (eventPage != null)
     events.sortedByDescending { it.start }
 }
+
+internal suspend fun searchPrimaryCalendar(
+    accessToken: String,
+    primaryCalendarId: String,
+    query: String
+): CalendarSearchResults = withContext(Dispatchers.IO) {
+    val term = query.trim()
+    require(term.isNotEmpty()) { "Enter a search term." }
+    val events = mutableListOf<CalendarEvent>()
+    var pageToken: String? = null
+    var pagesRead = 0
+    var truncatedPage = false
+    do {
+        val url = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
+            .buildUpon()
+            .appendPath(primaryCalendarId)
+            .appendPath("events")
+            .appendQueryParameter("q", term)
+            .appendQueryParameter("singleEvents", "true")
+            .appendQueryParameter("showDeleted", "false")
+            .appendQueryParameter("maxResults", "100")
+            .apply { pageToken?.let { appendQueryParameter("pageToken", it) } }
+            .build().toString()
+        val response = getCalendarJson(url, accessToken)
+        pagesRead += 1
+        val pageEvents = parseCalendarPage(response, primaryCalendarId)
+        truncatedPage = pageEvents.size > 100 - events.size
+        events += pageEvents.take(100 - events.size)
+        pageToken = response.optString("nextPageToken").takeIf { it.isNotBlank() }
+    } while (pageToken != null && events.size < 100 && pagesRead < 10)
+    CalendarSearchResults(events.sortedByDescending { it.start }, pageToken != null || truncatedPage)
+}
+
+private fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {
+    val calendarZone = runCatching { ZoneId.of(response.optString("timeZone")) }
+        .getOrDefault(ZoneId.systemDefault())
+    val items = response.optJSONArray("items") ?: return emptyList()
+    return buildList {
+        for (index in 0 until items.length()) {
+            val item = items.getJSONObject(index)
+            if (item.optString("status") == "cancelled") continue
+            val startObject = item.optJSONObject("start") ?: continue
+            val dateTime = startObject.optString("dateTime")
+            val allDayDate = if (dateTime.isBlank()) {
+                startObject.optString("date").takeIf { it.isNotBlank() }?.let(LocalDate::parse)
+                    ?: continue
+            } else null
+            val start = if (allDayDate != null) {
+                allDayDate.atStartOfDay(calendarZone).toInstant()
+            } else {
+                runCatching { OffsetDateTime.parse(dateTime).toInstant() }
+                    .getOrElse {
+                        val zone = runCatching { ZoneId.of(startObject.optString("timeZone")) }
+                            .getOrDefault(calendarZone)
+                        LocalDateTime.parse(dateTime).atZone(zone).toInstant()
+                    }
+            }
+            val id = item.optString("id")
+            if (id.isBlank()) continue
+            add(CalendarEvent(
+                calendarId = calendarId,
+                id = id,
+                title = item.optString("summary").ifBlank { "(Untitled event)" },
+                start = start,
+                allDayDate = allDayDate,
+                calendarZone = calendarZone,
+                htmlLink = item.optString("htmlLink").takeIf { it.isNotBlank() }
+            ))
+        }
+    }
+}
+
+internal suspend fun fetchEventWebLink(accessToken: String, event: CalendarEvent): String =
+    withContext(Dispatchers.IO) {
+        val url = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
+            .buildUpon().appendPath(event.calendarId).appendPath("events").appendPath(event.id)
+            .build().toString()
+        getCalendarJson(url, accessToken).optString("htmlLink")
+            .takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Google Calendar did not provide a link for this event.")
+    }
 
 internal suspend fun moveCalendarEvent(
     accessToken: String,

@@ -1,8 +1,11 @@
 package com.noanadeem.notificationmanager
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.accounts.Account
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -57,6 +60,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -86,7 +92,9 @@ import java.net.URL
 import java.time.Instant
 import java.time.Duration
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -196,6 +204,36 @@ private fun CalendarLoginScreen(
     var driveError by remember { mutableStateOf<String?>(null) }
     var currentAccessToken by remember { mutableStateOf<String?>(null) }
     var storageEstimate by remember { mutableStateOf<String?>(null) }
+    var calendarSearchQuery by remember { mutableStateOf<String?>(null) }
+    var calendarSearchResults by remember { mutableStateOf<CalendarSearchResults?>(null) }
+    var calendarSearchLoading by remember { mutableStateOf(false) }
+    var calendarSearchError by remember { mutableStateOf<String?>(null) }
+    var calendarSearchRequest by remember { mutableStateOf(0) }
+
+    fun searchCalendar(query: String) {
+        val term = query.trim()
+        if (term.isEmpty()) return
+        calendarSearchRequest += 1
+        val request = calendarSearchRequest
+        calendarSearchQuery = term
+        calendarSearchResults = null
+        calendarSearchError = null
+        calendarSearchLoading = true
+        coroutineScope.launch {
+            try {
+                val token = currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before searching.")
+                val primaryId = verifyCalendarAccess(token)
+                val results = searchPrimaryCalendar(token, primaryId, term)
+                if (request == calendarSearchRequest) calendarSearchResults = results
+            } catch (e: Exception) {
+                if (request == calendarSearchRequest) {
+                    calendarSearchError = e.message ?: "Could not search Calendar."
+                }
+            } finally {
+                if (request == calendarSearchRequest) calendarSearchLoading = false
+            }
+        }
+    }
 
     fun commitAction(action: UndoableAction) {
         if (undoableAction != action) return
@@ -252,6 +290,28 @@ private fun CalendarLoginScreen(
         }
     }
 
+    fun openEvent(event: CalendarEvent) {
+        undoableAction?.let(::commitAction)
+        coroutineScope.launch {
+            try {
+                val link = event.htmlLink ?: fetchEventWebLink(
+                    currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before opening this event."),
+                    event
+                )
+                val uri = Uri.parse(link)
+                require(uri.scheme == "https") { "Google Calendar returned an invalid event link." }
+                try {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.calendar"))
+                } catch (_: ActivityNotFoundException) {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+                }
+                actionError = null
+            } catch (e: Exception) {
+                actionError = e.message ?: "Could not open this Calendar event."
+            }
+        }
+    }
+
     LaunchedEffect(undoableAction?.createdAtNanos) {
         val action = undoableAction ?: return@LaunchedEffect
         delay(UNDO_WINDOW_MILLIS)
@@ -291,9 +351,17 @@ private fun CalendarLoginScreen(
                 val primaryCalendarId = verifyCalendarAccess(accessToken)
                 // Primary calendar IDs normally match the Google account email address.
                 // Keep only the account name; never persist an access token.
+                val previousAccount = accountName
                 accountName = result.toGoogleSignInAccount()?.account?.name
                     ?: primaryCalendarId.takeIf { "@" in it }
                     ?: accountName
+                if (previousAccount != accountName) {
+                    calendarSearchRequest += 1
+                    calendarSearchQuery = null
+                    calendarSearchResults = null
+                    calendarSearchLoading = false
+                    calendarSearchError = null
+                }
                 preferences.edit().apply {
                     putBoolean(AUTO_CONNECT_KEY, true)
                     if (accountName != null) putString(ACCOUNT_NAME_KEY, accountName)
@@ -488,6 +556,9 @@ private fun CalendarLoginScreen(
             recentEvents = emptyList()
             dismissals = emptyList()
             currentAccessToken = null
+            calendarSearchRequest += 1
+            calendarSearchResults = null
+            calendarSearchQuery = null
             eventsError = null
             actionError = null
             screen = ConnectionScreen.Disconnected
@@ -506,6 +577,9 @@ private fun CalendarLoginScreen(
                 recentEvents = emptyList()
                 dismissals = emptyList()
                 currentAccessToken = null
+                calendarSearchRequest += 1
+                calendarSearchResults = null
+                calendarSearchQuery = null
                 eventsError = null
                 actionError = null
                 screen = ConnectionScreen.Disconnected
@@ -553,6 +627,12 @@ private fun CalendarLoginScreen(
             errorMessage = errorMessage,
             accountName = accountName,
             events = recentEvents,
+            calendarSearchQuery = calendarSearchQuery,
+            calendarSearchResults = calendarSearchResults,
+            calendarSearchLoading = calendarSearchLoading,
+            calendarSearchError = calendarSearchError,
+            onSearchCalendar = ::searchCalendar,
+            onOpenEvent = ::openEvent,
             eventsLoading = eventsLoading,
             eventsError = eventsError,
             actionError = actionError,
@@ -613,6 +693,12 @@ private fun CalendarConnectedScreen(
     errorMessage: String?,
     accountName: String?,
     events: List<CalendarEvent>,
+    calendarSearchQuery: String?,
+    calendarSearchResults: CalendarSearchResults?,
+    calendarSearchLoading: Boolean,
+    calendarSearchError: String?,
+    onSearchCalendar: (String) -> Unit,
+    onOpenEvent: (CalendarEvent) -> Unit,
     eventsLoading: Boolean,
     eventsError: String?,
     actionError: String?,
@@ -638,12 +724,43 @@ private fun CalendarConnectedScreen(
     var showLookbackPicker by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var datePickerEvent by remember { mutableStateOf<CalendarEvent?>(null) }
+    var searchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val searchFocusRequester = remember { FocusRequester() }
+    val filteredEvents = remember(events, searchQuery, searchActive) {
+        if (searchActive) filterLoadedEvents(events, searchQuery) else events
+    }
+    LaunchedEffect(searchActive) {
+        if (searchActive) searchFocusRequester.requestFocus()
+    }
     Column(
         modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Notification Manager", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.weight(1f))
+            if (searchActive) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                    singleLine = true,
+                    placeholder = { Text("Search loaded events") }
+                )
+                IconButton(onClick = {
+                    searchActive = false
+                    searchQuery = ""
+                }) { Text("×", style = MaterialTheme.typography.headlineMedium) }
+            } else {
+                Text(
+                    "Notification Manager",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.clickable {
+                        onOtherAction()
+                        searchActive = true
+                    }
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
             Column {
                 IconButton(onClick = {
                     onOtherAction()
@@ -724,14 +841,16 @@ private fun CalendarConnectedScreen(
         }
         storageEstimate?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
         when {
-            eventsLoading -> CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
-            eventsError != null -> Text(eventsError, modifier = Modifier.padding(top = 16.dp))
-            events.isEmpty() -> Text("No events started in the last $lookbackDays days.", modifier = Modifier.padding(top = 16.dp))
+            eventsLoading && !searchActive -> CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
+            eventsError != null && !searchActive -> Text(eventsError, modifier = Modifier.padding(top = 16.dp))
+            events.isEmpty() && !searchActive -> Text("No events started in the last $lookbackDays days.", modifier = Modifier.padding(top = 16.dp))
             else -> LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(events, key = { "${it.calendarId}/${it.id}" }) { event ->
+                if (eventsLoading) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) }
+                if (eventsError != null) item { Text(eventsError, modifier = Modifier.padding(16.dp)) }
+                items(filteredEvents, key = { "${it.calendarId}/${it.id}" }) { event ->
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -788,11 +907,7 @@ private fun CalendarConnectedScreen(
                                     val choices = listOf(
                                         "3D" to MoveTarget.After(Duration.ofDays(3)),
                                         "7D" to MoveTarget.After(Duration.ofDays(7)),
-                                    ) + if (event.allDayDate == null) {
-                                        listOf("4H" to MoveTarget.After(Duration.ofHours(4)))
-                                    } else {
-                                        emptyList()
-                                    }
+                                    )
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         for ((label, target) in choices) {
                                             MoveTile(
@@ -802,6 +917,13 @@ private fun CalendarConnectedScreen(
                                                 onClick = { onMove(event, target) }
                                             )
                                         }
+                                        MoveTile(
+                                            label = "↗",
+                                            description = "Open event in Google Calendar",
+                                            enabled = true,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { onOpenEvent(event) }
+                                        )
                                         MoveTile(
                                             label = "📅",
                                             description = "Choose a calendar date",
@@ -831,6 +953,75 @@ private fun CalendarConnectedScreen(
                         }
                     }
                     HorizontalDivider()
+                }
+                if (searchActive) {
+                    if (filteredEvents.isEmpty() && !eventsLoading) item {
+                        Text("No loaded events match this search.", modifier = Modifier.padding(vertical = 16.dp))
+                    }
+                    item {
+                        Button(
+                            onClick = {
+                                keyboardController?.hide()
+                                onSearchCalendar(searchQuery)
+                            },
+                            enabled = searchQuery.isNotBlank() && !calendarSearchLoading,
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                        ) { Text("Search Calendar") }
+                    }
+                    if (calendarSearchQuery == searchQuery.trim()) {
+                        if (calendarSearchLoading) item {
+                            CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                        }
+                        if (calendarSearchError != null) item {
+                            Text(
+                                calendarSearchError,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        }
+                        calendarSearchResults?.let { results ->
+                            item {
+                                Text(
+                                    "Calendar results · read only",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+                                )
+                            }
+                            if (results.events.isEmpty()) item {
+                                Text("No Calendar events match this search.")
+                            }
+                            items(results.events, key = { "calendar-search/${it.calendarId}/${it.id}/${it.start}" }) { event ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(event.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                        Text(
+                                            event.searchDateDescription(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    MoveTile(
+                                        label = "↗",
+                                        description = "Open event in Google Calendar",
+                                        enabled = true,
+                                        modifier = Modifier.size(44.dp),
+                                        onClick = { onOpenEvent(event) }
+                                    )
+                                }
+                                HorizontalDivider()
+                            }
+                            if (results.hasMore) item {
+                                Text(
+                                    "Showing the first 100 matches. Narrow your search to find more.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 12.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -897,6 +1088,14 @@ private fun CalendarConnectedScreen(
         }
     }
 }
+
+private fun CalendarEvent.searchDateDescription(): String =
+    if (allDayDate != null) {
+        "${allDayDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))} · all day"
+    } else {
+        start.atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }
 
 @Composable
 private fun SelectableLinkedText(

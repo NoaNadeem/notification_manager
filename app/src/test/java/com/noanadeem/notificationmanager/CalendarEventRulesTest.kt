@@ -78,6 +78,17 @@ class CalendarEventRulesTest {
     }
 
     @Test
+    fun loadedEventSearchMatchesTitlesWithoutChangingTheSourceList() {
+        val events = listOf(
+            CalendarEvent("primary", "1", "Pay rent", now, null, ZoneId.of("UTC")),
+            CalendarEvent("primary", "2", "Doctor visit", now, null, ZoneId.of("UTC"))
+        )
+        assertEquals(listOf(events[0]), filterLoadedEvents(events, "  RENT  "))
+        assertEquals(events, filterLoadedEvents(events, " "))
+        assertEquals(2, events.size)
+    }
+
+    @Test
     fun fourHourMoveUsesCurrentTime() {
         val oldStart = now.minus(5, ChronoUnit.DAYS)
         val (movedStart, movedEnd) = shiftTimedTimes(

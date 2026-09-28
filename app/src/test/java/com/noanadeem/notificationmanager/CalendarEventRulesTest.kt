@@ -69,11 +69,12 @@ class CalendarEventRulesTest {
             start = start,
             allDayDate = null,
             calendarZone = ZoneId.of("UTC")
-        ).startDescription(now)
+        ).ageDescription(now)
 
-        assertTrue(label(now.minusSeconds(1)).startsWith("1 hr ago"))
-        assertTrue(label(now.minusSeconds(3_601)).startsWith("2 hrs ago"))
-        assertTrue(label(now.minusSeconds(86_401)).startsWith("2 days ago"))
+        assertEquals("1 hr ago", label(now.minusSeconds(1)))
+        assertEquals("2 hrs ago", label(now.minusSeconds(3_601)))
+        assertEquals("1 day ago", label(now.minusSeconds(86_400)))
+        assertEquals("2 days ago", label(now.minusSeconds(86_401)))
     }
 
     @Test

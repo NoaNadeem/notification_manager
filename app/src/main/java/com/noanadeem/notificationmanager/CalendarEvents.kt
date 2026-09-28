@@ -23,22 +23,15 @@ internal data class CalendarEvent(
     val allDayDate: LocalDate?,
     val calendarZone: ZoneId
 ) {
-    fun startDescription(now: Instant = Instant.now()): String {
+    fun ageDescription(now: Instant = Instant.now()): String {
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
-        val age = if (elapsedSeconds < 86_400) {
+        return if (elapsedSeconds < 86_400) {
             val hours = ((elapsedSeconds + 3_599) / 3_600).coerceAtLeast(1)
             "$hours ${if (hours == 1L) "hr" else "hrs"} ago"
         } else {
             val days = (elapsedSeconds + 86_399) / 86_400
             "$days ${if (days == 1L) "day" else "days"} ago"
         }
-        val localStart = start.atZone(ZoneId.systemDefault())
-        val formatted = if (allDayDate != null) {
-            allDayDate.format(DateTimeFormatter.ofPattern("MMM d")) + " · All day"
-        } else {
-            localStart.format(DateTimeFormatter.ofPattern("MMM d, h:mm a"))
-        }
-        return "$age · $formatted"
     }
 }
 

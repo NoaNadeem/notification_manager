@@ -13,14 +13,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -46,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +64,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -578,10 +587,10 @@ private fun CalendarConnectedScreen(
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var datePickerEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp)
+        modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Calendar connected", style = MaterialTheme.typography.headlineMedium)
+            Text("Notification Manager", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.weight(1f))
             Column {
                 IconButton(onClick = { menuExpanded = true }) {
@@ -659,45 +668,56 @@ private fun CalendarConnectedScreen(
             )
         }
         storageEstimate?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
-        Text(
-            "Events from the last $lookbackDays days",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(top = 24.dp)
-        )
-        Text(
-            "Calendar events, including ones whose reminders may already be dismissed",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-        )
         when {
             eventsLoading -> CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
             eventsError != null -> Text(eventsError, modifier = Modifier.padding(top = 16.dp))
             events.isEmpty() -> Text("No events started in the last $lookbackDays days.", modifier = Modifier.padding(top = 16.dp))
-            else -> LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
                 items(events, key = { "${it.calendarId}/${it.id}" }) { event ->
+                    val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                expandedEventId = if (expandedEventId == event.id) null else event.id
-                            }.padding(vertical = 4.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(event.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                event.startDescription(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp)
+                            Column(
+                                modifier = Modifier.weight(1f).clickable {
+                                    expandedEventId = if (expandedEventId == event.id) null else event.id
+                                }
+                            ) {
+                                Text(event.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    event.ageDescription(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            MoveTile(
+                                label = "1D",
+                                description = "Move event one day from now",
+                                enabled = movingEventId == null,
+                                modifier = Modifier.size(44.dp),
+                                onClick = { onMove(event, MoveTarget.After(Duration.ofDays(1))) }
                             )
                         }
                         if (expandedEventId == event.id) {
+                            LaunchedEffect(event.id) {
+                                withFrameNanos { }
+                                actionBringIntoViewRequester.bringIntoView()
+                            }
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                    .bringIntoViewRequester(actionBringIntoViewRequester),
                                 color = MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     val choices = listOf(
-                                        "1D" to MoveTarget.After(Duration.ofDays(1)),
                                         "3D" to MoveTarget.After(Duration.ofDays(3)),
                                         "7D" to MoveTarget.After(Duration.ofDays(7)),
                                     ) + if (event.allDayDate == null) {
@@ -715,18 +735,25 @@ private fun CalendarConnectedScreen(
                                             )
                                         }
                                         MoveTile(
-                                            label = "Cal",
+                                            label = "📅",
+                                            description = "Choose a calendar date",
                                             enabled = movingEventId == null,
                                             modifier = Modifier.weight(1f),
                                             onClick = { datePickerEvent = event }
                                         )
+                                        MoveTile(
+                                            label = "✓",
+                                            description = "Dismiss event in this app",
+                                            enabled = movingEventId == null,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                expandedEventId = null
+                                                onDismiss(event)
+                                            }
+                                        )
                                     }
                                     if (movingEventId == event.id) {
                                         Text("Moving event…", modifier = Modifier.padding(top = 8.dp))
-                                    } else {
-                                        TextButton(onClick = { onDismiss(event) }) {
-                                            Text("Dismiss")
-                                        }
                                     }
                                 }
                             }
@@ -830,11 +857,14 @@ private fun MoveTile(
     label: String,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    description: String = label,
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.aspectRatio(1f).clickable(enabled = enabled, onClick = onClick),
-        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier.aspectRatio(1f)
+            .semantics { contentDescription = description }
+            .clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
         shape = RoundedCornerShape(4.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

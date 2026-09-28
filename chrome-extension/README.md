@@ -6,10 +6,8 @@ The window loads all pages of past events in the selected lookback period (7 day
 
 ## One-time Google setup
 
-1. Open Google Cloud Console project **411250810503**. Go to **Google Auth platform → Clients → Create client**.
-2. Choose **Chrome Extension**. Name it `Notification Manager Chrome`. In **Item ID**, enter `halmnakmjhbkchjgmbonmhadenodlhhd`. Create the client. The extension's public manifest key fixes this ID for unpacked installs.
-3. Copy the new client ID into [`manifest.json`](manifest.json), replacing `REPLACE_WITH_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com`. The client ID is public; do not put a client secret here.
-4. Confirm the **Google Calendar API** and **Google Drive API** are enabled in the same project. If the OAuth app is in Testing mode, add the Google account you will use under **Google Auth platform → Audience → Test users**.
+1. The Chrome Extension OAuth client has been created in Google Cloud Console project **411250810503**, with Item ID `halmnakmjhbkchjgmbonmhadenodlhhd`. Its public client ID is already configured in [`manifest.json`](manifest.json). The extension's public manifest key fixes this ID for unpacked installs.
+2. Confirm the **Google Calendar API** and **Google Drive API** are enabled in the same project. If the OAuth app is in Testing mode, add the Google account you will use under **Google Auth platform → Audience → Test users**.
 
 ## Install in Chrome
 

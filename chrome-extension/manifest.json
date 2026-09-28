@@ -9,7 +9,7 @@
   "background": { "service_worker": "background.js", "type": "module" },
   "action": { "default_title": "Open Notification Manager" },
   "oauth2": {
-    "client_id": "REPLACE_WITH_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "411250810503-a8q4f7v7vnvh8o9djfejke6h2g95c4j8.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/calendar.events",

@@ -945,6 +945,39 @@ private fun CalendarConnectedScreen(
                                             }
                                         )
                                     }
+                                    val extraMoves = if (event.allDayDate == null) {
+                                        listOf(
+                                            "1H" to MoveTarget.After(Duration.ofHours(1)),
+                                            "4H" to MoveTarget.After(Duration.ofHours(4)),
+                                            "8H" to MoveTarget.After(Duration.ofHours(8)),
+                                            "2D" to MoveTarget.After(Duration.ofDays(2)),
+                                            "4D" to MoveTarget.After(Duration.ofDays(4))
+                                        )
+                                    } else {
+                                        listOf(
+                                            "0D" to MoveTarget.After(Duration.ZERO),
+                                            "2D" to MoveTarget.After(Duration.ofDays(2)),
+                                            "4D" to MoveTarget.After(Duration.ofDays(4))
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.padding(top = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        for ((label, target) in extraMoves) {
+                                            MoveTile(
+                                                label = label,
+                                                description = if (label == "0D") "Move all-day event to today"
+                                                    else "Move event $label from now",
+                                                enabled = movingEventId == null && event.id !in committingMoveIds,
+                                                modifier = Modifier.weight(1f),
+                                                onClick = { onMove(event, target) }
+                                            )
+                                        }
+                                        repeat(5 - extraMoves.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
                                     if (movingEventId == event.id || event.id in committingMoveIds) {
                                         Text("Moving event…", modifier = Modifier.padding(top = 8.dp))
                                     }

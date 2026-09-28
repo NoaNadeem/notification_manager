@@ -273,12 +273,14 @@ internal fun shiftAllDayDates(
     val movedStart = when (target) {
         is MoveTarget.OnDate -> target.date
         is MoveTarget.After -> {
-            require(target.duration >= Duration.ofDays(1) &&
-                target.duration.toHours() % 24L == 0L)
+            require(target.duration >= Duration.ZERO &&
+                target.duration == Duration.ofDays(target.duration.toDays()))
             var date = now.atZone(phoneZone).toLocalDate()
                 .plusDays(target.duration.toDays())
-            // A date in the calendar's zone can have already begun on the phone.
-            if (date.atStartOfDay(calendarZone).toInstant() <= now) date = date.plusDays(1)
+            // 0D deliberately moves an all-day event to today, even though today's midnight has passed.
+            if (target.duration > Duration.ZERO && date.atStartOfDay(calendarZone).toInstant() <= now) {
+                date = date.plusDays(1)
+            }
             date
         }
     }

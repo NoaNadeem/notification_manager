@@ -61,6 +61,45 @@ class CalendarEventRulesTest {
     }
 
     @Test
+    fun zeroDayMoveBringsAllDayEventToTodayAndKeepsItsSpan() {
+        val phoneZone = ZoneId.of("America/Los_Angeles")
+        val today = now.atZone(phoneZone).toLocalDate()
+        val (movedStart, movedEnd) = shiftAllDayDates(
+            start = LocalDate.parse("2026-09-20"),
+            end = LocalDate.parse("2026-09-22"),
+            now = now,
+            phoneZone = phoneZone,
+            calendarZone = ZoneId.of("UTC"),
+            target = MoveTarget.After(Duration.ZERO)
+        )
+
+        assertEquals(today, movedStart)
+        assertEquals(today.plusDays(2), movedEnd)
+        for (days in listOf(2L, 4L)) {
+            val (futureStart, futureEnd) = shiftAllDayDates(
+                LocalDate.parse("2026-09-20"), LocalDate.parse("2026-09-22"),
+                now, phoneZone, ZoneId.of("UTC"), MoveTarget.After(Duration.ofDays(days))
+            )
+            assertEquals(today.plusDays(days), futureStart)
+            assertEquals(futureStart.plusDays(2), futureEnd)
+        }
+    }
+
+    @Test
+    fun newTimedTilesMoveRelativeToNow() {
+        val oldStart = now.minus(3, ChronoUnit.DAYS)
+        val oldEnd = oldStart.plus(1, ChronoUnit.HOURS)
+        for (hours in listOf(1L, 4L, 8L, 48L, 96L)) {
+            val (movedStart, movedEnd) = shiftTimedTimes(
+                oldStart, oldEnd, now, ZoneId.of("UTC"),
+                MoveTarget.After(Duration.ofHours(hours))
+            )
+            assertEquals(now.plus(hours, ChronoUnit.HOURS), movedStart)
+            assertEquals(Duration.ofHours(1), Duration.between(movedStart, movedEnd))
+        }
+    }
+
+    @Test
     fun ageIsRoundedUpInHoursThenDays() {
         fun label(start: Instant) = CalendarEvent(
             calendarId = "primary",

@@ -954,7 +954,7 @@ private fun CalendarConnectedScreen(
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     event.location?.let { location ->
                                         Text(
-                                            text = "Location: $location",
+                                            text = location,
                                             style = MaterialTheme.typography.bodySmall.copy(
                                                 textDecoration = TextDecoration.Underline
                                             ),

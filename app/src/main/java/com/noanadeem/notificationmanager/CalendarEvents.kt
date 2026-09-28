@@ -24,7 +24,8 @@ internal data class CalendarEvent(
     val start: Instant,
     val allDayDate: LocalDate?,
     val calendarZone: ZoneId,
-    val htmlLink: String? = null
+    val htmlLink: String? = null,
+    val location: String? = null
 ) {
     fun ageDescription(now: Instant = Instant.now()): String {
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
@@ -145,7 +146,8 @@ private fun parseCalendarPage(response: JSONObject, calendarId: String): List<Ca
                 start = start,
                 allDayDate = allDayDate,
                 calendarZone = calendarZone,
-                htmlLink = item.optString("htmlLink").takeIf { it.isNotBlank() }
+                htmlLink = item.optString("htmlLink").takeIf { it.isNotBlank() },
+                location = item.optString("location").takeIf { it.isNotBlank() }
             ))
         }
     }

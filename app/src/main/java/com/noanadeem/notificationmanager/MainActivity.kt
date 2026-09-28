@@ -71,6 +71,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
@@ -129,6 +130,24 @@ private sealed interface UndoableAction {
         override val event: CalendarEvent,
         override val createdAtNanos: Long = System.nanoTime()
     ) : UndoableAction
+}
+
+private fun UndoableAction.description(): String = when (this) {
+    is UndoableAction.Dismiss -> "Dismissed"
+    is UndoableAction.Move -> when (val destination = target) {
+        is MoveTarget.OnDate -> "Moved to ${destination.date.format(DateTimeFormatter.ofPattern("MMM d"))}"
+        is MoveTarget.After -> {
+            val duration = destination.duration
+            if (duration == Duration.ZERO) "Moved to today"
+            else if (duration.toHours() < 24) {
+                val hours = duration.toHours()
+                "Moved $hours ${if (hours == 1L) "hour" else "hours"} later"
+            } else {
+                val days = duration.toDays()
+                "Moved $days ${if (days == 1L) "day" else "days"} later"
+            }
+        }
+    }
 }
 
 private const val UNDO_WINDOW_MILLIS = 30_000L
@@ -309,6 +328,26 @@ private fun CalendarLoginScreen(
             } catch (e: Exception) {
                 actionError = e.message ?: "Could not open this Calendar event."
             }
+        }
+    }
+
+    fun openLocation(location: String) {
+        undoableAction?.let(::commitAction)
+        try {
+            val text = location.trim()
+            val url = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE)
+                .find(text)?.value?.trimEnd('.', ',', ';', ')')
+                ?: text.takeIf { it.startsWith("www.", ignoreCase = true) }?.let { "https://$it" }
+            val uri = if (url != null) Uri.parse(url) else {
+                Uri.parse("https://www.google.com/maps/search/").buildUpon()
+                    .appendQueryParameter("api", "1")
+                    .appendQueryParameter("query", text)
+                    .build()
+            }
+            activity.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            actionError = null
+        } catch (e: Exception) {
+            actionError = e.message ?: "Could not open this location."
         }
     }
 
@@ -633,6 +672,7 @@ private fun CalendarLoginScreen(
             calendarSearchError = calendarSearchError,
             onSearchCalendar = ::searchCalendar,
             onOpenEvent = ::openEvent,
+            onOpenLocation = ::openLocation,
             eventsLoading = eventsLoading,
             eventsError = eventsError,
             actionError = actionError,
@@ -642,6 +682,7 @@ private fun CalendarLoginScreen(
             movingEventId = movingEventId,
             committingMoveIds = committingMoveIds,
             undoableEventId = undoableAction?.event?.id,
+            undoableActionDescription = undoableAction?.description(),
             onUndo = { undoableAction = null },
             onOtherAction = { undoableAction?.let(::commitAction) },
             lookbackDays = lookbackDays,
@@ -699,6 +740,7 @@ private fun CalendarConnectedScreen(
     calendarSearchError: String?,
     onSearchCalendar: (String) -> Unit,
     onOpenEvent: (CalendarEvent) -> Unit,
+    onOpenLocation: (String) -> Unit,
     eventsLoading: Boolean,
     eventsError: String?,
     actionError: String?,
@@ -708,6 +750,7 @@ private fun CalendarConnectedScreen(
     movingEventId: String?,
     committingMoveIds: Set<String>,
     undoableEventId: String?,
+    undoableActionDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     lookbackDays: Int,
@@ -859,15 +902,20 @@ private fun CalendarConnectedScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(
-                                modifier = Modifier.weight(1f).alpha(if (awaitingUndo) 0.35f else 1f)
+                                modifier = Modifier.weight(1f)
                                     .clickable(enabled = !awaitingUndo) {
                                     onOtherAction()
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
                                 }
                             ) {
-                                Text(event.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                if (!awaitingUndo) Text(
-                                    event.ageDescription(),
+                                Text(
+                                    event.title,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
+                                )
+                                Text(
+                                    if (awaitingUndo) undoableActionDescription.orEmpty() else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp)
@@ -904,6 +952,22 @@ private fun CalendarConnectedScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
+                                    event.location?.let { location ->
+                                        Text(
+                                            text = "Location: $location",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                textDecoration = TextDecoration.Underline
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.fillMaxWidth()
+                                                .clickable(onClickLabel = "Open event location") {
+                                                    onOpenLocation(location)
+                                                }
+                                                .padding(bottom = 8.dp)
+                                        )
+                                    }
                                     val choices = listOf(
                                         "3D" to MoveTarget.After(Duration.ofDays(3)),
                                         "7D" to MoveTarget.After(Duration.ofDays(7)),

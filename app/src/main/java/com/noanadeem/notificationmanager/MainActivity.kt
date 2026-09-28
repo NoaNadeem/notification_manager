@@ -959,7 +959,10 @@ private fun CalendarConnectedScreen(
                                 description = "Move event one day from now",
                                 enabled = movingEventId == null && event.id !in committingMoveIds,
                                 modifier = Modifier.size(44.dp),
-                                onClick = { onMove(event, MoveTarget.After(Duration.ofDays(1))) }
+                                onClick = {
+                                    expandedEventId = null
+                                    onMove(event, MoveTarget.After(Duration.ofDays(1)))
+                                }
                             )
                         }
                         if (expandedEventId == event.id && !awaitingUndo) {

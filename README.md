@@ -1,6 +1,8 @@
 # Notification Manager
 
-Android companion for events on the signed-in account's primary Google Calendar. By default it shows the past 7 days and the rest of today in the phone's local time zone. The menu offers independent lookback and lookahead settings.
+Android companion for events on the signed-in account's primary Google Calendar. By default it shows the past 7 days and the rest of today in the phone's local time zone. The menu offers independent lookback and lookahead settings and review-window presets (daily, week-ahead, meeting-heavy, monthly, and Monday-through-today). Recurring instances have only edit and dismiss actions; dismissing one does not dismiss future occurrences.
+
+The app caches the last loaded event list and dismissal keys on the phone for offline reading. A dismissal is saved locally first and uploaded to Drive when connectivity returns. Moves require a successful Calendar request and are not queued offline. The subheader turns red when offline, a sync fails, or either Calendar or dismissal data is more than an hour old. The menu shows separate refresh timestamps, pending dismissal count, and 30 days of minimal action history. Pending local changes are cleared after Drive confirms them; a compact synced dismissal cache remains for offline filtering.
 
 Pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** is also available in the three-dot menu.
 

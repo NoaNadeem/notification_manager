@@ -7,6 +7,7 @@ import java.net.URLEncoder
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Duration
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -30,7 +31,8 @@ internal data class CalendarEvent(
     val htmlLink: String? = null,
     val location: String? = null,
     val end: Instant? = null,
-    val hasOtherAttendees: Boolean = false
+    val hasOtherAttendees: Boolean = false,
+    val isRecurring: Boolean = false
 ) {
     fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
         !start.isAfter(now.minus(Duration.ofDays(2)))
@@ -65,6 +67,23 @@ internal sealed interface MoveTarget {
     data class OnDate(val date: LocalDate) : MoveTarget
 }
 
+internal enum class WindowPreset(val label: String, val backDays: Int, val aheadDays: Int) {
+    CURRENT("Current: 7 days + today", 7, 0),
+    DAILY("Daily cleanup: yesterday + today", 1, 0),
+    WEEK_AHEAD("Week-ahead: 7 days back + 7 ahead", 7, 7),
+    MEETINGS("Meeting-heavy: 2 days back + today", 2, 0),
+    MONTHLY("Monthly cleanup: 30 days back", 30, 0),
+    END_OF_WEEK("End-of-week: Monday through today", 1, 0);
+
+    fun first(now: Instant, zone: ZoneId): Instant {
+        if (this == CURRENT) return now.minus(7, ChronoUnit.DAYS)
+        val today = now.atZone(zone).toLocalDate()
+        val date = if (this == END_OF_WEEK) today.minusDays((today.dayOfWeek.value - DayOfWeek.MONDAY.value).toLong())
+            else today.minusDays(backDays.toLong())
+        return date.atStartOfDay(zone).toInstant()
+    }
+}
+
 internal fun filterLoadedEvents(events: List<CalendarEvent>, query: String): List<CalendarEvent> {
     val term = query.trim()
     return if (term.isEmpty()) events else events.filter { it.title.contains(term, ignoreCase = true) }
@@ -76,11 +95,12 @@ internal suspend fun fetchRecentEvents(
     lookbackDays: Int,
     lookaheadDays: Int = 0,
     phoneZone: ZoneId = ZoneId.systemDefault(),
-    now: Instant = Instant.now()
+    now: Instant = Instant.now(),
+    preset: WindowPreset? = null
 ): List<CalendarEvent> = withContext(Dispatchers.IO) {
     require(lookbackDays in 1..365)
     require(lookaheadDays in 0..36500)
-    val earliest = now.minus(lookbackDays.toLong(), ChronoUnit.DAYS)
+    val earliest = preset?.first(now, phoneZone) ?: now.minus(lookbackDays.toLong(), ChronoUnit.DAYS)
     val latestExclusive = displayEndExclusive(now, lookaheadDays, phoneZone)
     val events = mutableListOf<CalendarEvent>()
     var eventPage: String? = null
@@ -100,7 +120,7 @@ internal suspend fun fetchRecentEvents(
         val response = getCalendarJson(url, accessToken)
         // timeMin filters by end time, so check the start time ourselves.
         events += parseCalendarPage(response, primaryCalendarId)
-            .filter { isInDisplayWindow(it.start, now, lookbackDays, lookaheadDays, phoneZone) }
+            .filter { isInDisplayWindow(it.start, now, lookbackDays, lookaheadDays, phoneZone, preset) }
         eventPage = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (eventPage != null)
     sortCalendarEvents(events)
@@ -202,7 +222,8 @@ internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<C
                 htmlLink = item.optString("htmlLink").takeIf { it.isNotBlank() },
                 location = item.optString("location").takeIf { it.isNotBlank() },
                 end = end,
-                hasOtherAttendees = hasOtherAttendees
+                hasOtherAttendees = hasOtherAttendees,
+                isRecurring = item.optString("recurringEventId").isNotBlank() || item.has("recurrence")
             ))
         }
     }
@@ -224,6 +245,7 @@ internal suspend fun moveCalendarEvent(
     target: MoveTarget,
     now: Instant = Instant.now()
 ): CalendarEvent = withContext(Dispatchers.IO) {
+    require(!calendarEvent.isRecurring) { "Recurring events can only be dismissed or edited in Google Calendar." }
     val eventUrl = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
         .buildUpon()
         .appendPath(calendarEvent.calendarId)
@@ -234,6 +256,9 @@ internal suspend fun moveCalendarEvent(
     val event = getCalendarJson(eventUrl, accessToken)
     if (event.optString("status") == "cancelled") {
         throw IllegalStateException("This event was deleted in Google Calendar.")
+    }
+    require(event.optString("recurringEventId").isBlank() && !event.has("recurrence")) {
+        "Recurring events can only be dismissed or edited in Google Calendar."
     }
     val originalStart = event.getJSONObject("start")
     val originalEnd = event.getJSONObject("end")
@@ -357,8 +382,8 @@ internal fun displayEndExclusive(now: Instant, lookaheadDays: Int, phoneZone: Zo
 
 internal fun isInDisplayWindow(
     start: Instant, now: Instant, lookbackDays: Int, lookaheadDays: Int,
-    phoneZone: ZoneId = ZoneId.systemDefault()
-): Boolean = start >= now.minus(lookbackDays.toLong(), ChronoUnit.DAYS) &&
+    phoneZone: ZoneId = ZoneId.systemDefault(), preset: WindowPreset? = null
+): Boolean = start >= (preset?.first(now, phoneZone) ?: now.minus(lookbackDays.toLong(), ChronoUnit.DAYS)) &&
     start < displayEndExclusive(now, lookaheadDays, phoneZone)
 
 private fun movedDateTime(instant: Instant, zone: ZoneId, original: JSONObject): JSONObject =

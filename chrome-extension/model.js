@@ -20,7 +20,16 @@ export function ageLabel(startMs, nowMs = Date.now()) {
   return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
-export function displayWindow(nowMs, lookbackDays, lookaheadDays) {
+export const WINDOW_PRESETS = {
+  current: { label: "Current: 7 days + today", back: 7, ahead: 0 },
+  daily: { label: "Daily cleanup: yesterday + today", back: 1, ahead: 0 },
+  weekAhead: { label: "Week-ahead: 7 days back + 7 ahead", back: 7, ahead: 7 },
+  meetings: { label: "Meeting-heavy: 2 days back + today", back: 2, ahead: 0 },
+  monthly: { label: "Monthly cleanup: 30 days back", back: 30, ahead: 0 },
+  endOfWeek: { label: "End-of-week: Monday through today", back: 1, ahead: 0 }
+};
+
+export function displayWindow(nowMs, lookbackDays, lookaheadDays, preset = null) {
   if (!Number.isInteger(lookbackDays) || lookbackDays < 1 || lookbackDays > 365 ||
       !Number.isInteger(lookaheadDays) || lookaheadDays < 0 || lookaheadDays > 36500) {
     throw new RangeError("Invalid lookback or lookahead days.");
@@ -28,7 +37,18 @@ export function displayWindow(nowMs, lookbackDays, lookaheadDays) {
   const end = new Date(nowMs);
   end.setHours(0, 0, 0, 0);
   end.setDate(end.getDate() + lookaheadDays + 1);
-  return { first: nowMs - lookbackDays * DAY_MS, lastExclusive: end.getTime() };
+  let first = nowMs - lookbackDays * DAY_MS;
+  if (preset && WINDOW_PRESETS[preset] && preset !== "current") {
+    const start = new Date(nowMs);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (preset === "endOfWeek" ? (start.getDay() + 6) % 7 : WINDOW_PRESETS[preset].back));
+    first = start.getTime();
+  }
+  return { first, lastExclusive: end.getTime() };
+}
+
+export function isRecurring(event) {
+  return Boolean(event.recurringEventId || event.recurrence?.length);
 }
 
 export function eventStartMs(event, calendarTimeZone) {
@@ -86,6 +106,7 @@ export function zonedMidnightMs(date, zone) {
 }
 
 export function shiftEvent(event, option, now = new Date()) {
+  if (isRecurring(event)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
   const updated = structuredClone(event);
   if (event.start?.date) {
     const originalStart = event.start.date;

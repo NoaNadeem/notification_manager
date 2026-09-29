@@ -1,11 +1,12 @@
 export const UNDO_MS = 30_000;
 
 export class UndoController {
-  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id)) {
+  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}) {
     this.onCommit = onCommit;
     this.onChange = onChange;
     this.schedule = schedule;
     this.cancel = cancel;
+    this.onUndo = onUndo;
     this.current = null;
     this.timer = null;
     this.queue = Promise.resolve();
@@ -38,10 +39,12 @@ export class UndoController {
   undo() {
     return this.enqueue(() => {
       if (!this.current) return;
+      const action = this.current;
       this.cancel(this.timer);
       this.timer = null;
       this.current = null;
       this.onChange(null);
+      this.onUndo(action);
     });
   }
 

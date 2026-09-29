@@ -77,4 +77,13 @@ class DismissalRulesTest {
         assertTrue(listOf(event(oldStart)).withoutDismissals(listOf(record)).isEmpty())
         assertFalse(listOf(event(oldStart.plusSeconds(60))).withoutDismissals(listOf(record)).isEmpty())
     }
+
+    @Test
+    fun dismissingRecurringInstanceLeavesNextInstanceVisible() {
+        val first = CalendarEvent("primary", "series_20260928", "Test Event - 1",
+            now.minus(1, ChronoUnit.DAYS), null, ZoneId.of("UTC"), isRecurring = true)
+        val next = first.copy(id = "series_20260929", start = now)
+        val record = DismissalRecord(first.id, first.start.toEpochMilli(), now.toEpochMilli())
+        assertEquals(listOf(next), listOf(first, next).withoutDismissals(listOf(record)))
+    }
 }

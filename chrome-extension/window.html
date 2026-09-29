@@ -22,13 +22,16 @@
         <input id="search-query" type="search" placeholder="Search loaded events" aria-label="Search loaded events">
         <button id="search-close" class="icon-button" aria-label="Close search">×</button>
       </div>
-      <div id="account" class="account"><span id="account-clock"></span></div>
+      <div id="account" class="account"><span id="account-clock"></span><span id="sync-warning" class="sync-warning" role="status"></span></div>
     </div>
     <button id="menu-toggle" class="icon-button" title="Menu" aria-label="Menu" aria-expanded="false">⋮</button>
     <nav id="menu" aria-label="Notification Manager settings" hidden>
       <button id="logout">⇥ &nbsp; Disconnect / Switch Chrome Profile</button>
       <div id="account-email" class="menu-account"></div>
+      <div id="sync-detail" class="menu-account" style="white-space:pre-line"></div>
+      <button id="history-open">Recent actions</button>
       <button id="refresh">↻ &nbsp; Refresh events</button>
+      <button id="presets-open">Review window: <span id="preset-label">Custom</span></button>
       <button id="lookback-open">◷ &nbsp; Lookback: <span id="lookback-label">7 days</span></button>
       <button id="lookahead-open">◷ &nbsp; Lookahead: <span id="lookahead-label">0 days</span></button>
       <button id="estimate-storage">Estimate 1-year storage</button>
@@ -45,6 +48,16 @@
   <div id="pull-indicator" role="status" hidden></div>
   <main id="event-list" aria-label="Calendar events"></main>
   <footer><span id="count"></span></footer>
+  <dialog id="presets-dialog">
+    <h2>Review window</h2>
+    <div id="preset-choices"></div>
+    <div class="dialog-actions"><button id="presets-cancel">Cancel</button></div>
+  </dialog>
+  <dialog id="history-dialog">
+    <h2>Recent actions</h2>
+    <div id="history-list"></div>
+    <div class="dialog-actions"><button id="history-close">Close</button></div>
+  </dialog>
   <dialog id="lookback-dialog">
     <h2>Show past events</h2>
     <button data-days="7">Last 7 days</button>

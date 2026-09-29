@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, compareEvents, displayWindow } from "./model.js";
+import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
+
+test("recurring instances cannot move and dismissal keys remain occurrence specific", () => {
+  const first = { id: "series_20260928", recurringEventId: "series", start: { dateTime: "2026-09-28T12:00:00Z" } };
+  const second = { ...first, id: "series_20260929", start: { dateTime: "2026-09-29T12:00:00Z" } };
+  assert.equal(isRecurring(first), true);
+  assert.throws(() => shiftEvent(first, { days: 1 }), /Recurring events/);
+  const dismissed = new Set([`${first.id}/${eventStartMs(first, "UTC")}`]);
+  assert.equal(dismissed.has(`${second.id}/${eventStartMs(second, "UTC")}`), false);
+});
 
 test("zero lookahead includes the rest of today in browser local time", () => {
   const now = new Date(2026, 8, 28, 10, 30).getTime();
@@ -10,6 +19,14 @@ test("zero lookahead includes the rest of today in browser local time", () => {
   assert.ok(new Date(2026, 8, 29, 0, 0).getTime() >= bounds.lastExclusive);
   assert.equal(displayWindow(now, 7, 3).lastExclusive, new Date(2026, 9, 2).getTime());
   assert.equal(ageLabel(now + 3_600_000, now), "In 1 hr");
+});
+
+test("review presets use local calendar-day boundaries, including Monday", () => {
+  const wednesday = new Date(2026, 8, 30, 15).getTime();
+  assert.equal(displayWindow(wednesday, 1, 0, "daily").first, new Date(2026, 8, 29).getTime());
+  assert.equal(displayWindow(wednesday, 7, 0, "current").first, wednesday - 7 * 86_400_000);
+  assert.equal(displayWindow(wednesday, 1, 0, "endOfWeek").first, new Date(2026, 8, 28).getTime());
+  assert.equal(displayWindow(wednesday, 7, 7, "weekAhead").lastExclusive, new Date(2026, 9, 8).getTime());
 });
 
 test("lookahead follows calendar days across daylight saving changes", () => {

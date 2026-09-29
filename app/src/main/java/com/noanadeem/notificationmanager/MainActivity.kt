@@ -6,6 +6,9 @@ import android.accounts.Account
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -121,6 +124,7 @@ private const val AUTO_CONNECT_KEY = "auto_connect"
 private const val ACCOUNT_NAME_KEY = "account_name"
 private const val LOOKBACK_DAYS_KEY = "lookback_days"
 private const val LOOKAHEAD_DAYS_KEY = "lookahead_days"
+private const val WINDOW_PRESET_KEY = "window_preset"
 private const val DARK_MODE_KEY = "dark_mode"
 
 private enum class ConnectionScreen { Checking, Disconnected, Connected, Error }
@@ -214,12 +218,37 @@ private fun CalendarLoginScreen(
     }
     val coroutineScope = rememberCoroutineScope()
     val dismissalStore = remember(activity) { DismissalStore(activity) }
+    val localStateStore = remember(activity) { LocalStateStore(activity) }
+    val connectivity = remember(activity) {
+        activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    var online by remember { mutableStateOf(
+        connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    ) }
+    var onlineRecovery by remember { mutableStateOf(0) }
+    DisposableEffect(connectivity) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private fun refresh() = activity.runOnUiThread {
+                val wasOnline = online
+                online = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                    ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+                if (!wasOnline && online) onlineRecovery += 1
+            }
+            override fun onAvailable(network: Network) = refresh()
+            override fun onLost(network: Network) = refresh()
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refresh()
+        }
+        connectivity.registerDefaultNetworkCallback(callback)
+        onDispose { connectivity.unregisterNetworkCallback(callback) }
+    }
     val dismissalMutex = remember { Mutex() }
 
     var screen by remember {
         mutableStateOf(
             if (preferences.getBoolean(AUTO_CONNECT_KEY, true)) {
-                ConnectionScreen.Checking
+                if (preferences.getString(ACCOUNT_NAME_KEY, null) != null) ConnectionScreen.Connected
+                else ConnectionScreen.Checking
             } else {
                 ConnectionScreen.Disconnected
             }
@@ -234,7 +263,16 @@ private fun CalendarLoginScreen(
     var lookaheadDays by remember {
         mutableStateOf(preferences.getInt(LOOKAHEAD_DAYS_KEY, 0).coerceIn(0, 36500))
     }
-    var recentEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+    var windowPreset by remember {
+        mutableStateOf(runCatching {
+            preferences.getString(WINDOW_PRESET_KEY, null)?.let(WindowPreset::valueOf)
+        }.getOrNull())
+    }
+    var recentEvents by remember { mutableStateOf(
+        preferences.getString(ACCOUNT_NAME_KEY, null)?.let { account ->
+            localStateStore.readEvents(account).withoutDismissals(dismissalStore.read(account))
+        } ?: emptyList()
+    ) }
     var eventsLoading by remember { mutableStateOf(false) }
     var eventsError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
@@ -244,6 +282,15 @@ private fun CalendarLoginScreen(
     var committingMoveIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf<List<DismissalRecord>>(emptyList()) }
     var driveError by remember { mutableStateOf<String?>(null) }
+    var syncState by remember { mutableStateOf(
+        preferences.getString(ACCOUNT_NAME_KEY, null)?.let(localStateStore::readSync) ?: LocalSyncState()
+    ) }
+
+    fun saveSync(account: String, updated: LocalSyncState) {
+        syncState = updated
+        runCatching { localStateStore.writeSync(account, updated) }
+            .onFailure { Log.w("NotificationManagerSync", "Could not persist sync status", it) }
+    }
     var currentAccessToken by remember { mutableStateOf<String?>(null) }
     var storageEstimate by remember { mutableStateOf<String?>(null) }
     var storageEstimateRequest by remember { mutableStateOf(0) }
@@ -299,13 +346,22 @@ private fun CalendarLoginScreen(
                         recentEvents = recentEvents.mapNotNull {
                             if (it.calendarId == action.event.calendarId && it.id == action.event.id) {
                                 movedEvent.takeIf { updated ->
-                                    isInDisplayWindow(updated.start, now, lookbackDays, lookaheadDays)
+                                    isInDisplayWindow(updated.start, now, lookbackDays, lookaheadDays, preset = windowPreset)
                                 }
                             } else it
                         }.let(::sortCalendarEvents)
+                        val cacheAccount = accountName ?: action.event.calendarId
+                        runCatching { localStateStore.writeEvents(cacheAccount, recentEvents) }
+                            .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
                         actionError = null
+                        val selectedAccount = accountName ?: action.event.calendarId
+                        saveSync(selectedAccount, syncState.addHistory(ActionEntry("move", action.event.id,
+                            action.event.start.toEpochMilli(), System.currentTimeMillis(), "synced")))
                     } catch (e: Exception) {
                         actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
+                        val selectedAccount = accountName ?: action.event.calendarId
+                        saveSync(selectedAccount, syncState.copy(error = e.message ?: "Move failed").addHistory(ActionEntry("move", action.event.id,
+                            action.event.start.toEpochMilli(), System.currentTimeMillis(), "failed", e.message)))
                     } finally {
                         committingMoveIds = committingMoveIds - action.event.id
                     }
@@ -323,20 +379,42 @@ private fun CalendarLoginScreen(
                         dismissals = merged
                         recentEvents = recentEvents.withoutDismissals(merged)
                         actionError = null
+                        saveSync(selectedAccount, syncState.copy(
+                            pending = syncState.pending + record.key
+                        ).addHistory(ActionEntry("dismiss", action.event.id, record.eventStartMillis,
+                            now.toEpochMilli(), "local-only")))
                         currentAccessToken?.let { token ->
                             try {
+                                val localKeys = dismissals.mapTo(HashSet()) { it.key }
                                 dismissals = dismissalMutex.withLock {
                                     syncDismissals(token, dismissalStore, selectedAccount)
                                 }
+                                val remoteNewer = dismissals.any { it.key !in localKeys }
+                                saveSync(selectedAccount, syncState.copy(
+                                    dismissalAt = System.currentTimeMillis(), pending = emptySet(),
+                                    error = null, remoteNewer = remoteNewer,
+                                    conflictResolved = syncState.pending.isNotEmpty() && remoteNewer,
+                                    history = syncState.history.map { entry ->
+                                        if (entry.status == "local-only") entry.copy(status = "synced") else entry
+                                    }
+                                ))
                                 driveError = null
                             } catch (e: Exception) {
                                 driveError = "Dismissal of “${action.event.title}” was saved on this phone, but Drive sync failed: ${e.message}"
+                                saveSync(selectedAccount, syncState.copy(error = e.message ?: "Drive sync failed",
+                                    history = syncState.history.map { entry ->
+                                        if (entry.eventId == record.eventId && entry.start == record.eventStartMillis &&
+                                            entry.status == "local-only") entry.copy(error = e.message) else entry
+                                    }))
                             }
                         } ?: run {
                             driveError = "Dismissal of “${action.event.title}” was saved on this phone; reconnect to sync with Drive."
+                            saveSync(selectedAccount, syncState.copy(error = "Reconnect to sync with Drive"))
                         }
                     } catch (e: Exception) {
                         actionError = "Could not dismiss “${action.event.title}”: ${e.message ?: "Saving failed."}"
+                        saveSync(selectedAccount, syncState.addHistory(ActionEntry("dismiss", action.event.id,
+                            action.event.start.toEpochMilli(), System.currentTimeMillis(), "failed", e.message)))
                     }
                 }
             }
@@ -446,26 +524,46 @@ private fun CalendarLoginScreen(
                     apply()
                 }
                 val selectedAccount = accountName ?: primaryCalendarId
+                syncState = localStateStore.readSync(selectedAccount)
                 dismissals = dismissalStore.read(selectedAccount)
+                if (previousAccount != accountName) {
+                    recentEvents = localStateStore.readEvents(selectedAccount).withoutDismissals(dismissals)
+                }
                 screen = ConnectionScreen.Connected
                 errorMessage = null
                 eventsLoading = true
                 eventsError = null
                 driveError = null
                 try {
-                    val fetched = fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays)
+                    val fetched = fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
+                        preset = windowPreset)
+                    runCatching { localStateStore.writeEvents(selectedAccount, fetched) }
+                        .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
+                    saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null))
                     recentEvents = fetched.withoutDismissals(dismissals)
                     try {
+                        val localKeys = dismissals.mapTo(HashSet()) { it.key }
+                        val hadPending = syncState.pending.isNotEmpty()
                         val merged = dismissalMutex.withLock {
                             syncDismissals(accessToken, dismissalStore, selectedAccount)
                         }
                         dismissals = merged
                         recentEvents = fetched.withoutDismissals(merged)
+                        val remoteNewer = merged.any { it.key !in localKeys }
+                        saveSync(selectedAccount, syncState.copy(
+                            dismissalAt = System.currentTimeMillis(), pending = emptySet(), error = null,
+                            remoteNewer = remoteNewer, conflictResolved = hadPending && remoteNewer,
+                            history = syncState.history.map { entry ->
+                                if (entry.status == "local-only") entry.copy(status = "synced") else entry
+                            }
+                        ))
                     } catch (e: Exception) {
                         driveError = "Dismissals are saved on this phone, but Drive sync is unavailable: ${e.message}"
+                        saveSync(selectedAccount, syncState.copy(error = e.message ?: "Drive sync failed"))
                     }
                 } catch (e: Exception) {
                     eventsError = e.message ?: "Could not load recent events."
+                    saveSync(selectedAccount, syncState.copy(error = eventsError))
                 } finally {
                     eventsLoading = false
                 }
@@ -568,6 +666,10 @@ private fun CalendarLoginScreen(
     }
 
     fun moveEvent(event: CalendarEvent, target: MoveTarget) {
+        if (event.isRecurring) {
+            actionError = "Recurring events can only be dismissed or edited in Google Calendar."
+            return
+        }
         if (movingEventId != null) return
         undoableAction?.let(::commitAction)
         pendingMove = PendingMove(event, target)
@@ -679,7 +781,13 @@ private fun CalendarLoginScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (screen == ConnectionScreen.Checking) authorizeCalendar(interactive = false)
+        if (preferences.getBoolean(AUTO_CONNECT_KEY, true)) authorizeCalendar(interactive = false)
+    }
+    LaunchedEffect(onlineRecovery) {
+        if (onlineRecovery > 0 && screen == ConnectionScreen.Connected && !eventsLoading &&
+            (syncState.pending.isNotEmpty() || syncState.error != null)) {
+            authorizeCalendar(interactive = false)
+        }
     }
 
     DisposableEffect(activity, screen) {
@@ -725,6 +833,8 @@ private fun CalendarLoginScreen(
             eventsError = eventsError,
             actionError = actionError,
             driveError = driveError,
+            syncState = syncState,
+            online = online,
             storageEstimate = storageEstimate,
             darkMode = darkMode,
             skin = skin,
@@ -733,19 +843,41 @@ private fun CalendarLoginScreen(
             committingMoveIds = committingMoveIds,
             undoableEventId = undoableAction?.event?.id,
             undoableActionDescription = undoableAction?.description(),
-            onUndo = { undoableAction = null },
+            onUndo = {
+                undoableAction?.let { action ->
+                    val selectedAccount = accountName ?: action.event.calendarId
+                    saveSync(selectedAccount, syncState.addHistory(ActionEntry(
+                        if (action is UndoableAction.Dismiss) "dismiss" else "move",
+                        action.event.id, action.event.start.toEpochMilli(),
+                        System.currentTimeMillis(), "undone"
+                    )))
+                }
+                undoableAction = null
+            },
             onOtherAction = { undoableAction?.let(::commitAction) },
             lookbackDays = lookbackDays,
             lookaheadDays = lookaheadDays,
+            windowPreset = windowPreset,
             onRefresh = { authorizeCalendar(interactive = false) },
             onLookbackChange = { days ->
                 lookbackDays = days
-                preferences.edit().putInt(LOOKBACK_DAYS_KEY, days).apply()
+                windowPreset = null
+                preferences.edit().putInt(LOOKBACK_DAYS_KEY, days).remove(WINDOW_PRESET_KEY).apply()
                 authorizeCalendar(interactive = false)
             },
             onLookaheadChange = { days ->
                 lookaheadDays = days
-                preferences.edit().putInt(LOOKAHEAD_DAYS_KEY, days).apply()
+                windowPreset = null
+                preferences.edit().putInt(LOOKAHEAD_DAYS_KEY, days).remove(WINDOW_PRESET_KEY).apply()
+                authorizeCalendar(interactive = false)
+            },
+            onPresetChange = { preset ->
+                windowPreset = preset
+                lookbackDays = preset.backDays
+                lookaheadDays = preset.aheadDays
+                preferences.edit().putString(WINDOW_PRESET_KEY, preset.name)
+                    .putInt(LOOKBACK_DAYS_KEY, preset.backDays)
+                    .putInt(LOOKAHEAD_DAYS_KEY, preset.aheadDays).apply()
                 authorizeCalendar(interactive = false)
             },
             onMove = ::moveEvent,
@@ -801,6 +933,8 @@ private fun CalendarConnectedScreen(
     eventsError: String?,
     actionError: String?,
     driveError: String?,
+    syncState: LocalSyncState,
+    online: Boolean,
     storageEstimate: String?,
     darkMode: Boolean,
     skin: Skin,
@@ -813,9 +947,11 @@ private fun CalendarConnectedScreen(
     onOtherAction: () -> Unit,
     lookbackDays: Int,
     lookaheadDays: Int,
+    windowPreset: WindowPreset?,
     onRefresh: () -> Unit,
     onLookbackChange: (Int) -> Unit,
     onLookaheadChange: (Int) -> Unit,
+    onPresetChange: (WindowPreset) -> Unit,
     onMove: (CalendarEvent, MoveTarget) -> Unit,
     onDismiss: (CalendarEvent) -> Unit,
     onEstimateStorage: () -> Unit,
@@ -826,6 +962,8 @@ private fun CalendarConnectedScreen(
     var expandedEventId by remember { mutableStateOf<String?>(null) }
     var showLookbackPicker by remember { mutableStateOf(false) }
     var showLookaheadPicker by remember { mutableStateOf(false) }
+    var showPresets by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
     var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var customLookaheadText by remember { mutableStateOf(lookaheadDays.toString()) }
@@ -857,7 +995,7 @@ private fun CalendarConnectedScreen(
                     singleLine = true,
                     placeholder = { Text("Search loaded events") }
                 )
-                IconButton(onClick = {
+                IconButton(modifier = Modifier.semantics { contentDescription = "Close search" }, onClick = {
                     searchActive = false
                     searchQuery = ""
                 }) { Text("×", style = MaterialTheme.typography.headlineMedium) }
@@ -892,7 +1030,7 @@ private fun CalendarConnectedScreen(
                 Spacer(modifier = Modifier.weight(1f))
             }
             Column {
-                IconButton(modifier = Modifier.size(40.dp), onClick = {
+                IconButton(modifier = Modifier.size(40.dp).semantics { contentDescription = "Notification Manager menu" }, onClick = {
                     onOtherAction()
                     menuExpanded = true
                 }) {
@@ -913,6 +1051,23 @@ private fun CalendarConnectedScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
                     }
+                    val headline = syncState.headline(online)
+                    Text(headline, style = MaterialTheme.typography.bodySmall,
+                        color = if (headline == "Synced just now") MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    val syncDetails = listOf(
+                        "Calendar refreshed: ${formatSyncTime(syncState.calendarAt)}",
+                        "Dismissals synced: ${formatSyncTime(syncState.dismissalAt)}",
+                        "Local-only dismissals: ${syncState.pending.size}",
+                        "Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}",
+                        "Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}"
+                    )
+                    syncDetails.forEach { detail -> Text(detail, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) }
+                    DropdownMenuItem(text = { Text("Recent actions") }, onClick = {
+                        menuExpanded = false; showHistory = true
+                    })
                     DropdownMenuItem(
                         text = { Text("Refresh events") },
                         leadingIcon = { Text("↻") },
@@ -922,6 +1077,11 @@ private fun CalendarConnectedScreen(
                             onOtherAction()
                             onRefresh()
                         }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Review window: ${windowPreset?.label ?: "Custom"}") },
+                        enabled = !eventsLoading && !loading && movingEventId == null,
+                        onClick = { menuExpanded = false; showPresets = true }
                     )
                     DropdownMenuItem(
                         text = { Text("Lookback: $lookbackDays days") },
@@ -965,7 +1125,7 @@ private fun CalendarConnectedScreen(
                 }
             }
         }
-        if (accountName != null) AccountClock()
+        if (accountName != null) AccountClock(syncState, online, eventsError != null || driveError != null)
             }
         }
         PullToRefreshBox(
@@ -1102,6 +1262,13 @@ private fun CalendarConnectedScreen(
                                     onUndo()
                                 }
                             )
+                            else if (event.isRecurring) MoveTile(
+                                label = "✎",
+                                description = "Edit recurring occurrence in Google Calendar",
+                                enabled = true,
+                                modifier = Modifier.size(44.dp),
+                                onClick = { onOpenEvent(event) }
+                            )
                             else MoveTile(
                                 label = "1D",
                                 description = "Move event one day from now",
@@ -1126,6 +1293,21 @@ private fun CalendarConnectedScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
+                                    if (event.isRecurring) Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        MoveTile(
+                                            label = "✓",
+                                            description = "Dismiss only this occurrence in this app",
+                                            enabled = movingEventId == null && event.id !in committingMoveIds,
+                                            modifier = Modifier.size(44.dp),
+                                            onClick = {
+                                                expandedEventId = null
+                                                onDismiss(event)
+                                            }
+                                        )
+                                    } else {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
@@ -1196,6 +1378,7 @@ private fun CalendarConnectedScreen(
                                     }
                                     if (movingEventId == event.id || event.id in committingMoveIds) {
                                         Text("Moving event…", modifier = Modifier.padding(top = 8.dp))
+                                    }
                                     }
                                 }
                             }
@@ -1315,6 +1498,39 @@ private fun CalendarConnectedScreen(
         }
     }
 
+    if (showHistory) AlertDialog(
+        onDismissRequest = { showHistory = false },
+        title = { Text("Recent actions") },
+        text = {
+            Column {
+                val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - 30L * 86_400_000L }
+                    .takeLast(15).reversed()
+                if (entries.isEmpty()) Text("No actions in the last 30 days.")
+                entries.forEach { entry ->
+                    Text("${formatSyncTime(entry.at)} · ${entry.action} · ${entry.eventId} · ${entry.status}" +
+                        (entry.error?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Close") } }
+    )
+    if (showPresets) AlertDialog(
+        onDismissRequest = { showPresets = false },
+        title = { Text("Review window") },
+        text = {
+            Column {
+                WindowPreset.entries.forEach { preset ->
+                    TextButton(onClick = {
+                        showPresets = false
+                        onPresetChange(preset)
+                    }) { Text(preset.label) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { showPresets = false }) { Text("Cancel") } }
+    )
     if (showLookbackPicker) {
         val customDays = customLookbackText.toIntOrNull()
         AlertDialog(
@@ -1441,7 +1657,12 @@ private fun SkinDialog(current: Skin, onDismiss: () -> Unit, onApply: (Skin) -> 
 }
 
 @Composable
-private fun AccountClock() {
+private fun formatSyncTime(millis: Long): String = if (millis <= 0L) "Never" else
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MMM d, h:mm a"))
+
+@Composable
+private fun AccountClock(syncState: LocalSyncState, online: Boolean, hasError: Boolean) {
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -1450,10 +1671,12 @@ private fun AccountClock() {
             now = Instant.now()
         }
     }
-    Text(
-        headerClockLabel(now, ZoneId.systemDefault()),
-        style = MaterialTheme.typography.bodyMedium
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(headerClockLabel(now, ZoneId.systemDefault()), style = MaterialTheme.typography.bodyMedium)
+        val headline = if (hasError && online) "Sync needs attention" else syncState.headline(online, now.toEpochMilli())
+        if (headline != "Synced just now") Text(" · $headline", color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 private fun CalendarEvent.searchDateDescription(): String =

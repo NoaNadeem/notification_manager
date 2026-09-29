@@ -1,9 +1,14 @@
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow, isRecurring } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
 let dismissalQueue = Promise.resolve();
+
+export function primaryEventsUrl(primaryCalendarId) {
+  if (!primaryCalendarId || typeof primaryCalendarId !== "string") throw new Error("Primary Calendar ID is required.");
+  return new URL(`${CALENDAR}/${encodeURIComponent(primaryCalendarId)}/events`);
+}
 
 function enqueueDismissal(work) {
   const result = dismissalQueue.then(work);
@@ -38,13 +43,13 @@ export async function primaryCalendar(interactive = false) {
   return googleRequest(`${CALENDAR}/primary`, {}, interactive);
 }
 
-export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0) {
+export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null) {
   const now = Date.now();
-  const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays);
+  const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays, preset);
   const all = [];
   let pageToken;
   do {
-    const url = new URL(`${CALENDAR}/${encodeURIComponent(calendarId)}/events`);
+    const url = primaryEventsUrl(calendarId);
     url.searchParams.set("timeMin", new Date(first).toISOString());
     url.searchParams.set("timeMax", new Date(lastExclusive).toISOString());
     url.searchParams.set("singleEvents", "true");
@@ -67,7 +72,7 @@ export async function searchPrimaryCalendar(calendarId, query) {
   let pageToken;
   let pages = 0;
   do {
-    const url = new URL(`${CALENDAR}/${encodeURIComponent(calendarId)}/events`);
+    const url = primaryEventsUrl(calendarId);
     url.searchParams.set("q", term);
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("showDeleted", "false");
@@ -86,6 +91,7 @@ export async function moveEvent(calendarId, eventId, option) {
   const url = `${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   const current = await googleRequest(url);
   if (current.status === "cancelled") throw new Error("This event was deleted in Google Calendar.");
+  if (isRecurring(current)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
   const moved = shiftEvent(current, option);
   const update = new URL(url);
   update.searchParams.set("sendUpdates", "none");

@@ -15,6 +15,19 @@ class CalendarEventRulesTest {
     private val now = Instant.parse("2026-09-28T18:00:00Z")
 
     @Test
+    fun reviewPresetsUsePhoneCalendarDaysAndMondayBoundary() {
+        val pacific = ZoneId.of("America/Los_Angeles")
+        val wednesday = LocalDate.parse("2026-09-30").atTime(15, 0).atZone(pacific).toInstant()
+        assertEquals(LocalDate.parse("2026-09-28").atStartOfDay(pacific).toInstant(),
+            WindowPreset.END_OF_WEEK.first(wednesday, pacific))
+        assertEquals(LocalDate.parse("2026-09-29").atStartOfDay(pacific).toInstant(),
+            WindowPreset.DAILY.first(wednesday, pacific))
+        assertEquals(wednesday.minus(7, ChronoUnit.DAYS), WindowPreset.CURRENT.first(wednesday, pacific))
+        assertFalse(isInDisplayWindow(LocalDate.parse("2026-09-27").atStartOfDay(pacific).toInstant(),
+            wednesday, 1, 0, pacific, WindowPreset.END_OF_WEEK))
+    }
+
+    @Test
     fun zeroLookaheadIncludesRestOfPhoneDayAndExcludesTomorrow() {
         val pacific = ZoneId.of("America/Los_Angeles")
         val tomorrow = LocalDate.parse("2026-09-29").atStartOfDay(pacific).toInstant()

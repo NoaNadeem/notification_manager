@@ -1,10 +1,11 @@
-import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, compareEvents, displayWindow } from "./model.js";
+import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
+import { updateHistory, syncHeadline, syncDetail } from "./sync-state.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -22,6 +23,7 @@ const menuToggle = $("#menu-toggle");
 const searchQueryInput = $("#search-query");
 const lookbackDialog = $("#lookback-dialog");
 const lookaheadDialog = $("#lookahead-dialog");
+const presetsDialog = $("#presets-dialog");
 const skinsDialog = $("#skins-dialog");
 const skinPresets = {
   Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
@@ -36,6 +38,8 @@ let events = [];
 let dismissals = [];
 let lookbackDays = 7;
 let lookaheadDays = 0;
+let windowPreset = null;
+let syncState = { calendarAt: null, dismissalAt: null, pending: [], error: null, remoteNewer: false, conflictResolved: false, history: [] };
 let darkMode = true;
 let skinName = "Green";
 let signedOut = false;
@@ -56,7 +60,29 @@ let storageEstimateMessage;
 let storageEstimateNode;
 const committing = new Set();
 
-const undo = new UndoController(commitAction, () => render());
+const undo = new UndoController(commitAction, () => render(), undefined, undefined, (action) => {
+  recordHistory(action, "undone");
+});
+
+function renderSync() {
+  const headline = syncHeadline(syncState, navigator.onLine);
+  $("#sync-warning").textContent = headline === "Synced just now" ? "" : ` · ${headline}`;
+  $("#sync-detail").textContent = `${headline}\n${syncDetail(syncState)}`;
+}
+
+async function saveSyncState() {
+  syncState.history = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).slice(-500);
+  if (account) await chrome.storage.local.set({ [`syncState:${account.toLowerCase()}`]: syncState });
+  renderSync();
+}
+
+function recordHistory(action, status, error = null) {
+  syncState.history = updateHistory(syncState.history || [], {
+    action: action.type, at: Date.now(), eventId: action.event.id,
+    start: eventStartMs(action.event, calendarZone), status, error
+  });
+  void saveSyncState().catch((failure) => showError(`Could not save sync status: ${failure.message}`));
+}
 const openEventOnce = createOpenGuard(async (url) => {
   await undo.commit();
   await openInBrowser(chrome, url);
@@ -118,6 +144,7 @@ function applySkin() {
 function scheduleHeaderClock() {
   clearTimeout(clockTimer);
   updateHeaderClock();
+  renderSync();
   if (account) clockTimer = setTimeout(scheduleHeaderClock, 60_000 - Date.now() % 60_000);
 }
 
@@ -190,6 +217,8 @@ async function load(interactive = false) {
     const calendar = await primaryCalendar(interactive);
     account = calendar.id;
     calendarZone = calendar.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const localState = await chrome.storage.local.get(`syncState:${account.toLowerCase()}`);
+    syncState = { ...syncState, ...(localState[`syncState:${account.toLowerCase()}`] || {}) };
     accountLabel.textContent = account;
     scheduleHeaderClock();
     connectPanel.hidden = true;
@@ -198,25 +227,46 @@ async function load(interactive = false) {
       await chrome.storage.local.set({ signedOut: false });
       showInfo("");
     }
-    const recent = await recentEvents(account, lookbackDays, lookaheadDays);
+    const recent = await recentEvents(account, lookbackDays, lookaheadDays, windowPreset);
     events = recent.events.filter((event) => {
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
     }).sort((a, b) => compareEvents(a, b));
+    syncState.calendarAt = Date.now();
+    syncState.error = null;
+    await chrome.storage.local.set({ lastAccount: account });
+    try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
+    catch (cacheError) { showError(`Could not update offline event cache: ${cacheError.message}`); }
+    await saveSyncState();
     try {
+      const localDismissals = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
+      const localKeys = new Set((localDismissals[`dismissals:${account.toLowerCase()}`] || [])
+        .map((record) => dismissalKey(record.eventId, record.start)));
+      const hadPending = syncState.pending?.length > 0;
       dismissals = await syncDismissals(account);
+      syncState.remoteNewer = dismissals.some((record) => !localKeys.has(dismissalKey(record.eventId, record.start)));
+      syncState.conflictResolved = hadPending && syncState.remoteNewer;
+      syncState.pending = [];
+      syncState.dismissalAt = Date.now();
+      syncState.history = (syncState.history || []).map((entry) => entry.status === "local-only" ? { ...entry, status: "synced" } : entry);
+      await saveSyncState();
     } catch (error) {
       const saved = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
       dismissals = saved[`dismissals:${account.toLowerCase()}`] || [];
       showError(`Drive dismissal sync failed: ${error.message}. Local dismissals are still shown.`);
+      syncState.error = error.message;
+      await saveSyncState();
     }
     render();
   } catch (error) {
     showError(`Could not load Calendar: ${error.message}`);
+    syncState.error = error.message;
+    await saveSyncState();
     if (!account) connectPanel.hidden = false;
-    count.textContent = "";
+    render();
   } finally {
     loading = false;
+    renderSync();
   }
 }
 
@@ -376,6 +426,10 @@ function renderEvent(event) {
   if (action) {
     actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo"));
   } else if (!busy) {
+    if (isRecurring(event)) {
+      actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(calendarEditUrl(event.htmlLink) || event.htmlLink), "tile primary"));
+      actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
+    } else {
     actions.append(moveTile(event, "1D", { days: 1 }, "tile primary"));
     const more = button("⋯", "More move and dismiss options", () => showFlyout(row, flyout), "tile more");
     more.setAttribute("aria-haspopup", "true");
@@ -386,10 +440,11 @@ function renderEvent(event) {
       if (!row.contains(event.relatedTarget)) hideFlyout(row);
     });
     actions.append(more);
+    }
   }
   top.append(details, actions);
   row.append(top);
-  if (action || busy) return row;
+  if (action || busy || isRecurring(event)) return row;
   const flyout = document.createElement("div");
   flyout.className = "flyout";
   const topRow = document.createElement("div");
@@ -427,6 +482,10 @@ function renderEvent(event) {
 
 async function stageAction(event, type, option) {
   showError("");
+  if (type === "move" && isRecurring(event)) {
+    showError("Recurring events can only be dismissed or edited in Google Calendar.");
+    return;
+  }
   try {
     await undo.stage({ event, type, option });
   } catch (error) {
@@ -437,6 +496,7 @@ async function stageAction(event, type, option) {
 async function commitAction(action) {
   const { event } = action;
   const key = eventKey(event);
+  let cacheWarning = "";
   committing.add(key);
   render();
   try {
@@ -444,26 +504,40 @@ async function commitAction(action) {
       const moved = await moveEvent(account, event.id, action.option);
       events = events.filter((item) => item !== event);
       const start = eventStartMs(moved, calendarZone);
-      const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays);
+      const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
       if (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b));
       }
+      try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
+      catch (cacheError) { cacheWarning = `Move succeeded, but offline cache was not updated: ${cacheError.message}`; }
+      recordHistory(action, "synced");
     } else {
       dismissals = await saveDismissal(account, {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now()
       });
+      syncState.pending = (syncState.pending || []).filter((item) => item !== key);
+      syncState.dismissalAt = Date.now();
+      syncState.error = null;
+      recordHistory(action, "synced");
     }
-    showError("");
+    showError(cacheWarning);
   } catch (error) {
     if (action.type === "dismiss") {
       const stored = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
       dismissals = stored[`dismissals:${account.toLowerCase()}`] || dismissals;
       const savedLocally = dismissals.some((record) => dismissalKey(record.eventId, record.start) === key);
+      if (savedLocally) {
+        syncState.pending = [...new Set([...(syncState.pending || []), key])];
+        syncState.error = error.message;
+        recordHistory(action, "local-only", error.message);
+      } else recordHistory(action, "failed", error.message);
       showError(savedLocally
         ? `Dismissal of “${event.summary || "(Untitled event)"}” was saved locally, but Drive sync failed: ${error.message}`
         : `Could not dismiss “${event.summary || "(Untitled event)"}”: ${error.message}`);
     } else {
+      syncState.error = error.message;
+      recordHistory(action, "failed", error.message);
       showError(`Could not move “${event.summary || "(Untitled event)"}”: ${error.message}`);
     }
   } finally {
@@ -496,8 +570,10 @@ async function changeLookback(days) {
   await undo.commit();
   lookbackDialog.close();
   lookbackDays = days;
+  windowPreset = null;
+  $("#preset-label").textContent = "Custom";
   $("#lookback-label").textContent = `${days} days`;
-  await chrome.storage.local.set({ lookbackDays: days });
+  await chrome.storage.local.set({ lookbackDays: days, windowPreset: null });
   await load();
 }
 
@@ -509,8 +585,10 @@ async function changeLookahead(days) {
   await undo.commit();
   lookaheadDialog.close();
   lookaheadDays = days;
+  windowPreset = null;
+  $("#preset-label").textContent = "Custom";
   $("#lookahead-label").textContent = `${days} days`;
-  await chrome.storage.local.set({ lookaheadDays: days });
+  await chrome.storage.local.set({ lookaheadDays: days, windowPreset: null });
   await load();
 }
 
@@ -608,6 +686,37 @@ $("#real-events-toggle").addEventListener("click", () => {
   render();
 });
 $("#logout").addEventListener("click", () => { closeMenu(); void logout(); });
+$("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
+$("#presets-cancel").addEventListener("click", () => presetsDialog.close());
+$("#history-open").addEventListener("click", () => {
+  closeMenu();
+  const container = $("#history-list");
+  container.replaceChildren();
+  const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).toReversed();
+  if (!entries.length) container.textContent = "No actions in the last 30 days.";
+  for (const entry of entries) {
+    const item = document.createElement("p");
+    item.textContent = `${new Date(entry.at).toLocaleString()} · ${entry.action} · ${entry.eventId} · ${entry.status}${entry.error ? ` · ${entry.error}` : ""}`;
+    container.append(item);
+  }
+  $("#history-dialog").showModal();
+});
+$("#history-close").addEventListener("click", () => $("#history-dialog").close());
+for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
+  const choice = button(preset.label, preset.label, () => void (async () => {
+    await undo.commit();
+    windowPreset = id;
+    lookbackDays = preset.back;
+    lookaheadDays = preset.ahead;
+    $("#preset-label").textContent = preset.label;
+    $("#lookback-label").textContent = `${lookbackDays} days`;
+    $("#lookahead-label").textContent = `${lookaheadDays} days`;
+    await chrome.storage.local.set({ windowPreset: id, lookbackDays, lookaheadDays });
+    presetsDialog.close();
+    await load();
+  })());
+  $("#preset-choices").append(choice);
+}
 $("#lookback-open").addEventListener("click", () => {
   closeMenu();
   void undo.commit();
@@ -709,12 +818,20 @@ window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {
   updateHeaderClock();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !calendarDialog.open && !dateTarget) void load();
+  renderSync();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
+window.addEventListener("online", () => {
+  renderSync();
+  if (account && !signedOut && !loading && !undo.current && committing.size === 0) void load();
+});
+window.addEventListener("offline", renderSync);
 
-const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "darkMode", "signedOut", "skinName"]);
+const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount"]);
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
 lookaheadDays = Number.isInteger(saved.lookaheadDays) && saved.lookaheadDays >= 0 && saved.lookaheadDays <= 36500 ? saved.lookaheadDays : 0;
+windowPreset = WINDOW_PRESETS[saved.windowPreset] ? saved.windowPreset : null;
+$("#preset-label").textContent = windowPreset ? WINDOW_PRESETS[windowPreset].label : "Custom";
 darkMode = saved.darkMode !== false;
 skinName = skinPresets[saved.skinName] ? saved.skinName : "Green";
 applySkin();
@@ -728,5 +845,20 @@ if (signedOut) {
   showInfo("Disconnected. Connect this Chrome profile to load your primary Calendar.");
   render();
 } else {
+  if (saved.lastAccount) {
+    account = saved.lastAccount;
+    const offlineCache = await chrome.storage.local.get([
+      `cachedEvents:${account.toLowerCase()}`, `dismissals:${account.toLowerCase()}`, `syncState:${account.toLowerCase()}`
+    ]);
+    const cached = offlineCache[`cachedEvents:${account.toLowerCase()}`];
+    events = cached?.events || [];
+    calendarZone = cached?.zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    dismissals = offlineCache[`dismissals:${account.toLowerCase()}`] || [];
+    syncState = { ...syncState, ...(offlineCache[`syncState:${account.toLowerCase()}`] || {}) };
+    accountLabel.textContent = account;
+    scheduleHeaderClock();
+    render();
+    renderSync();
+  }
   void load();
 }

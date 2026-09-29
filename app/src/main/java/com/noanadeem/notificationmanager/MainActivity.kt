@@ -914,6 +914,16 @@ private fun CalendarConnectedScreen(
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
                     }
                     DropdownMenuItem(
+                        text = { Text("Refresh events") },
+                        leadingIcon = { Text("↻") },
+                        enabled = !eventsLoading && !loading && movingEventId == null,
+                        onClick = {
+                            menuExpanded = false
+                            onOtherAction()
+                            onRefresh()
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Lookback: $lookbackDays days") },
                         leadingIcon = { Text("◷") },
                         enabled = !eventsLoading && !loading && movingEventId == null,

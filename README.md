@@ -2,7 +2,7 @@
 
 Android companion for events on the signed-in account's primary Google Calendar. By default it shows the past 7 days and the rest of today in the phone's local time zone. The menu offers independent lookback and lookahead settings.
 
-Pull down from the top of the event list to refresh Calendar events and Drive dismissals.
+Pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** is also available in the three-dot menu.
 
 The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.
 

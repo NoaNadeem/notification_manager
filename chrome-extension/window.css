@@ -13,6 +13,8 @@ h1 { font-size: 21px; line-height: 1.2; margin: 0 0 5px; font-weight: 700; }
 .connect-panel { padding: 20px; }
 .connect-panel button { background: #637aa4; color: white; border: 0; border-radius: 6px; padding: 9px 12px; }
 main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 12px 18px; }
+#pull-indicator { padding:7px 12px; text-align:center; color:var(--muted); background:var(--panel); font-size:12px; }
+main.pulling { user-select:none; cursor:grabbing; }
 .empty { text-align: center; color: #a8adb7; margin: 38px 8px; }
 .event { position: relative; border-radius: 8px; padding: 10px 8px 10px 10px; border-bottom: 1px solid #30343a; }
 .event:hover, .event:focus-within { background: #22262c; }

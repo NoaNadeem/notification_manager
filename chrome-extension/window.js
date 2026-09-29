@@ -4,6 +4,7 @@ import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
+import { PullRefreshGesture } from "./pull-refresh.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -12,6 +13,7 @@ const info = $("#info");
 const accountLabel = $("#account-email");
 const accountClock = $("#account-clock");
 const count = $("#count");
+const pullIndicator = $("#pull-indicator");
 const connectPanel = $("#connect-panel");
 const datePicker = $("#date-picker");
 const calendarDialog = $("#calendar-dialog");
@@ -38,6 +40,9 @@ let darkMode = true;
 let skinName = "Green";
 let signedOut = false;
 let loading = false;
+let refreshBusy = false;
+let suppressNextClick = false;
+let wheelResetTimer;
 let dateTarget;
 let openFlyoutRow;
 let searchActive = false;
@@ -59,6 +64,30 @@ const openEventOnce = createOpenGuard(async (url) => {
 
 function showError(message) { notice.textContent = message; }
 function showInfo(message) { info.textContent = message; }
+function showPullProgress(distance, ready) {
+  if (refreshBusy) return;
+  pullIndicator.hidden = distance <= 0;
+  pullIndicator.textContent = ready ? "Release to refresh" : "Pull down to refresh";
+}
+async function refreshEvents() {
+  if (!account || signedOut) {
+    showError("Connect Google Calendar before refreshing.");
+    return;
+  }
+  if (refreshBusy || loading) return;
+  refreshBusy = true;
+  pullIndicator.hidden = false;
+  pullIndicator.textContent = "Refreshing…";
+  try {
+    await undo.commit();
+    await load();
+  } catch (error) {
+    showError(`Could not refresh Calendar: ${error.message}`);
+  } finally {
+    refreshBusy = false;
+    pullIndicator.hidden = true;
+  }
+}
 function showStorageEstimate(message, isError = false, expires = true) {
   clearTimeout(storageEstimateTimer);
   if (storageEstimateNode?.textContent === storageEstimateMessage) storageEstimateNode.textContent = "";
@@ -519,8 +548,56 @@ document.addEventListener("pointerdown", (event) => {
 });
 $("#refresh").addEventListener("click", () => {
   closeMenu();
-  void undo.commit().then(() => load());
+  void refreshEvents();
 });
+const canPullRefresh = () => list.scrollTop <= 0 && !loading && !refreshBusy && !!account && !signedOut;
+const pullGesture = new PullRefreshGesture(showPullProgress, () => { void refreshEvents(); });
+list.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || event.target.closest("button, input, textarea, select")) return;
+  pullGesture.start(event.pointerId, event.clientY, canPullRefresh());
+});
+window.addEventListener("pointermove", (event) => {
+  const distance = pullGesture.move(event.pointerId, event.clientY, canPullRefresh());
+  if (distance > 8) {
+    event.preventDefault();
+    list.classList.add("pulling");
+    suppressNextClick = true;
+  }
+});
+window.addEventListener("pointerup", (event) => {
+  pullGesture.end(event.pointerId, canPullRefresh());
+  list.classList.remove("pulling");
+  setTimeout(() => { suppressNextClick = false; }, 0);
+});
+window.addEventListener("pointercancel", () => {
+  pullGesture.cancel();
+  list.classList.remove("pulling");
+  suppressNextClick = false;
+});
+window.addEventListener("blur", () => {
+  pullGesture.cancel();
+  list.classList.remove("pulling");
+  suppressNextClick = false;
+});
+list.addEventListener("dragstart", (event) => {
+  if (list.classList.contains("pulling")) event.preventDefault();
+});
+list.addEventListener("click", (event) => {
+  if (!suppressNextClick) return;
+  suppressNextClick = false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
+list.addEventListener("wheel", (event) => {
+  clearTimeout(wheelResetTimer);
+  if (!canPullRefresh() || event.deltaY >= 0) {
+    pullGesture.wheel(event.deltaY, false);
+    return;
+  }
+  event.preventDefault();
+  pullGesture.wheel(event.deltaY, true);
+  wheelResetTimer = setTimeout(() => pullGesture.cancelWheel(), 800);
+}, { passive: false });
 $("#real-events-toggle").addEventListener("click", () => {
   void undo.commit();
   realEventsOnly = !realEventsOnly;

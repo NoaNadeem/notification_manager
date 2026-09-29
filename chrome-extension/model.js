@@ -91,9 +91,13 @@ export function dismissalKey(eventId, startMs) { return `${eventId}/${startMs}`;
 
 export function locationHref(location) {
   if (!location) return null;
+  const text = location.trim();
+  const embeddedUrl = text.match(/https?:\/\/[^\s<>]+/i)?.[0]?.replace(/[.,;)]+$/, "");
+  if (embeddedUrl) return embeddedUrl;
+  if (/^www\./i.test(text)) return `https://${text}`;
   try {
-    const url = new URL(location);
+    const url = new URL(text);
     if (["https:", "http:"].includes(url.protocol)) return url.href;
   } catch { /* Address rather than a URL. */ }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}`;
 }

@@ -37,3 +37,55 @@ main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8p
 footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #32363d; padding: 10px 20px; }
 select { background: #343941; border: 0; border-radius: 5px; color: #f4f4f4; padding: 4px; }
 #date-picker { position: fixed; left: -1000px; bottom: 0; }
+
+/* Desktop parity: menu, search, theme, and a ribbon that can open above the last row. */
+:root { --bg:#17191d; --panel:#22262c; --panel-strong:#30343b; --border:#32363d; --text:#f2f3f5; --muted:#a8adb7; --tile:#3a4049; --tile-main:#4a515b; --tile-hover:#555d68; --link:#9cb8e9; --error:#ffaaa6; --danger:#594343; }
+:root.light { color-scheme:light; --bg:#fafafa; --panel:#f1f2f4; --panel-strong:#e5e8ed; --border:#d9dde3; --text:#202329; --muted:#606874; --tile:#e1e5ea; --tile-main:#d3d9e1; --tile-hover:#c8d1dd; --link:#235aab; --error:#af2727; --danger:#edcccc; }
+[hidden] { display:none !important; }
+body { background:var(--bg); color:var(--text); }
+header { position:relative; align-items:flex-start; border-color:var(--border); }
+.header-main { flex:1; min-width:0; }
+.header-title { padding:0; margin:0 0 5px; background:none; border:0; color:var(--text); font-size:21px; line-height:1.2; font-weight:700; text-align:left; }
+.header-title:hover { text-decoration:underline; }
+.account,.age,footer { color:var(--muted); }
+#search-controls { display:flex; gap:6px; margin-bottom:6px; }
+#search-query { min-width:0; flex:1; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 7px; }
+.icon-button { background:var(--tile); color:var(--text); flex:none; }
+.icon-button:hover,.tile:hover { background:var(--tile-hover); }
+#menu { position:absolute; right:15px; top:55px; z-index:20; min-width:248px; background:var(--panel-strong); border:1px solid var(--border); border-radius:8px; padding:5px; box-shadow:0 9px 22px #0005; }
+#menu button { display:block; width:100%; text-align:left; padding:9px 10px; color:var(--text); border:0; border-radius:5px; background:none; }
+#menu button:hover { background:var(--tile-hover); }
+.notice,.info { padding:0 20px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; font-size:12px; }
+.notice { color:var(--error); }
+.info { color:var(--muted); }
+.notice:not(:empty),.info:not(:empty) { padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--border); }
+.connect-panel button,.search-calendar { background:#637aa4; color:white; border:0; border-radius:6px; padding:9px 12px; }
+.event { border-color:var(--border); }
+.empty { color:var(--muted); }
+.event:hover,.event:focus-within { background:var(--panel); }
+.event.flyout-open { z-index:3; }
+.title { color:var(--text); }
+.location { color:var(--link); }
+.tile { background:var(--tile); color:var(--text); }
+.tile.primary { background:var(--tile-main); }
+.tile.danger { background:var(--danger); }
+.tile.undo { min-width:52px; height:40px; }
+.event.pending .title { opacity:.35; pointer-events:none; }
+.event.pending .location,.event.pending .more { display:none; }
+.flyout { background:var(--panel-strong); box-shadow:0 6px 15px #0003; }
+.event.flyout-above .flyout { position:absolute; bottom:calc(100% - 4px); left:10px; right:8px; margin-top:0; }
+.search-calendar { display:block; margin:18px auto 12px; }
+.search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
+.search-result { padding:10px 8px; border-bottom:1px solid var(--border); }
+.search-result a { color:var(--text); font-weight:700; text-decoration:none; }
+.search-result a:hover { text-decoration:underline; }
+.search-result small { display:block; margin-top:4px; color:var(--muted); }
+footer { border-color:var(--border); min-height:36px; }
+dialog { width:min(440px,calc(100% - 40px)); border:1px solid var(--border); border-radius:9px; background:var(--panel); color:var(--text); padding:16px; box-shadow:0 12px 30px #0006; }
+dialog::backdrop { background:#0008; }
+dialog h2 { margin:0 0 12px; font-size:17px; }
+dialog button[data-days] { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+dialog label { display:block; margin-top:12px; }
+dialog input { width:95px; margin-left:8px; padding:5px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
+.dialog-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:14px; }
+.dialog-actions button { padding:6px 10px; color:var(--text); background:var(--tile); border:0; border-radius:5px; }

@@ -52,6 +52,28 @@ export async function recentEvents(calendarId, lookbackDays) {
   return { events: all, now, first };
 }
 
+export async function searchPrimaryCalendar(calendarId, query) {
+  const term = query.trim();
+  if (!term) throw new Error("Enter a search term.");
+  const all = [];
+  let pageToken;
+  let pages = 0;
+  do {
+    const url = new URL(`${CALENDAR}/${encodeURIComponent(calendarId)}/events`);
+    url.searchParams.set("q", term);
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("showDeleted", "false");
+    url.searchParams.set("maxResults", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const result = await googleRequest(url.href);
+    pages++;
+    all.push(...(result.items || []).filter((event) => event.status !== "cancelled").slice(0, 100 - all.length));
+    pageToken = result.nextPageToken;
+  } while (pageToken && all.length < 100 && pages < 10);
+  all.sort((a, b) => Date.parse(b.start?.dateTime || b.start?.date) - Date.parse(a.start?.dateTime || a.start?.date));
+  return { events: all, hasMore: !!pageToken };
+}
+
 export async function moveEvent(calendarId, eventId, option) {
   const url = `${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   const current = await googleRequest(url);

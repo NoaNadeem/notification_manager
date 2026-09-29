@@ -43,6 +43,8 @@ test("dismissal union keeps newest version and prunes old events", () => {
 
 test("location becomes a safe web link or map query", () => {
   assert.equal(locationHref("https://example.com/place"), "https://example.com/place");
+  assert.equal(locationHref("Meet here: https://example.com/room"), "https://example.com/room");
+  assert.equal(locationHref("www.example.com/room"), "https://www.example.com/room");
   assert.match(locationHref("San Jose, CA"), /google.com\/maps\/search/);
   assert.match(locationHref("javascript:alert(1)"), /google.com\/maps\/search/);
 });

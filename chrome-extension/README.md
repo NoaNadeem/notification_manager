@@ -2,7 +2,11 @@
 
 This is a local, unpacked Chrome extension for the same primary Google Calendar used by the Android app. When the Chrome profile starts, it opens a 520 × 720 dedicated popup **window**. If Chrome remains running after all normal browser windows close, opening the first normal browser window opens or focuses the manager again. The toolbar button also reopens it.
 
-The window loads all pages of past events in the selected lookback period (7 days by default), then scrolls within a fixed-size list. It shows title, rounded age, and location; titles open Google Calendar in a new tab. `1D` is always visible. Hover or focus the `⋯` button for more actions, or click it to keep the ribbon open. The ribbon provides 1H/4H/8H/Cal/Dismiss and 2D/3D/4D/7D/Open; all-day events get 0D instead of hour options. Moves use the current computer time and preserve event duration. Dismissals use the Android app's JSON format in Google Drive `appDataFolder`, plus local Chrome storage. Data older than 365 days is pruned on sync.
+The window loads all pages of past events in the selected lookback period (7 days by default), then scrolls within a fixed-size list. It shows title, rounded age, and location; titles open Google Calendar in a new tab. `1D` is always visible. Hover or focus the `⋯` button for more actions. The ribbon opens above events near the bottom of the list. It provides 1H/4H/8H/Calendar/Dismiss and 2D/3D/4D/7D/Open; all-day events get 0D instead of hour options. Moves use the current computer time and preserve event duration.
+
+Move and dismiss tiles show a 30-second **Undo** state before the change is sent to Google. Clicking another action or leaving/minimizing the manager window commits the pending action. A forced browser quit may cancel it. Dismissals use the Android app's JSON format in Google Drive `appDataFolder`, plus local Chrome storage. Data older than 365 days is pruned on sync.
+
+Click the header to search the loaded list. **Search Calendar** looks across past and future events in the primary calendar and shows read-only results. The top-right menu has Refresh, Disconnect, lookback (7/14/30 or custom 1–365 days), a one-year dismissal storage estimate, and a dark-mode toggle. Dark mode is the default. Disconnect clears the extension's cached Google authorization and stops automatic reconnect until **Connect Google Calendar** is clicked; switching to a different account requires another Chrome profile because `chrome.identity.getAuthToken` normally uses the profile's primary Google account.
 
 ## One-time Google setup
 
@@ -19,7 +23,7 @@ The window loads all pages of past events in the selected lookback period (7 day
 
 If you change `manifest.json` later, click the extension's **Reload** button on `chrome://extensions`. The event list refreshes on each manager-window open and when you click `↻`; it does not yet use push or background polling.
 
-The Google Cloud OAuth client and interactive Google sign-in are required before Calendar data can be displayed. This repo never contains an access token or client secret. Calendar move and dismissal actions make live changes **only when you click their tiles**. Test with newly created events, never with existing personal events.
+The Google Cloud OAuth client and interactive Google sign-in are required before Calendar data can be displayed. This repo never contains an access token or client secret. Calendar move and dismissal actions make live changes after you click their tiles and let the Undo period expire, take another action, or leave the window. Test with newly created events, never with existing personal events.
 
 ## Local checks
 

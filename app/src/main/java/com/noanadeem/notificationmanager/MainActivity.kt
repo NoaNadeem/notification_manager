@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -40,6 +39,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
@@ -785,9 +786,12 @@ private fun CalendarConnectedScreen(
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
     }
-    Column(
-        modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (searchActive) {
                 OutlinedTextField(
@@ -804,12 +808,17 @@ private fun CalendarConnectedScreen(
             } else {
                 Text(
                     "Notification Manager",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.clickable {
+                    style = MaterialTheme.typography.titleLarge
+                )
+                IconButton(onClick = {
                         onOtherAction()
                         searchActive = true
-                    }
-                )
+                }) {
+                    Icon(
+                        painter = painterResource(android.R.drawable.ic_menu_search),
+                        contentDescription = "Search events"
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
             }
             Column {
@@ -867,6 +876,9 @@ private fun CalendarConnectedScreen(
             }
         }
         accountName?.let { AccountClock(it) }
+            }
+        }
+        Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp)) {
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
         }
@@ -996,7 +1008,10 @@ private fun CalendarConnectedScreen(
                                                 .padding(bottom = 8.dp)
                                         )
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                         val hourChoices = if (event.allDayDate == null) {
                                             listOf(
                                                 "1H" to MoveTarget.After(Duration.ofHours(1)),
@@ -1013,16 +1028,16 @@ private fun CalendarConnectedScreen(
                                                     else "Move event $label from now",
                                                 tooltip = { event.moveDestinationTooltip(target) },
                                                 enabled = movingEventId == null && event.id !in committingMoveIds,
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.size(44.dp),
                                                 onClick = { onMove(event, target) }
                                             )
                                         }
-                                        repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.weight(1f)) }
+                                        repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.size(44.dp)) }
                                         MoveTile(
                                             label = "📅",
                                             description = "Choose a calendar date",
                                             enabled = movingEventId == null && event.id !in committingMoveIds,
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 onOtherAction()
                                                 datePickerEvent = event
@@ -1032,7 +1047,7 @@ private fun CalendarConnectedScreen(
                                             label = "✓",
                                             description = "Dismiss event in this app",
                                             enabled = movingEventId == null && event.id !in committingMoveIds,
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 expandedEventId = null
                                                 onDismiss(event)
@@ -1040,8 +1055,8 @@ private fun CalendarConnectedScreen(
                                         )
                                     }
                                     Row(
-                                        modifier = Modifier.padding(top = 6.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         for ((label, days) in listOf("2D" to 2L, "3D" to 3L, "4D" to 4L, "7D" to 7L)) {
                                             MoveTile(
@@ -1049,7 +1064,7 @@ private fun CalendarConnectedScreen(
                                                 description = "Move event $label from now",
                                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(days))) },
                                                 enabled = movingEventId == null && event.id !in committingMoveIds,
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.size(44.dp),
                                                 onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
                                             )
                                         }
@@ -1057,7 +1072,7 @@ private fun CalendarConnectedScreen(
                                             label = "↗",
                                             description = "Open event in Google Calendar",
                                             enabled = true,
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.size(44.dp),
                                             onClick = { onOpenEvent(event) }
                                         )
                                     }
@@ -1142,13 +1157,23 @@ private fun CalendarConnectedScreen(
             }
         }
         if (!searchActive && (eventsLoading || events.isEmpty())) Spacer(modifier = Modifier.weight(1f))
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
         val eventCount = events.size
-        Text(
-            if (eventsLoading) "Loading…" else "$eventCount event${if (eventCount == 1) "" else "s"}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
-        )
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    if (eventsLoading) "Loading…" else "$eventCount event${if (eventCount == 1) "" else "s"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 
     if (showLookbackPicker) {
@@ -1312,10 +1337,10 @@ private fun MoveTile(
         }
     }
     if (tooltip == null) {
-        TileSurface(modifier.aspectRatio(1f))
+        TileSurface(modifier)
     } else {
         TooltipBox(
-            modifier = modifier.aspectRatio(1f),
+            modifier = modifier,
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
             tooltip = { PlainTooltip { Text(tooltip()) } },
             state = rememberTooltipState(),

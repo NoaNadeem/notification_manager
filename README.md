@@ -4,6 +4,16 @@ Android companion for past events on the signed-in account's primary Google Cale
 
 The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.
 
+## Install development updates over Wi-Fi
+
+The connected Samsung runs Android 16, so it supports Android's paired Wireless debugging. Pair it once while the Mac and phone are on the same Wi-Fi network:
+
+1. On the phone, open **Settings → Developer options → Wireless debugging**. Turn it on, allow the current Wi-Fi network, then tap **Pair device with pairing code**.
+2. In Android Studio, choose **Pair Devices Using Wi-Fi** from the device selector (or Device Manager), select **Pair using pairing code**, and enter the six-digit code shown on the phone.
+3. Unplug the USB cable and check that the phone appears in Android Studio's device selector. If it does not, use the IP address and port on the phone's main **Wireless debugging** screen with `~/Library/Android/sdk/platform-tools/adb connect IP:PORT` (this is different from the temporary pairing port).
+
+After pairing, a development update from this Mac is `./gradlew :app:assembleDebug` followed by `~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk`, or press **Run** in Android Studio with the wireless device selected. The `-r` install retains app data. This only deploys from the Mac; pushing Git code alone does not install an update. Keep Wireless debugging enabled and both devices on the same network for wireless installs. The pairing survives unplugging the cable. See [Android's wireless debugging guide](https://developer.android.com/studio/run/device#connect).
+
 ## Build and share a test APK
 
 Build on the same Mac used for the current phone install so the APK keeps the same Android debug signing certificate:

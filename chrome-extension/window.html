@@ -9,7 +9,12 @@
 <body>
   <header>
     <div class="header-main">
-      <button id="search-toggle" class="header-title" title="Search events">Notification Manager</button>
+      <div id="header-heading" class="header-heading">
+        <span class="header-title">Notification Manager</span>
+        <button id="search-toggle" class="icon-button search-icon" title="Search events" aria-label="Search events">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+        </button>
+      </div>
       <div id="search-controls" hidden>
         <input id="search-query" type="search" placeholder="Search loaded events" aria-label="Search loaded events">
         <button id="search-close" class="icon-button" aria-label="Close search">×</button>

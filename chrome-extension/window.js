@@ -459,7 +459,7 @@ $("#theme-toggle").addEventListener("click", () => {
 $("#search-toggle").addEventListener("click", () => {
   void undo.commit();
   searchActive = true;
-  $("#search-toggle").hidden = true;
+  $("#header-heading").hidden = true;
   $("#search-controls").hidden = false;
   searchQueryInput.focus();
   render();
@@ -469,7 +469,7 @@ $("#search-close").addEventListener("click", () => {
   searchQueryInput.value = "";
   remoteSearch = undefined;
   remoteSearchRequest++;
-  $("#search-toggle").hidden = false;
+  $("#header-heading").hidden = false;
   $("#search-controls").hidden = true;
   render();
 });

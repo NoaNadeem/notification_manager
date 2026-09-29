@@ -862,9 +862,7 @@ private fun CalendarConnectedScreen(
                 }
             }
         }
-        accountName?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium)
-        }
+        accountName?.let { AccountClock(it) }
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
         }
@@ -1198,6 +1196,22 @@ private fun CalendarConnectedScreen(
             DatePicker(state = datePickerState)
         }
     }
+}
+
+@Composable
+private fun AccountClock(accountName: String) {
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val millis = System.currentTimeMillis()
+            delay(60_000L - millis % 60_000L)
+            now = Instant.now()
+        }
+    }
+    Text(
+        "$accountName, ${headerClockLabel(now, ZoneId.systemDefault())}",
+        style = MaterialTheme.typography.bodyMedium
+    )
 }
 
 private fun CalendarEvent.searchDateDescription(): String =

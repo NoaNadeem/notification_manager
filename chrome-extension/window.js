@@ -2,12 +2,14 @@ import { ageLabel, dismissalKey, eventStartMs, locationHref } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
+import { headerClockLabel, moveTooltip } from "./clock.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
 const notice = $("#notice");
 const info = $("#info");
-const accountLabel = $("#account");
+const accountLabel = $("#account-email");
+const accountClock = $("#account-clock");
 const count = $("#count");
 const connectPanel = $("#connect-panel");
 const datePicker = $("#date-picker");
@@ -29,6 +31,7 @@ let openFlyoutRow;
 let searchActive = false;
 let remoteSearch;
 let remoteSearchRequest = 0;
+let clockTimer;
 const committing = new Set();
 
 const undo = new UndoController(commitAction, () => render());
@@ -36,6 +39,16 @@ const undo = new UndoController(commitAction, () => render());
 function showError(message) { notice.textContent = message; }
 function showInfo(message) { info.textContent = message; }
 function eventKey(event) { return dismissalKey(event.id, eventStartMs(event, calendarZone)); }
+
+function updateHeaderClock() {
+  accountClock.textContent = account ? `, ${headerClockLabel(new Date())}` : "";
+}
+
+function scheduleHeaderClock() {
+  clearTimeout(clockTimer);
+  updateHeaderClock();
+  if (account) clockTimer = setTimeout(scheduleHeaderClock, 60_000 - Date.now() % 60_000);
+}
 
 function button(label, title, action, className = "tile") {
   const element = document.createElement("button");
@@ -45,6 +58,22 @@ function button(label, title, action, className = "tile") {
   element.setAttribute("aria-label", title);
   element.addEventListener("click", action);
   return element;
+}
+
+function moveTile(event, label, option, className = "tile") {
+  const tooltip = () => {
+    try { return moveTooltip(event, option, new Date()); }
+    catch { return `Move ${label} from now`; }
+  };
+  const tile = button(label, tooltip(), () => void stageAction(event, "move", option), className);
+  const refresh = () => {
+    const value = tooltip();
+    tile.title = value;
+    tile.setAttribute("aria-label", value);
+  };
+  tile.addEventListener("pointerenter", refresh);
+  tile.addEventListener("focus", refresh);
+  return tile;
 }
 
 function openEventLink(url) {
@@ -94,6 +123,7 @@ async function load(interactive = false) {
     account = calendar.id;
     calendarZone = calendar.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     accountLabel.textContent = account;
+    scheduleHeaderClock();
     connectPanel.hidden = true;
     if (interactive) {
       signedOut = false;
@@ -237,7 +267,7 @@ function renderEvent(event) {
   if (action) {
     actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo"));
   } else if (!busy) {
-    actions.append(button("1D", "Move to 24 hours from now", () => void stageAction(event, "move", { days: 1 }), "tile primary"));
+    actions.append(moveTile(event, "1D", { days: 1 }, "tile primary"));
     const more = button("⋯", "More move and dismiss options", () => showFlyout(row, flyout), "tile more");
     more.setAttribute("aria-haspopup", "true");
     more.addEventListener("pointerenter", () => showFlyout(row, flyout));
@@ -257,7 +287,7 @@ function renderEvent(event) {
   const bottomRow = document.createElement("div");
   topRow.className = bottomRow.className = "tile-row";
   if (event.start.date) {
-    topRow.append(button("0D", "Move to today", () => void stageAction(event, "move", { days: 0 })));
+    topRow.append(moveTile(event, "0D", { days: 0 }));
     for (let i = 0; i < 2; i++) {
       const spacer = button("", "Unavailable for all-day events", () => {});
       spacer.disabled = true;
@@ -265,7 +295,7 @@ function renderEvent(event) {
     }
   } else {
     for (const hours of [1, 4, 8]) {
-      topRow.append(button(`${hours}H`, `Move to ${hours} hour${hours === 1 ? "" : "s"} from now`, () => void stageAction(event, "move", { hours })));
+      topRow.append(moveTile(event, `${hours}H`, { hours }));
     }
   }
   topRow.append(button("📅", "Choose a date", () => {
@@ -277,7 +307,7 @@ function renderEvent(event) {
   }));
   topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   for (const days of [2, 3, 4, 7]) {
-    bottomRow.append(button(`${days}D`, `Move to ${days} days from now`, () => void stageAction(event, "move", { days })));
+    bottomRow.append(moveTile(event, `${days}D`, { days }));
   }
   bottomRow.append(button("↗", "Open event in Google Calendar", () => openEventLink(event.htmlLink)));
   flyout.append(topRow, bottomRow);
@@ -367,6 +397,7 @@ async function logout() {
     await chrome.storage.local.set({ signedOut: true });
     signedOut = true;
     account = undefined;
+    scheduleHeaderClock();
     events = [];
     dismissals = [];
     remoteSearch = undefined;
@@ -460,6 +491,7 @@ $("#connect").addEventListener("click", () => void load(true));
 window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {
+  updateHeaderClock();
   if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !dateTarget) void load();
 });
 

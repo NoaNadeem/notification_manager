@@ -50,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
@@ -830,15 +831,6 @@ private fun CalendarConnectedScreen(
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("Refresh") },
-                        leadingIcon = { Text("↻") },
-                        enabled = !eventsLoading && !loading && movingEventId == null,
-                        onClick = {
-                            menuExpanded = false
-                            onRefresh()
-                        }
-                    )
-                    DropdownMenuItem(
                         text = { Text("Logout / Switch Account") },
                         leadingIcon = { Text("⇥") },
                         enabled = !loading && movingEventId == null,
@@ -878,7 +870,14 @@ private fun CalendarConnectedScreen(
         accountName?.let { AccountClock(it) }
             }
         }
-        Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp)) {
+        PullToRefreshBox(
+            isRefreshing = loading || eventsLoading,
+            onRefresh = {
+                if (!eventsLoading && !loading && movingEventId == null) onRefresh()
+            },
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
         }
@@ -918,12 +917,18 @@ private fun CalendarConnectedScreen(
             )
         }
         when {
-            eventsLoading && !searchActive -> CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
-            events.isEmpty() && !searchActive -> Text(
-                if (eventsError != null) "Events could not be loaded. Use Refresh in the menu to try again."
-                else "No events started in the last $lookbackDays days.",
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            eventsLoading && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                item { CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp)) }
+            }
+            events.isEmpty() && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                item {
+                    Text(
+                        if (eventsError != null) "Events could not be loaded. Pull down to try again."
+                        else "No events started in the last $lookbackDays days.",
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 16.dp)
@@ -1156,7 +1161,7 @@ private fun CalendarConnectedScreen(
                 }
             }
         }
-        if (!searchActive && (eventsLoading || events.isEmpty())) Spacer(modifier = Modifier.weight(1f))
+        }
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),

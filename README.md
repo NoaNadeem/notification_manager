@@ -2,6 +2,8 @@
 
 Android companion for past events on the signed-in account's primary Google Calendar.
 
+Pull down from the top of the event list to refresh Calendar events and Drive dismissals.
+
 The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.
 
 ## Install development updates over Wi-Fi

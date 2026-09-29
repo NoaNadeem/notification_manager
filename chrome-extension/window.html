@@ -14,6 +14,9 @@
         <button id="search-toggle" class="icon-button search-icon" title="Search events" aria-label="Search events">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
         </button>
+        <button id="refresh" class="icon-button search-icon" title="Refresh events" aria-label="Refresh events">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>
+        </button>
       </div>
       <div id="search-controls" hidden>
         <input id="search-query" type="search" placeholder="Search loaded events" aria-label="Search loaded events">
@@ -23,7 +26,6 @@
     </div>
     <button id="menu-toggle" class="icon-button" title="Menu" aria-label="Menu" aria-expanded="false">⋮</button>
     <nav id="menu" aria-label="Notification Manager settings" hidden>
-      <button id="refresh">↻ &nbsp; Refresh</button>
       <button id="logout">⇥ &nbsp; Disconnect / Switch Chrome Profile</button>
       <button id="lookback-open">◷ &nbsp; Lookback: <span id="lookback-label">7 days</span></button>
       <button id="estimate-storage">Estimate 1-year storage</button>

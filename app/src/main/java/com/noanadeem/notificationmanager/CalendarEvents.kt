@@ -25,8 +25,16 @@ internal data class CalendarEvent(
     val allDayDate: LocalDate?,
     val calendarZone: ZoneId,
     val htmlLink: String? = null,
-    val location: String? = null
+    val location: String? = null,
+    val end: Instant? = null,
+    val hasOtherAttendees: Boolean = false
 ) {
+    fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
+        !start.isAfter(now.minus(Duration.ofDays(2)))
+
+    fun isEmphasized(): Boolean = allDayDate != null || hasOtherAttendees ||
+        (end != null && Duration.between(start, end) >= Duration.ofHours(1))
+
     fun ageDescription(now: Instant = Instant.now()): String {
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
         return if (elapsedSeconds < 86_400) {
@@ -78,7 +86,7 @@ internal suspend fun fetchRecentEvents(
             .filter { isInPastWindow(it.start, now, lookbackDays) }
         eventPage = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (eventPage != null)
-    events.sortedByDescending { it.start }
+    sortCalendarEvents(events)
 }
 
 internal suspend fun searchPrimaryCalendar(
@@ -110,10 +118,13 @@ internal suspend fun searchPrimaryCalendar(
         events += pageEvents.take(100 - events.size)
         pageToken = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (pageToken != null && events.size < 100 && pagesRead < 10)
-    CalendarSearchResults(events.sortedByDescending { it.start }, pageToken != null || truncatedPage)
+    CalendarSearchResults(sortCalendarEvents(events), pageToken != null || truncatedPage)
 }
 
-private fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {
+internal fun sortCalendarEvents(events: List<CalendarEvent>): List<CalendarEvent> =
+    events.sortedWith(compareByDescending<CalendarEvent> { it.allDayDate != null }.thenByDescending { it.start })
+
+internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {
     val calendarZone = runCatching { ZoneId.of(response.optString("timeZone")) }
         .getOrDefault(ZoneId.systemDefault())
     val items = response.optJSONArray("items") ?: return emptyList()
@@ -139,6 +150,16 @@ private fun parseCalendarPage(response: JSONObject, calendarId: String): List<Ca
             }
             val id = item.optString("id")
             if (id.isBlank()) continue
+            val end = item.optJSONObject("end")?.let { endObject ->
+                runCatching { parseEventInstant(endObject) }.getOrNull()
+            }
+            val attendees = item.optJSONArray("attendees")
+            val hasOtherAttendees = attendees != null && (0 until attendees.length()).any { attendeeIndex ->
+                val attendee = attendees.optJSONObject(attendeeIndex)
+                attendee != null && attendee.optString("email").isNotBlank() && !attendee.optBoolean("resource") &&
+                    !attendee.optBoolean("self") &&
+                    !attendee.optString("email").equals(calendarId, ignoreCase = true)
+            }
             add(CalendarEvent(
                 calendarId = calendarId,
                 id = id,
@@ -147,7 +168,9 @@ private fun parseCalendarPage(response: JSONObject, calendarId: String): List<Ca
                 allDayDate = allDayDate,
                 calendarZone = calendarZone,
                 htmlLink = item.optString("htmlLink").takeIf { it.isNotBlank() },
-                location = item.optString("location").takeIf { it.isNotBlank() }
+                location = item.optString("location").takeIf { it.isNotBlank() },
+                end = end,
+                hasOtherAttendees = hasOtherAttendees
             ))
         }
     }

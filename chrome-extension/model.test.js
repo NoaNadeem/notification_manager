@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref } from "./model.js";
+import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, compareEvents } from "./model.js";
+
+test("old dot uses 48 hours; long, shared, and all-day events get highlighted", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const event = { start: { dateTime: "2026-09-26T12:00:00Z" }, end: { dateTime: "2026-09-26T12:15:00Z" }, attendees: [{ email: "me@example.com", self: true }] };
+  assert.equal(isTwoDaysOld(event, "UTC", now), true);
+  assert.equal(isTwoDaysOld(event, "UTC", now - 1), false);
+  assert.equal(isEmphasized(event, "me@example.com"), false);
+  assert.equal(isEmphasized({ ...event, end: { dateTime: "2026-09-26T13:00:00Z" } }, "me@example.com"), true);
+  assert.equal(isEmphasized({ ...event, attendees: [...event.attendees, { email: "friend@example.com" }] }, "me@example.com"), true);
+  assert.equal(isEmphasized({ start: { date: "2026-09-25" } }, "me@example.com"), true);
+});
+
+test("all-day events sort ahead of newer timed events", () => {
+  const timed = { start: { dateTime: "2026-09-28T11:00:00Z" } };
+  const allDay = { start: { date: "2026-09-27" } };
+  assert.deepEqual([timed, allDay].sort((a, b) => compareEvents(a, b, "UTC")), [allDay, timed]);
+});
 
 test("ages round up and switch from hours to days after 24 hours", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");

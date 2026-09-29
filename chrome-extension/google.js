@@ -1,4 +1,4 @@
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents } from "./model.js";
 
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
@@ -70,7 +70,7 @@ export async function searchPrimaryCalendar(calendarId, query) {
     all.push(...(result.items || []).filter((event) => event.status !== "cancelled").slice(0, 100 - all.length));
     pageToken = result.nextPageToken;
   } while (pageToken && all.length < 100 && pages < 10);
-  all.sort((a, b) => Date.parse(b.start?.dateTime || b.start?.date) - Date.parse(a.start?.dateTime || a.start?.date));
+  all.sort((a, b) => compareEvents(a, b, Intl.DateTimeFormat().resolvedOptions().timeZone));
   return { events: all, hasMore: !!pageToken };
 }
 

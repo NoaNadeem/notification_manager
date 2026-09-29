@@ -15,6 +15,24 @@ class CalendarEventRulesTest {
     private val now = Instant.parse("2026-09-28T18:00:00Z")
 
     @Test
+    fun greenCuesAndAllDayOrderingUseEventDetails() {
+        val zone = ZoneId.of("UTC")
+        val short = CalendarEvent("me@example.com", "short", "Short", now.minusSeconds(7200), null, zone,
+            end = now.minusSeconds(6300))
+        val long = short.copy(id = "long", end = short.start.plusSeconds(3600))
+        val shared = short.copy(id = "shared", hasOtherAttendees = true)
+        val allDay = short.copy(id = "all-day", allDayDate = LocalDate.parse("2026-09-25"),
+            start = now.minus(3, ChronoUnit.DAYS))
+        assertFalse(short.isEmphasized())
+        assertTrue(long.isEmphasized())
+        assertTrue(shared.isEmphasized())
+        assertTrue(allDay.isEmphasized())
+        assertFalse(short.copy(start = now.minus(2, ChronoUnit.DAYS).plusSeconds(1)).isTwoDaysOld(now))
+        assertTrue(short.copy(start = now.minus(2, ChronoUnit.DAYS)).isTwoDaysOld(now))
+        assertEquals(allDay, sortCalendarEvents(listOf(short, allDay, long)).first())
+    }
+
+    @Test
     fun moveTilesUseCurrentTimeAndKeepOriginalDuration() {
         val oldStart = now.minus(5, ChronoUnit.DAYS)
         val oldEnd = oldStart.plus(90, ChronoUnit.MINUTES)

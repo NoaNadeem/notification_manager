@@ -22,14 +22,16 @@
         <input id="search-query" type="search" placeholder="Search loaded events" aria-label="Search loaded events">
         <button id="search-close" class="icon-button" aria-label="Close search">×</button>
       </div>
-      <div id="account" class="account"><span id="account-email">Connect Google Calendar</span><span id="account-clock"></span></div>
+      <div id="account" class="account"><span id="account-clock"></span></div>
     </div>
     <button id="menu-toggle" class="icon-button" title="Menu" aria-label="Menu" aria-expanded="false">⋮</button>
     <nav id="menu" aria-label="Notification Manager settings" hidden>
       <button id="logout">⇥ &nbsp; Disconnect / Switch Chrome Profile</button>
+      <div id="account-email" class="menu-account"></div>
       <button id="lookback-open">◷ &nbsp; Lookback: <span id="lookback-label">7 days</span></button>
       <button id="estimate-storage">Estimate 1-year storage</button>
       <button id="theme-toggle">Dark mode: On</button>
+      <button id="skins-open">Skins</button>
     </nav>
   </header>
   <div id="notice" class="notice" role="status"></div>
@@ -47,6 +49,14 @@
     <button data-days="30">Last 30 days</button>
     <label>Custom days (1–365) <input id="custom-lookback" type="number" min="1" max="365" step="1"></label>
     <div class="dialog-actions"><button id="lookback-cancel">Cancel</button><button id="lookback-apply">Apply</button></div>
+  </dialog>
+  <dialog id="skins-dialog">
+    <h2>Skins</h2>
+    <label>Theme <select id="skin-name"><option>Green</option><option>Blue</option><option>Purple</option><option>Rose</option></select></label>
+    <p class="skin-help">Optional colors. Leave blank to use the theme or light/dark default. The same override applies in both modes.</p>
+    <div id="skin-fields"></div>
+    <p id="skin-error" class="skin-error" role="status"></p>
+    <div class="dialog-actions"><button id="skins-cancel">Cancel</button><button id="skins-apply">Apply</button></div>
   </dialog>
   <input id="date-picker" type="date" aria-label="Move event to date">
   <script type="module" src="window.js"></script>

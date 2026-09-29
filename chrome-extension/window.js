@@ -1,4 +1,4 @@
-import { ageLabel, dismissalKey, eventStartMs, locationHref } from "./model.js";
+import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, compareEvents } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
@@ -17,6 +17,14 @@ const menu = $("#menu");
 const menuToggle = $("#menu-toggle");
 const searchQueryInput = $("#search-query");
 const lookbackDialog = $("#lookback-dialog");
+const skinsDialog = $("#skins-dialog");
+const skinFields = { dot: "Old-event dot", emphasized: "Long/shared event", event: "Base event", panel: "Header and footer", title: "Title", tile: "Action tiles" };
+const skinPresets = {
+  Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
+  Blue: ["#64C9FF", "#19394D", "#D6F0FF"],
+  Purple: ["#C29BFF", "#35264A", "#ECDEFF"],
+  Rose: ["#FF8DC5", "#4A2639", "#FFE0EE"]
+};
 
 let account;
 let calendarZone;
@@ -24,6 +32,8 @@ let events = [];
 let dismissals = [];
 let lookbackDays = 7;
 let darkMode = true;
+let skinName = "Green";
+let skinOverrides = {};
 let signedOut = false;
 let loading = false;
 let dateTarget;
@@ -41,7 +51,18 @@ function showInfo(message) { info.textContent = message; }
 function eventKey(event) { return dismissalKey(event.id, eventStartMs(event, calendarZone)); }
 
 function updateHeaderClock() {
-  accountClock.textContent = account ? `, ${headerClockLabel(new Date())}` : "";
+  accountClock.textContent = account ? headerClockLabel(new Date()) : "";
+}
+
+function applySkin() {
+  const root = document.documentElement;
+  const preset = skinPresets[skinName] || skinPresets.Green;
+  root.style.setProperty("--dot-color", skinOverrides.dot || preset[0]);
+  root.style.setProperty("--emphasized-bg", skinOverrides.emphasized || preset[darkMode ? 1 : 2]);
+  for (const [field, variable] of Object.entries({ event: "--event-bg", panel: "--panel-custom", title: "--title-custom", tile: "--tile-custom" })) {
+    if (skinOverrides[field]) root.style.setProperty(variable, skinOverrides[field]);
+    else root.style.removeProperty(variable);
+  }
 }
 
 function scheduleHeaderClock() {
@@ -134,7 +155,7 @@ async function load(interactive = false) {
     events = recent.events.filter((event) => {
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= recent.first && start <= recent.now;
-    }).sort((a, b) => eventStartMs(b, calendarZone) - eventStartMs(a, calendarZone));
+    }).sort((a, b) => compareEvents(a, b, calendarZone));
     try {
       dismissals = await syncDismissals(account);
     } catch (error) {
@@ -208,6 +229,13 @@ function renderSearchFooter() {
   for (const event of remoteSearch.events) {
     const row = document.createElement("div");
     row.className = "search-result";
+    if (isEmphasized(event, account)) row.classList.add("emphasized");
+    if (isTwoDaysOld(event, calendarZone)) {
+      const dot = document.createElement("span");
+      dot.className = "old-dot";
+      dot.setAttribute("aria-label", "At least two days old");
+      row.append(dot);
+    }
     const title = document.createElement("a");
     title.href = event.htmlLink || "#";
     title.textContent = event.summary || "(Untitled event)";
@@ -217,6 +245,18 @@ function renderSearchFooter() {
       ? `${event.start.date} · all day`
       : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.start.dateTime));
     row.append(title, date);
+    if (event.location) {
+      const location = document.createElement("a");
+      location.className = "location";
+      location.textContent = event.location;
+      location.href = locationHref(event.location);
+      location.title = event.location;
+      location.addEventListener("click", (click) => {
+        click.preventDefault();
+        void chrome.tabs.create({ url: location.href });
+      });
+      row.append(location);
+    }
     list.append(row);
   }
   if (remoteSearch.hasMore) {
@@ -230,6 +270,7 @@ function renderSearchFooter() {
 function renderEvent(event) {
   const row = document.createElement("article");
   row.className = "event";
+  if (isEmphasized(event, account)) row.classList.add("emphasized");
   const action = undo.current?.event === event ? undo.current : null;
   const busy = committing.has(eventKey(event));
   if (action) row.classList.add("pending");
@@ -248,6 +289,12 @@ function renderEvent(event) {
   const age = document.createElement("div");
   age.className = "age";
   age.textContent = action ? actionDescription(action) : busy ? "Committing action…" : ageLabel(eventStartMs(event, calendarZone));
+  if (isTwoDaysOld(event, calendarZone)) {
+    const dot = document.createElement("span");
+    dot.className = "old-dot";
+    dot.setAttribute("aria-label", "At least two days old");
+    details.append(dot);
+  }
   details.append(title, age);
   if (!action && !busy && event.location) {
     const location = document.createElement("a");
@@ -336,7 +383,7 @@ async function commitAction(action) {
       const start = eventStartMs(moved, calendarZone);
       if (Number.isFinite(start) && start <= Date.now() && start >= Date.now() - lookbackDays * 86_400_000) {
         events.push(moved);
-        events.sort((a, b) => eventStartMs(b, calendarZone) - eventStartMs(a, calendarZone));
+        events.sort((a, b) => compareEvents(a, b, calendarZone));
       }
     } else {
       dismissals = await saveDismissal(account, {
@@ -402,7 +449,7 @@ async function logout() {
     dismissals = [];
     remoteSearch = undefined;
     remoteSearchRequest++;
-    accountLabel.textContent = "Connect Google Calendar";
+    accountLabel.textContent = "Not connected";
     connectPanel.hidden = false;
     render();
     showError("");
@@ -453,8 +500,34 @@ $("#theme-toggle").addEventListener("click", () => {
   void undo.commit();
   darkMode = !darkMode;
   document.documentElement.classList.toggle("light", !darkMode);
+  applySkin();
   $("#theme-toggle").textContent = `Dark mode: ${darkMode ? "On" : "Off"}`;
   void chrome.storage.local.set({ darkMode });
+});
+$("#skins-open").addEventListener("click", () => {
+  closeMenu();
+  void undo.commit();
+  $("#skin-name").value = skinName;
+  for (const field of Object.keys(skinFields)) $(`#skin-${field}`).value = skinOverrides[field] || "";
+  $("#skin-error").textContent = "";
+  skinsDialog.showModal();
+});
+$("#skins-cancel").addEventListener("click", () => skinsDialog.close());
+$("#skins-apply").addEventListener("click", () => {
+  const overrides = {};
+  for (const field of Object.keys(skinFields)) {
+    const value = $(`#skin-${field}`).value.trim();
+    if (value && !/^#[0-9a-fA-F]{6}$/.test(value)) {
+      $("#skin-error").textContent = `${skinFields[field]} needs a #RRGGBB color.`;
+      return;
+    }
+    if (value) overrides[field] = value;
+  }
+  skinName = $("#skin-name").value;
+  skinOverrides = overrides;
+  applySkin();
+  skinsDialog.close();
+  void chrome.storage.local.set({ skinName, skinOverrides });
 });
 $("#search-toggle").addEventListener("click", () => {
   void undo.commit();
@@ -495,9 +568,25 @@ window.addEventListener("focus", () => {
   if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !dateTarget) void load();
 });
 
-const saved = await chrome.storage.local.get(["lookbackDays", "darkMode", "signedOut"]);
+for (const [field, label] of Object.entries(skinFields)) {
+  const row = document.createElement("label");
+  row.textContent = label;
+  const input = document.createElement("input");
+  input.id = `skin-${field}`;
+  input.placeholder = "#RRGGBB";
+  input.maxLength = 7;
+  input.setAttribute("aria-label", `${label} color override`);
+  row.append(input);
+  $("#skin-fields").append(row);
+}
+
+const saved = await chrome.storage.local.get(["lookbackDays", "darkMode", "signedOut", "skinName", "skinOverrides"]);
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
 darkMode = saved.darkMode !== false;
+skinName = skinPresets[saved.skinName] ? saved.skinName : "Green";
+skinOverrides = Object.fromEntries(Object.entries(saved.skinOverrides || {}).filter(([field, value]) =>
+  field in skinFields && /^#[0-9a-fA-F]{6}$/.test(value)));
+applySkin();
 signedOut = saved.signedOut === true;
 document.documentElement.classList.toggle("light", !darkMode);
 $("#theme-toggle").textContent = `Dark mode: ${darkMode ? "On" : "Off"}`;

@@ -31,6 +31,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +57,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -168,7 +172,9 @@ class MainActivity : ComponentActivity() {
             var darkMode by remember {
                 mutableStateOf(preferences.getBoolean(DARK_MODE_KEY, true))
             }
+            var skin by remember { mutableStateOf(readSkin(preferences)) }
             NotificationManagerTheme(darkTheme = darkMode) {
+                CompositionLocalProvider(LocalSkin provides skin, LocalSkinDark provides darkMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -176,12 +182,18 @@ class MainActivity : ComponentActivity() {
                     SelectionContainer {
                         CalendarLoginScreen(
                             darkMode = darkMode,
+                            skin = skin,
+                            onSkinChange = { updated ->
+                                skin = updated
+                                saveSkin(preferences, updated)
+                            },
                             onDarkModeChange = { enabled ->
                                 darkMode = enabled
                                 preferences.edit().putBoolean(DARK_MODE_KEY, enabled).apply()
                             }
                         )
                     }
+                }
                 }
             }
         }
@@ -191,6 +203,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CalendarLoginScreen(
     darkMode: Boolean,
+    skin: Skin,
+    onSkinChange: (Skin) -> Unit,
     onDarkModeChange: (Boolean) -> Unit
 ) {
     val activity = LocalContext.current as ComponentActivity
@@ -276,7 +290,7 @@ private fun CalendarLoginScreen(
                                     isInPastWindow(updated.start, now, lookbackDays)
                                 }
                             } else it
-                        }.sortedByDescending { it.start }
+                        }.let(::sortCalendarEvents)
                         actionError = null
                     } catch (e: Exception) {
                         actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
@@ -689,6 +703,8 @@ private fun CalendarLoginScreen(
             driveError = driveError,
             storageEstimate = storageEstimate,
             darkMode = darkMode,
+            skin = skin,
+            onSkinChange = onSkinChange,
             movingEventId = movingEventId,
             committingMoveIds = committingMoveIds,
             undoableEventId = undoableAction?.event?.id,
@@ -757,6 +773,8 @@ private fun CalendarConnectedScreen(
     driveError: String?,
     storageEstimate: String?,
     darkMode: Boolean,
+    skin: Skin,
+    onSkinChange: (Skin) -> Unit,
     movingEventId: String?,
     committingMoveIds: Set<String>,
     undoableEventId: String?,
@@ -775,6 +793,7 @@ private fun CalendarConnectedScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var expandedEventId by remember { mutableStateOf<String?>(null) }
     var showLookbackPicker by remember { mutableStateOf(false) }
+    var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var datePickerEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var searchActive by remember { mutableStateOf(false) }
@@ -790,7 +809,7 @@ private fun CalendarConnectedScreen(
     Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+            color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -839,6 +858,11 @@ private fun CalendarConnectedScreen(
                             onLogout()
                         }
                     )
+                    accountName?.let { name ->
+                        Text(name, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+                    }
                     DropdownMenuItem(
                         text = { Text("Lookback: $lookbackDays days") },
                         leadingIcon = { Text("◷") },
@@ -864,10 +888,14 @@ private fun CalendarConnectedScreen(
                             onDarkModeChange(!darkMode)
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Skins") },
+                        onClick = { menuExpanded = false; showSkins = true }
+                    )
                 }
             }
         }
-        accountName?.let { AccountClock(it) }
+        if (accountName != null) AccountClock()
             }
         }
         PullToRefreshBox(
@@ -937,30 +965,56 @@ private fun CalendarConnectedScreen(
                 items(filteredEvents, key = { "${it.calendarId}/${it.id}" }) { event ->
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        .background(
+                            skin.color(
+                                if (event.isEmphasized()) "emphasized" else "event",
+                                darkMode,
+                                if (event.isEmphasized()) MaterialTheme.colorScheme.surfaceVariant
+                                else MaterialTheme.colorScheme.background
+                            ), RoundedCornerShape(8.dp)
+                        ).padding(horizontal = 8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.fillMaxWidth()
                                     .clickable(enabled = !awaitingUndo) {
                                     onOtherAction()
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
-                                }
-                            ) {
+                                }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (event.isTwoDaysOld()) Box(
+                                        modifier = Modifier.padding(end = 7.dp).size(8.dp)
+                                            .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
+                                    )
                                 Text(
                                     event.title,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodyLarge,
+                                    color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
                                     modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
                                 )
+                                }
                                 Text(
                                     if (awaitingUndo) undoableActionDescription.orEmpty() else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
+                                }
+                                if (!awaitingUndo) event.location?.let { location ->
+                                    Text(
+                                        text = location,
+                                        style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                            .clickable(onClickLabel = "Open event location") { onOpenLocation(location) }
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             if (awaitingUndo) MoveTile(
@@ -997,22 +1051,6 @@ private fun CalendarConnectedScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    event.location?.let { location ->
-                                        Text(
-                                            text = location,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                textDecoration = TextDecoration.Underline
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.fillMaxWidth()
-                                                .clickable(onClickLabel = "Open event location") {
-                                                    onOpenLocation(location)
-                                                }
-                                                .padding(bottom = 8.dp)
-                                        )
-                                    }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
@@ -1128,16 +1166,36 @@ private fun CalendarConnectedScreen(
                             }
                             items(results.events, key = { "calendar-search/${it.calendarId}/${it.id}/${it.start}" }) { event ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                                        .background(skin.color(
+                                            if (event.isEmphasized()) "emphasized" else "event", darkMode,
+                                            if (event.isEmphasized()) MaterialTheme.colorScheme.surfaceVariant
+                                            else MaterialTheme.colorScheme.background
+                                        ), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(event.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (event.isTwoDaysOld()) Box(
+                                                modifier = Modifier.padding(end = 7.dp).size(8.dp)
+                                                    .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
+                                            )
+                                            Text(event.title, fontWeight = FontWeight.Bold,
+                                                color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
+                                                style = MaterialTheme.typography.bodyLarge)
+                                        }
                                         Text(
                                             event.searchDateDescription(),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        event.location?.let { location ->
+                                            Text(location, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                                    .clickable(onClickLabel = "Open event location") { onOpenLocation(location) })
+                                        }
                                     }
                                     MoveTile(
                                         label = "↗",
@@ -1165,7 +1223,7 @@ private fun CalendarConnectedScreen(
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+            color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
         val eventCount = events.size
             Box(
@@ -1216,6 +1274,12 @@ private fun CalendarConnectedScreen(
         )
     }
 
+    if (showSkins) SkinDialog(
+        current = skin,
+        onDismiss = { showSkins = false },
+        onApply = { selected -> onSkinChange(selected); showSkins = false }
+    )
+
     datePickerEvent?.let { event ->
         val datePickerState = rememberDatePickerState()
         DatePickerDialog(
@@ -1244,7 +1308,47 @@ private fun CalendarConnectedScreen(
 }
 
 @Composable
-private fun AccountClock(accountName: String) {
+private fun SkinDialog(current: Skin, onDismiss: () -> Unit, onApply: (Skin) -> Unit) {
+    var selected by remember(current) { mutableStateOf(current.name) }
+    var fields by remember(current) { mutableStateOf(skinFields.keys.associateWith { current.overrides[it].orEmpty() }) }
+    val valid = fields.values.all(::validSkinHex)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Skins") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Theme colors")
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (name in skinNames) TextButton(onClick = { selected = name }) {
+                        Text(if (selected == name) "✓ $name" else name)
+                    }
+                }
+                Text("Optional color overrides. Leave blank to use the theme or light/dark default.",
+                    style = MaterialTheme.typography.bodySmall)
+                for ((field, label) in skinFields) {
+                    OutlinedTextField(
+                        value = fields[field].orEmpty(),
+                        onValueChange = { fields = fields + (field to it.take(7)) },
+                        label = { Text(label) },
+                        placeholder = { Text("#RRGGBB") },
+                        isError = !validSkinHex(fields[field].orEmpty()),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = {
+                onApply(Skin(selected, fields.filterValues { it.isNotBlank() }.mapValues { it.value.trim() }))
+            }) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun AccountClock() {
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -1254,7 +1358,7 @@ private fun AccountClock(accountName: String) {
         }
     }
     Text(
-        "$accountName, ${headerClockLabel(now, ZoneId.systemDefault())}",
+        headerClockLabel(now, ZoneId.systemDefault()),
         style = MaterialTheme.typography.bodyMedium
     )
 }
@@ -1329,7 +1433,7 @@ private fun MoveTile(
         modifier = tileModifier
             .semantics { contentDescription = description }
             .clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = LocalSkin.current.color("tile", LocalSkinDark.current, MaterialTheme.colorScheme.surfaceContainerHighest),
         shape = RoundedCornerShape(4.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

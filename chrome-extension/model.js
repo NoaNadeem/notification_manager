@@ -18,6 +18,25 @@ export function eventStartMs(event, calendarTimeZone) {
   return zonedMidnightMs(event.start.date, calendarTimeZone);
 }
 
+export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
+  return eventStartMs(event, zone) <= nowMs - 2 * DAY_MS;
+}
+
+export function isEmphasized(event, account) {
+  if (event.start?.date) return true;
+  const start = Date.parse(event.start?.dateTime);
+  const end = Date.parse(event.end?.dateTime);
+  if (Number.isFinite(start) && Number.isFinite(end) && end - start >= 3_600_000) return true;
+  return (event.attendees || []).some((attendee) =>
+    !attendee.resource && !attendee.self && attendee.email &&
+    attendee.email.toLowerCase() !== account?.toLowerCase());
+}
+
+export function compareEvents(a, b, zone) {
+  if (Boolean(a.start?.date) !== Boolean(b.start?.date)) return a.start?.date ? -1 : 1;
+  return eventStartMs(b, zone) - eventStartMs(a, zone);
+}
+
 export function zonedMidnightMs(date, zone) {
   const utc = Date.parse(`${date}T00:00:00Z`);
   const parts = new Intl.DateTimeFormat("en-US", {

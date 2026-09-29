@@ -92,3 +92,20 @@ dialog label { display:block; margin-top:12px; }
 dialog input { width:95px; margin-left:8px; padding:5px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .dialog-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:14px; }
 .dialog-actions button { padding:6px 10px; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+.menu-account { padding:0 10px 9px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.event,.search-result { background:var(--event-bg,transparent); }
+.event:not(.emphasized):hover,.event:not(.emphasized):focus-within { background:var(--event-bg,var(--panel)); }
+.event.emphasized, .event.emphasized:hover, .event.emphasized:focus-within { background:var(--emphasized-bg); }
+.search-result.emphasized { background:var(--emphasized-bg); border-radius:8px; }
+.old-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; background:var(--dot-color); vertical-align:1px; }
+header,footer { background:var(--panel-custom,var(--panel)); }
+.title,.search-result a { color:var(--title-custom,var(--text)); }
+.tile,.tile.primary,.icon-button { background:var(--tile-custom,var(--tile)); }
+.tile.danger { background:var(--danger); }
+.tile:hover,.icon-button:hover { background:var(--tile-hover); }
+#skins-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
+#skins-dialog .skin-help { color:var(--muted); font-size:12px; }
+#skins-dialog select { margin-left:8px; color:var(--text); background:var(--bg); border:1px solid var(--border); }
+#skins-dialog label { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; }
+#skins-dialog input { width:105px; }
+.skin-error { color:var(--error); }

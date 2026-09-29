@@ -1,7 +1,7 @@
 export const UNDO_MS = 30_000;
 
 export class UndoController {
-  constructor(onCommit, onChange, schedule = setTimeout, cancel = clearTimeout) {
+  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id)) {
     this.onCommit = onCommit;
     this.onChange = onChange;
     this.schedule = schedule;
@@ -20,9 +20,18 @@ export class UndoController {
   stage(action) {
     return this.enqueue(async () => {
       await this.commitCurrent();
+      // A failed timer setup must not leave an Undo row that can never commit.
+      const timer = this.schedule(() => { void this.commit(); }, UNDO_MS);
       this.current = action;
-      this.onChange(action);
-      this.timer = this.schedule(() => { void this.commit(); }, UNDO_MS);
+      this.timer = timer;
+      try {
+        this.onChange(action);
+      } catch (error) {
+        this.cancel(timer);
+        this.timer = null;
+        this.current = null;
+        throw error;
+      }
     });
   }
 

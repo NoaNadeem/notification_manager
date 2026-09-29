@@ -23,7 +23,7 @@ Click the header to search the loaded list. **Search Calendar** looks across pas
 4. Click the Notification Manager toolbar button once to open its window, then click **Connect Google Calendar** and approve the requested Calendar and Drive access. The account under the header should match the Android app's account.
 5. Quit Chrome completely with **Chrome → Quit Google Chrome**, then reopen it. The manager should open in its own window. Closing all regular browser windows and opening Chrome again should also open or focus the manager.
 
-If you change `manifest.json` later, click the extension's **Reload** button on `chrome://extensions`. The event list refreshes on each manager-window open and when you click `↻`; it does not yet use push or background polling.
+After any extension code change, click the extension's **Reload** button on `chrome://extensions`, then close and reopen its manager window. The event list refreshes on each manager-window open, when the window regains focus, and when you click `↻`; it does not yet use push or background polling.
 
 The Google Cloud OAuth client and interactive Google sign-in are required before Calendar data can be displayed. This repo never contains an access token or client secret. Calendar move and dismissal actions make live changes after you click their tiles and let the Undo period expire, take another action, or leave the window. Test with newly created events, never with existing personal events.
 

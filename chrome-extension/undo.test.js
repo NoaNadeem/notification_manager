@@ -17,6 +17,43 @@ test("Undo cancels a pending move without committing it", async () => {
   assert.deepEqual(commits, []);
 });
 
+test("browser timer methods keep their global receiver", async () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  let scheduled;
+  let canceled;
+  globalThis.setTimeout = function (callback, delay) {
+    assert.equal(this, globalThis);
+    assert.equal(delay, UNDO_MS);
+    scheduled = callback;
+    return 7;
+  };
+  globalThis.clearTimeout = function (id) {
+    assert.equal(this, globalThis);
+    canceled = id;
+  };
+  try {
+    const controller = new UndoController(() => assert.fail("Must not commit"), () => {});
+    await controller.stage({ type: "dismiss" });
+    assert.equal(typeof scheduled, "function");
+    await controller.undo();
+    assert.equal(canceled, 7);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
+test("failed timer setup never shows a pending action", async () => {
+  const changes = [];
+  const controller = new UndoController(() => {}, (action) => changes.push(action), () => {
+    throw new TypeError("Illegal invocation");
+  });
+  await assert.rejects(controller.stage({ type: "dismiss" }), /Illegal invocation/);
+  assert.equal(controller.current, null);
+  assert.deepEqual(changes, []);
+});
+
 test("another action commits the first and timer commits the second", async () => {
   const commits = [];
   let callback;

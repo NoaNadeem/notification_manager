@@ -44,10 +44,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -955,6 +959,7 @@ private fun CalendarConnectedScreen(
                             else MoveTile(
                                 label = "1D",
                                 description = "Move event one day from now",
+                                tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1))) },
                                 enabled = movingEventId == null && event.id !in committingMoveIds,
                                 modifier = Modifier.size(44.dp),
                                 onClick = {
@@ -1006,6 +1011,7 @@ private fun CalendarConnectedScreen(
                                                 label = label,
                                                 description = if (label == "0D") "Move all-day event to today"
                                                     else "Move event $label from now",
+                                                tooltip = { event.moveDestinationTooltip(target) },
                                                 enabled = movingEventId == null && event.id !in committingMoveIds,
                                                 modifier = Modifier.weight(1f),
                                                 onClick = { onMove(event, target) }
@@ -1041,6 +1047,7 @@ private fun CalendarConnectedScreen(
                                             MoveTile(
                                                 label = label,
                                                 description = "Move event $label from now",
+                                                tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(days))) },
                                                 enabled = movingEventId == null && event.id !in committingMoveIds,
                                                 modifier = Modifier.weight(1f),
                                                 onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
@@ -1222,6 +1229,29 @@ private fun CalendarEvent.searchDateDescription(): String =
             .format(DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
     }
 
+internal fun CalendarEvent.moveDestinationTooltip(
+    target: MoveTarget,
+    now: Instant = Instant.now(),
+    phoneZone: ZoneId = ZoneId.systemDefault()
+): String {
+    val date = if (allDayDate != null) {
+        shiftAllDayDates(allDayDate, allDayDate.plusDays(1), now, phoneZone, calendarZone, target)
+            .first
+    } else {
+        null
+    }
+    val destination = if (date != null) date.atStartOfDay(phoneZone)
+    else when (target) {
+        is MoveTarget.After -> now.plus(target.duration).atZone(phoneZone)
+        is MoveTarget.OnDate -> target.date.atTime(now.atZone(phoneZone).toLocalTime()).atZone(phoneZone)
+    }
+    val dateLabel = destination.format(DateTimeFormatter.ofPattern("EEE MMM d"))
+    if (date != null || target is MoveTarget.After && target.duration.toHours() >= 24) {
+        return "Move to $dateLabel"
+    }
+    return "Move to $dateLabel, ${destination.format(DateTimeFormatter.ofPattern("h:mm a z"))}"
+}
+
 @Composable
 private fun SelectableLinkedText(
     value: String,
@@ -1247,16 +1277,18 @@ private fun SelectableLinkedText(
     Text(annotated, modifier = modifier, style = style, color = color)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoveTile(
     label: String,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     description: String = label,
+    tooltip: (() -> String)? = null,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = modifier.aspectRatio(1f)
+    @Composable fun TileSurface(tileModifier: Modifier) = Surface(
+        modifier = tileModifier
             .semantics { contentDescription = description }
             .clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1269,6 +1301,19 @@ private fun MoveTile(
                 color = if (enabled) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+    if (tooltip == null) {
+        TileSurface(modifier.aspectRatio(1f))
+    } else {
+        TooltipBox(
+            modifier = modifier.aspectRatio(1f),
+            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+            tooltip = { PlainTooltip { Text(tooltip()) } },
+            state = rememberTooltipState(),
+            enableUserInput = enabled
+        ) {
+            TileSurface(Modifier.fillMaxSize())
         }
     }
 }

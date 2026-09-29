@@ -1,6 +1,9 @@
 package com.noanadeem.notificationmanager
 
 import android.net.Uri
+import java.net.URI
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Duration
@@ -138,10 +141,20 @@ internal suspend fun searchPrimaryCalendar(
 internal fun sortCalendarEvents(
     events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
 ): List<CalendarEvent> = events.sortedWith(
-    compareByDescending<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+    compareBy<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
         .thenByDescending { it.allDayDate != null }
-        .thenByDescending { it.start }
+        .thenBy { it.start }
 )
+
+internal fun calendarEditLink(htmlLink: String): String? {
+    val uri = runCatching { URI(htmlLink) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.host !in setOf("www.google.com", "calendar.google.com")) return null
+    val rawEid = uri.rawQuery?.split('&')?.firstOrNull { it.substringBefore('=') == "eid" }
+        ?.substringAfter('=', "") ?: return null
+    val eid = URLDecoder.decode(rawEid, "UTF-8")
+    if (!eid.matches(Regex("[A-Za-z0-9_+/=-]+"))) return null
+    return "https://calendar.google.com/calendar/u/0/r/eventedit/${URLEncoder.encode(eid, "UTF-8")}"
+}
 
 internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {
     val calendarZone = runCatching { ZoneId.of(response.optString("timeZone")) }

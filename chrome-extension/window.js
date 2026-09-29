@@ -3,7 +3,7 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -390,7 +390,7 @@ function renderEvent(event) {
   for (const days of [2, 3, 4, 7]) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
   }
-  bottomRow.append(button("✎", "Open event in Google Calendar to edit", () => openEventLink(event.htmlLink)));
+  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(calendarEditUrl(event.htmlLink) || event.htmlLink)));
   flyout.append(topRow, bottomRow);
   row.append(flyout);
   return row;

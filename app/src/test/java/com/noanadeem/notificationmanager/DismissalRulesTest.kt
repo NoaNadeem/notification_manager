@@ -33,6 +33,16 @@ class DismissalRulesTest {
     }
 
     @Test
+    fun futureEventDismissalPersistsThroughPhoneAndCloudMerge() {
+        val futureStart = now.plus(4, ChronoUnit.HOURS).toEpochMilli()
+        val record = DismissalRecord("Test Event - 1", futureStart, now.toEpochMilli())
+        val merged = mergeDismissals(listOf(record), emptyList(), now)
+        assertEquals(listOf(record), merged)
+        assertTrue(listOf(CalendarEvent("primary", record.eventId, "Test Event - 1",
+            Instant.ofEpochMilli(futureStart), null, ZoneId.of("UTC"))).withoutDismissals(merged).isEmpty())
+    }
+
+    @Test
     fun dismissalMatchesOccurrenceAndStartTime() {
         val oldStart = now.minus(2, ChronoUnit.DAYS)
         fun event(start: Instant) = CalendarEvent(

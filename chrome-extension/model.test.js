@@ -36,12 +36,12 @@ test("old dot uses 48 hours; long, shared, and all-day events get highlighted", 
   assert.equal(isEmphasized({ start: { date: "2026-09-25" } }, "me@example.com"), true);
 });
 
-test("events sort newest date first and all-day first within that date", () => {
+test("events sort oldest date first and all-day first within that date", () => {
   const timed = { start: { dateTime: "2026-09-28T11:00:00Z" } };
   const allDay = { start: { date: "2026-09-27" } };
   const sameDayAllDay = { start: { date: "2026-09-28" } };
   assert.deepEqual([timed, allDay, sameDayAllDay].sort((a, b) => compareEvents(a, b, "UTC")),
-    [sameDayAllDay, timed, allDay]);
+    [allDay, sameDayAllDay, timed]);
 });
 
 test("ages round up and switch from hours to days after 24 hours", () => {
@@ -81,6 +81,12 @@ test("dismissal union keeps newest version and prunes old events", () => {
   );
   assert.equal(merged.length, 2);
   assert.equal(merged.find((record) => record.eventId === "a").dismissed, now);
+});
+
+test("future event dismissal survives local and Drive union", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const future = { eventId: "Test Event - 1", start: now + 4 * 3_600_000, dismissed: now };
+  assert.deepEqual(mergeDismissals([future], [], now), [future]);
 });
 
 test("location becomes a safe web link or map query", () => {

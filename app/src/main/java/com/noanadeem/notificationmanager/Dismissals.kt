@@ -30,7 +30,7 @@ internal fun mergeDismissals(
 ): List<DismissalRecord> {
     val cutoff = now.minus(MAX_LOOKBACK_DAYS, ChronoUnit.DAYS).toEpochMilli()
     return (first + second).asSequence()
-        .filter { it.eventId.isNotBlank() && it.eventStartMillis >= cutoff && it.eventStartMillis <= now.toEpochMilli() }
+        .filter { it.eventId.isNotBlank() && it.eventStartMillis >= cutoff }
         .groupBy { it.key }
         .values.map { records -> records.maxBy { it.dismissedAtMillis } }
         .sortedWith(compareBy(DismissalRecord::eventStartMillis, DismissalRecord::eventId))

@@ -50,9 +50,17 @@ class CalendarEventRulesTest {
         assertTrue(allDay.isEmphasized())
         assertFalse(short.copy(start = now.minus(2, ChronoUnit.DAYS).plusSeconds(1)).isTwoDaysOld(now))
         assertTrue(short.copy(start = now.minus(2, ChronoUnit.DAYS)).isTwoDaysOld(now))
-        assertEquals(allDay, sortCalendarEvents(listOf(short, allDay, long), zone).last())
+        assertEquals(allDay, sortCalendarEvents(listOf(short, allDay, long), zone).first())
         assertEquals(short.copy(id = "today-all-day", allDayDate = LocalDate.parse("2026-09-28")),
-            sortCalendarEvents(listOf(short, allDay, short.copy(id = "today-all-day", allDayDate = LocalDate.parse("2026-09-28"))), zone).first())
+            sortCalendarEvents(listOf(short, allDay, short.copy(id = "today-all-day", allDayDate = LocalDate.parse("2026-09-28"))), zone)[1])
+    }
+
+    @Test
+    fun pencilUsesCalendarEditLinkWhenEventIdIsPresent() {
+        assertEquals("https://calendar.google.com/calendar/u/0/r/eventedit/YWJjIG1lQGV4YW1wbGUuY29t",
+            calendarEditLink("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"))
+        assertEquals(null, calendarEditLink("https://example.com/calendar/event?eid=YWJj"))
+        assertEquals(null, calendarEditLink("https://calendar.google.com/calendar/event?eid=%2Fbad%20id"))
     }
 
     @Test

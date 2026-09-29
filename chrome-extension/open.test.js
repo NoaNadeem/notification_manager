@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
+
+test("pencil targets Google's edit route when the event link has an eid", () => {
+  assert.equal(calendarEditUrl("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"),
+    "https://calendar.google.com/calendar/u/0/r/eventedit/YWJjIG1lQGV4YW1wbGUuY29t");
+  assert.equal(calendarEditUrl("https://example.com/calendar/event?eid=YWJj"), null);
+  assert.equal(calendarEditUrl("https://calendar.google.com/calendar/event?eid=%2Fbad%20id"), null);
+});
 
 test("repeated event clicks open once until the cooldown ends", async () => {
   let now = 0;

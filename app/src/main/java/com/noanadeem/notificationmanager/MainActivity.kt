@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -350,10 +351,15 @@ private fun CalendarLoginScreen(
                     currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before opening this event."),
                     event
                 )
-                val uri = Uri.parse(link)
+                val editLink = calendarEditLink(link)
+                val uri = Uri.parse(editLink ?: link)
                 require(uri.scheme == "https") { "Google Calendar returned an invalid event link." }
                 try {
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.calendar"))
+                    if (editLink != null) {
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.android.chrome"))
+                    } else {
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.calendar"))
+                    }
                 } catch (_: ActivityNotFoundException) {
                     activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
                 }
@@ -836,7 +842,7 @@ private fun CalendarConnectedScreen(
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
     }
-    Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)

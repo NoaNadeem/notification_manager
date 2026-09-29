@@ -61,10 +61,10 @@ export function compareEvents(a, b, zone) {
     }).formatToParts(new Date(eventStartMs(event, zone))).map((part) => [part.type, part.value]));
     return `${parts.year}-${parts.month}-${parts.day}`;
   };
-  const dateOrder = localDate(b).localeCompare(localDate(a));
+  const dateOrder = localDate(a).localeCompare(localDate(b));
   if (dateOrder) return dateOrder;
   if (Boolean(a.start?.date) !== Boolean(b.start?.date)) return a.start?.date ? -1 : 1;
-  return eventStartMs(b, zone) - eventStartMs(a, zone);
+  return eventStartMs(a, zone) - eventStartMs(b, zone);
 }
 
 export function zonedMidnightMs(date, zone) {
@@ -123,7 +123,7 @@ export function mergeDismissals(local, remote, nowMs = Date.now()) {
   const cutoff = nowMs - 365 * DAY_MS;
   const byKey = new Map();
   for (const record of [...local, ...remote]) {
-    if (!record.eventId || record.start < cutoff || record.start > nowMs) continue;
+    if (!record.eventId || record.start < cutoff) continue;
     const key = `${record.eventId}/${record.start}`;
     if (!byKey.has(key) || byKey.get(key).dismissed < record.dismissed) byKey.set(key, record);
   }

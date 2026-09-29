@@ -16,6 +16,16 @@ export async function openInBrowser(api, url) {
   await api.windows.update(target.id, { focused: true });
 }
 
+export function calendarEditUrl(htmlLink) {
+  try {
+    const url = new URL(htmlLink);
+    if (url.protocol !== "https:" || !["www.google.com", "calendar.google.com"].includes(url.hostname)) return null;
+    const eid = url.searchParams.get("eid");
+    if (!eid || !/^[A-Za-z0-9_+/=-]+$/.test(eid)) return null;
+    return `https://calendar.google.com/calendar/u/0/r/eventedit/${encodeURIComponent(eid)}`;
+  } catch { return null; }
+}
+
 export function createOpenGuard(open, cooldownMs = 8_000, now = () => Date.now()) {
   const openedAt = new Map();
   const pending = new Set();

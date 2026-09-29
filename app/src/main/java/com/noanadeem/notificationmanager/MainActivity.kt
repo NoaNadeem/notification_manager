@@ -913,7 +913,7 @@ private fun CalendarConnectedScreen(
                 modifier = Modifier.padding(top = 16.dp)
             )
             else -> LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 if (eventsLoading) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) }
@@ -1141,6 +1141,14 @@ private fun CalendarConnectedScreen(
                 }
             }
         }
+        if (!searchActive && (eventsLoading || events.isEmpty())) Spacer(modifier = Modifier.weight(1f))
+        val eventCount = events.size
+        Text(
+            if (eventsLoading) "Loading…" else "$eventCount event${if (eventCount == 1) "" else "s"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
+        )
     }
 
     if (showLookbackPicker) {

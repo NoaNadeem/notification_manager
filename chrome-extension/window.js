@@ -3,7 +3,7 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { openInBrowser } from "./open.js";
+import { createOpenGuard, openInBrowser } from "./open.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -41,6 +41,7 @@ let loading = false;
 let dateTarget;
 let openFlyoutRow;
 let searchActive = false;
+let realEventsOnly = false;
 let remoteSearch;
 let remoteSearchRequest = 0;
 let clockTimer;
@@ -51,6 +52,10 @@ let storageEstimateNode;
 const committing = new Set();
 
 const undo = new UndoController(commitAction, () => render());
+const openEventOnce = createOpenGuard(async (url) => {
+  await undo.commit();
+  await openInBrowser(chrome, url);
+});
 
 function showError(message) { notice.textContent = message; }
 function showInfo(message) { info.textContent = message; }
@@ -114,14 +119,11 @@ function moveTile(event, label, option, className = "tile") {
 }
 
 function openEventLink(url) {
-  void (async () => {
-    await undo.commit();
-    if (!url || !url.startsWith("https://")) {
-      showError("Google Calendar did not provide a valid event link.");
-      return;
-    }
-    await openInBrowser(chrome, url);
-  })().catch((error) => showError(`Could not open event: ${error.message}`));
+  if (!url || !url.startsWith("https://")) {
+    showError("Google Calendar did not provide a valid event link.");
+    return;
+  }
+  void openEventOnce(url).catch((error) => showError(`Could not open event: ${error.message}`));
 }
 
 function closeMenu() {
@@ -130,11 +132,11 @@ function closeMenu() {
 }
 
 function showFlyout(row, flyout) {
-  const rowBounds = row.getBoundingClientRect();
   if (openFlyoutRow && openFlyoutRow !== row) hideFlyout(openFlyoutRow);
   openFlyoutRow = row;
   row.classList.add("flyout-open");
   row.classList.remove("flyout-above");
+  const rowBounds = row.getBoundingClientRect();
   const listBounds = list.getBoundingClientRect();
   const height = flyout.getBoundingClientRect().height;
   const placement = flyoutPlacement(rowBounds.top, rowBounds.bottom, height, listBounds.top, listBounds.bottom);
@@ -171,7 +173,7 @@ async function load(interactive = false) {
     events = recent.events.filter((event) => {
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
-    }).sort((a, b) => compareEvents(a, b, calendarZone));
+    }).sort((a, b) => compareEvents(a, b));
     try {
       dismissals = await syncDismissals(account);
     } catch (error) {
@@ -195,15 +197,17 @@ function render() {
   list.replaceChildren();
   const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
   const visible = events.filter((event) => !dismissed.has(eventKey(event)));
-  const filtered = searchActive && searchQueryInput.value.trim()
+  const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
-  count.textContent = `${visible.length} event${visible.length === 1 ? "" : "s"}`;
+  const filtered = realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched;
+  count.textContent = `${filtered.length} event${filtered.length === 1 ? "" : "s"}`;
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
     empty.textContent = !account ? "Connect Google Calendar to load events."
       : searchActive && searchQueryInput.value.trim() ? "No loaded events match this search."
+      : realEventsOnly ? "No real events in this range."
       : "No events in the selected lookback and lookahead range.";
     list.append(empty);
   } else {
@@ -236,31 +240,39 @@ function renderSearchFooter() {
   heading.className = "search-heading";
   heading.textContent = "Calendar results · read only";
   list.append(heading);
-  if (!remoteSearch.events.length) {
+  const results = realEventsOnly
+    ? remoteSearch.events.filter((event) => isEmphasized(event, account))
+    : remoteSearch.events;
+  if (!results.length) {
     const empty = document.createElement("p");
     empty.className = "search-heading";
-    empty.textContent = "No Calendar events match this search.";
+    empty.textContent = realEventsOnly ? "No real Calendar events match this search." : "No Calendar events match this search.";
     list.append(empty);
   }
-  for (const event of remoteSearch.events) {
+  for (const event of results) {
     const row = document.createElement("div");
     row.className = "search-result";
     if (isEmphasized(event, account)) row.classList.add("emphasized");
+    const titleLine = document.createElement("div");
+    titleLine.className = "title-line";
     if (isTwoDaysOld(event, calendarZone)) {
       const dot = document.createElement("span");
       dot.className = "old-dot";
       dot.setAttribute("aria-label", "At least two days old");
-      row.append(dot);
+      titleLine.append(dot);
     }
     const title = document.createElement("a");
+    title.className = "title";
     title.href = event.htmlLink || "#";
     title.textContent = event.summary || "(Untitled event)";
+    title.title = title.textContent;
     title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event.htmlLink); });
     const date = document.createElement("small");
     date.textContent = event.start?.date
       ? `${event.start.date} · all day`
       : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.start.dateTime));
-    row.append(title, date);
+    titleLine.append(title);
+    row.append(titleLine, date);
     if (event.location) {
       const location = document.createElement("a");
       location.className = "location";
@@ -299,6 +311,7 @@ function renderEvent(event) {
   const title = document.createElement(action || busy ? "span" : "a");
   title.className = "title";
   title.textContent = event.summary || "(Untitled event)";
+  title.title = title.textContent;
   if (!action && !busy) {
     title.href = event.htmlLink || "#";
     title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event.htmlLink); });
@@ -306,13 +319,16 @@ function renderEvent(event) {
   const age = document.createElement("div");
   age.className = "age";
   age.textContent = action ? actionDescription(action) : busy ? "Committing action…" : ageLabel(eventStartMs(event, calendarZone));
+  const titleLine = document.createElement("div");
+  titleLine.className = "title-line";
   if (isTwoDaysOld(event, calendarZone)) {
     const dot = document.createElement("span");
     dot.className = "old-dot";
     dot.setAttribute("aria-label", "At least two days old");
-    details.append(dot);
+    titleLine.append(dot);
   }
-  details.append(title, age);
+  titleLine.append(title);
+  details.append(titleLine, age);
   if (!action && !busy && event.location) {
     const location = document.createElement("a");
     location.className = "location";
@@ -366,15 +382,15 @@ function renderEvent(event) {
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";
-    $("#calendar-apply").disabled = true;
     calendarDialog.showModal();
-    datePicker.focus();
+    try { datePicker.showPicker(); }
+    catch { datePicker.focus(); }
   }));
   topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   for (const days of [2, 3, 4, 7]) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
   }
-  bottomRow.append(button("↗", "Open event in Google Calendar", () => openEventLink(event.htmlLink)));
+  bottomRow.append(button("✎", "Open event in Google Calendar to edit", () => openEventLink(event.htmlLink)));
   flyout.append(topRow, bottomRow);
   row.append(flyout);
   return row;
@@ -402,7 +418,7 @@ async function commitAction(action) {
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays);
       if (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive) {
         events.push(moved);
-        events.sort((a, b) => compareEvents(a, b, calendarZone));
+        events.sort((a, b) => compareEvents(a, b));
       }
     } else {
       dismissals = await saveDismissal(account, {
@@ -505,6 +521,15 @@ $("#refresh").addEventListener("click", () => {
   closeMenu();
   void undo.commit().then(() => load());
 });
+$("#real-events-toggle").addEventListener("click", () => {
+  void undo.commit();
+  realEventsOnly = !realEventsOnly;
+  const toggle = $("#real-events-toggle");
+  toggle.setAttribute("aria-pressed", String(realEventsOnly));
+  toggle.title = realEventsOnly ? "Show all events" : "Show real events only";
+  toggle.setAttribute("aria-label", toggle.title);
+  render();
+});
 $("#logout").addEventListener("click", () => { closeMenu(); void logout(); });
 $("#lookback-open").addEventListener("click", () => {
   closeMenu();
@@ -592,9 +617,7 @@ $("#lookback-apply").addEventListener("click", () => void changeLookback(Number(
 $("#lookback-cancel").addEventListener("click", () => lookbackDialog.close());
 $("#lookahead-apply").addEventListener("click", () => void changeLookahead(Number($("#custom-lookahead").value)));
 $("#lookahead-cancel").addEventListener("click", () => lookaheadDialog.close());
-datePicker.addEventListener("input", () => { $("#calendar-apply").disabled = !datePicker.value; });
-$("#calendar-cancel").addEventListener("click", () => calendarDialog.close());
-$("#calendar-apply").addEventListener("click", () => {
+datePicker.addEventListener("change", () => {
   if (!datePicker.value || !dateTarget) return;
   const event = dateTarget;
   const date = datePicker.value;

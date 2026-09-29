@@ -1,6 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openInBrowser } from "./open.js";
+import { createOpenGuard, openInBrowser } from "./open.js";
+
+test("repeated event clicks open once until the cooldown ends", async () => {
+  let now = 0;
+  const opened = [];
+  const guarded = createOpenGuard(async (url) => { opened.push(url); }, 8_000, () => now);
+  assert.equal(await guarded("https://calendar.google.com/event/1"), true);
+  now = 7_999;
+  assert.equal(await guarded("https://calendar.google.com/event/1"), false);
+  assert.equal(opened.length, 1);
+  now = 8_000;
+  assert.equal(await guarded("https://calendar.google.com/event/1"), true);
+  assert.equal(opened.length, 2);
+});
+
+test("event click guard blocks while opening and retries after an error", async () => {
+  let rejectOpen;
+  const guarded = createOpenGuard(() => new Promise((_, reject) => { rejectOpen = reject; }));
+  const first = guarded("https://calendar.google.com/event/1");
+  assert.equal(await guarded("https://calendar.google.com/event/1"), false);
+  rejectOpen(new Error("Temporary error"));
+  await assert.rejects(first, /Temporary error/);
+  const next = guarded("https://calendar.google.com/event/1");
+  rejectOpen(new Error("Temporary error"));
+  await assert.rejects(next, /Temporary error/);
+});
 
 test("opening an event activates its tab and focuses a normal Chrome window", async () => {
   const calls = [];

@@ -36,10 +36,12 @@ test("old dot uses 48 hours; long, shared, and all-day events get highlighted", 
   assert.equal(isEmphasized({ start: { date: "2026-09-25" } }, "me@example.com"), true);
 });
 
-test("all-day events sort ahead of newer timed events", () => {
+test("events sort newest date first and all-day first within that date", () => {
   const timed = { start: { dateTime: "2026-09-28T11:00:00Z" } };
   const allDay = { start: { date: "2026-09-27" } };
-  assert.deepEqual([timed, allDay].sort((a, b) => compareEvents(a, b, "UTC")), [allDay, timed]);
+  const sameDayAllDay = { start: { date: "2026-09-28" } };
+  assert.deepEqual([timed, allDay, sameDayAllDay].sort((a, b) => compareEvents(a, b, "UTC")),
+    [sameDayAllDay, timed, allDay]);
 });
 
 test("ages round up and switch from hours to days after 24 hours", () => {

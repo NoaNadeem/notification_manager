@@ -50,7 +50,9 @@ class CalendarEventRulesTest {
         assertTrue(allDay.isEmphasized())
         assertFalse(short.copy(start = now.minus(2, ChronoUnit.DAYS).plusSeconds(1)).isTwoDaysOld(now))
         assertTrue(short.copy(start = now.minus(2, ChronoUnit.DAYS)).isTwoDaysOld(now))
-        assertEquals(allDay, sortCalendarEvents(listOf(short, allDay, long)).first())
+        assertEquals(allDay, sortCalendarEvents(listOf(short, allDay, long), zone).last())
+        assertEquals(short.copy(id = "today-all-day", allDayDate = LocalDate.parse("2026-09-28")),
+            sortCalendarEvents(listOf(short, allDay, short.copy(id = "today-all-day", allDayDate = LocalDate.parse("2026-09-28"))), zone).first())
     }
 
     @Test

@@ -53,6 +53,16 @@ export function isEmphasized(event, account) {
 }
 
 export function compareEvents(a, b, zone) {
+  const localDate = (event) => {
+    if (event.start?.date) return event.start.date;
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      year: "numeric", month: "2-digit", day: "2-digit"
+    }).formatToParts(new Date(eventStartMs(event, zone))).map((part) => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  };
+  const dateOrder = localDate(b).localeCompare(localDate(a));
+  if (dateOrder) return dateOrder;
   if (Boolean(a.start?.date) !== Boolean(b.start?.date)) return a.start?.date ? -1 : 1;
   return eventStartMs(b, zone) - eventStartMs(a, zone);
 }

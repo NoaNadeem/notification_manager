@@ -825,11 +825,13 @@ private fun CalendarConnectedScreen(
     var customLookaheadText by remember { mutableStateOf(lookaheadDays.toString()) }
     var datePickerEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var searchActive by remember { mutableStateOf(false) }
+    var realEventsOnly by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
     val searchFocusRequester = remember { FocusRequester() }
-    val filteredEvents = remember(events, searchQuery, searchActive) {
-        if (searchActive) filterLoadedEvents(events, searchQuery) else events
+    val filteredEvents = remember(events, searchQuery, searchActive, realEventsOnly) {
+        val matching = if (searchActive) filterLoadedEvents(events, searchQuery) else events
+        if (realEventsOnly) matching.filter(CalendarEvent::isEmphasized) else matching
     }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
@@ -839,7 +841,7 @@ private fun CalendarConnectedScreen(
             modifier = Modifier.fillMaxWidth(),
             color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (searchActive) {
                 OutlinedTextField(
@@ -856,9 +858,9 @@ private fun CalendarConnectedScreen(
             } else {
                 Text(
                     "Notification Manager",
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleMedium
                 )
-                IconButton(onClick = {
+                IconButton(modifier = Modifier.size(40.dp), onClick = {
                         onOtherAction()
                         searchActive = true
                 }) {
@@ -867,10 +869,24 @@ private fun CalendarConnectedScreen(
                         contentDescription = "Search events"
                     )
                 }
+                IconButton(
+                    modifier = Modifier.size(40.dp).semantics {
+                        contentDescription = if (realEventsOnly) "Show all events" else "Show real events only"
+                    },
+                    onClick = {
+                        onOtherAction()
+                        realEventsOnly = !realEventsOnly
+                        expandedEventId = null
+                    }
+                ) {
+                    Text("▤", style = MaterialTheme.typography.titleLarge,
+                        color = if (realEventsOnly) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface)
+                }
                 Spacer(modifier = Modifier.weight(1f))
             }
             Column {
-                IconButton(onClick = {
+                IconButton(modifier = Modifier.size(40.dp), onClick = {
                     onOtherAction()
                     menuExpanded = true
                 }) {
@@ -1000,6 +1016,9 @@ private fun CalendarConnectedScreen(
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 if (eventsLoading) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) }
+                if (filteredEvents.isEmpty() && realEventsOnly && !searchActive && !eventsLoading) item {
+                    Text("No real events in this range.", modifier = Modifier.padding(vertical = 16.dp))
+                }
                 items(filteredEvents, key = { "${it.calendarId}/${it.id}" }) { event ->
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
@@ -1032,6 +1051,8 @@ private fun CalendarConnectedScreen(
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
+                                    maxLines = if (expandedEventId == event.id) Int.MAX_VALUE else 3,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
                                 )
                                 }
@@ -1150,8 +1171,8 @@ private fun CalendarConnectedScreen(
                                             )
                                         }
                                         MoveTile(
-                                            label = "↗",
-                                            description = "Open event in Google Calendar",
+                                            label = "✎",
+                                            description = "Open event in Google Calendar to edit",
                                             enabled = true,
                                             modifier = Modifier.size(44.dp),
                                             onClick = { onOpenEvent(event) }
@@ -1220,7 +1241,8 @@ private fun CalendarConnectedScreen(
                                             )
                                             Text(event.title, fontWeight = FontWeight.Bold,
                                                 color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
-                                                style = MaterialTheme.typography.bodyLarge)
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                maxLines = 3, overflow = TextOverflow.Ellipsis)
                                         }
                                         Text(
                                             event.searchDateDescription(),
@@ -1236,8 +1258,8 @@ private fun CalendarConnectedScreen(
                                         }
                                     }
                                     MoveTile(
-                                        label = "↗",
-                                        description = "Open event in Google Calendar",
+                                        label = "✎",
+                                        description = "Open event in Google Calendar to edit",
                                         enabled = true,
                                         modifier = Modifier.size(44.dp),
                                         onClick = { onOpenEvent(event) }
@@ -1263,7 +1285,7 @@ private fun CalendarConnectedScreen(
             modifier = Modifier.fillMaxWidth(),
             color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
-        val eventCount = events.size
+        val eventCount = filteredEvents.size
             Box(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                 contentAlignment = Alignment.CenterEnd

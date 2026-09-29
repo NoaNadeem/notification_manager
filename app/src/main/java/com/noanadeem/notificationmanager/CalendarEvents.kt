@@ -135,8 +135,13 @@ internal suspend fun searchPrimaryCalendar(
     CalendarSearchResults(sortCalendarEvents(events), pageToken != null || truncatedPage)
 }
 
-internal fun sortCalendarEvents(events: List<CalendarEvent>): List<CalendarEvent> =
-    events.sortedWith(compareByDescending<CalendarEvent> { it.allDayDate != null }.thenByDescending { it.start })
+internal fun sortCalendarEvents(
+    events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
+): List<CalendarEvent> = events.sortedWith(
+    compareByDescending<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+        .thenByDescending { it.allDayDate != null }
+        .thenByDescending { it.start }
+)
 
 internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {
     val calendarZone = runCatching { ZoneId.of(response.optString("timeZone")) }

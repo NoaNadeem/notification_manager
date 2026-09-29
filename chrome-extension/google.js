@@ -1,7 +1,15 @@
 import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow } from "./model.js";
+import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
+let dismissalQueue = Promise.resolve();
+
+function enqueueDismissal(work) {
+  const result = dismissalQueue.then(work);
+  dismissalQueue = result.catch(() => {});
+  return result;
+}
 
 async function token(interactive = false) {
   const result = await chrome.identity.getAuthToken({ interactive });
@@ -91,52 +99,65 @@ export async function moveEvent(calendarId, eventId, option) {
   });
 }
 
-export async function syncDismissals(account) {
+export function syncDismissals(account) {
+  return enqueueDismissal(() => syncDismissalsNow(account));
+}
+
+async function syncDismissalsNow(account) {
   const storageKey = `dismissals:${account.toLowerCase()}`;
   const stored = await chrome.storage.local.get(storageKey);
   const local = stored[storageKey] || [];
-  const url = new URL(DRIVE);
-  url.searchParams.set("spaces", "appDataFolder");
-  url.searchParams.set("q", `name = '${DISMISSAL_FILE}' and trashed = false`);
-  url.searchParams.set("fields", "nextPageToken,files(id,name)");
-  url.searchParams.set("pageSize", "100");
-  const listing = await googleRequest(url.href);
-  if (listing.nextPageToken) throw new Error("Drive has too many dismissal files to sync safely.");
-  const fileIds = (listing.files || []).map((file) => file.id);
-  const remote = (await Promise.all(fileIds.map(async (id) =>
+  const files = [];
+  let pageToken;
+  do {
+    const url = new URL(DRIVE);
+    url.searchParams.set("spaces", "appDataFolder");
+    url.searchParams.set("q", "trashed = false");
+    url.searchParams.set("fields", "nextPageToken,files(id,name,description)");
+    url.searchParams.set("pageSize", "1000");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const listing = await googleRequest(url.href);
+    files.push(...(listing.files || []));
+    pageToken = listing.nextPageToken;
+  } while (pageToken);
+  const legacyIds = files.filter((file) => file.name === DISMISSAL_FILE).map((file) => file.id);
+  const markerFiles = files.filter((file) => file.name?.startsWith(DISMISSAL_MARKER_PREFIX));
+  const legacy = (await Promise.all(legacyIds.map(async (id) =>
     parseDismissals(JSON.stringify(await googleRequest(`${DRIVE}/${encodeURIComponent(id)}?alt=media`)))
   ))).flat();
+  const remote = [...legacy, ...markerFiles.map(parseDismissalMarker)];
   const merged = mergeDismissals(local, remote);
   await chrome.storage.local.set({ [storageKey]: merged });
-  if (fileIds.length === 0) {
-    if (merged.length) await createDriveFile(merged);
-  } else if (JSON.stringify(merged) !== JSON.stringify(remote)) {
-    await updateDriveFile(fileIds[0], merged);
+  await publishMissingDismissals(local, remote, createDismissalMarker);
+  const cutoff = Date.now() - 365 * 86_400_000;
+  for (const file of markerFiles) {
+    if (parseDismissalMarker(file).start < cutoff) {
+      try { await googleRequest(`${DRIVE}/${encodeURIComponent(file.id)}`, { method: "DELETE" }); }
+      catch { /* Pruning is retried on the next sync. */ }
+    }
   }
   return merged;
 }
 
-export async function saveDismissal(account, record) {
-  const storageKey = `dismissals:${account.toLowerCase()}`;
-  const stored = await chrome.storage.local.get(storageKey);
-  const merged = mergeDismissals(stored[storageKey] || [], [record]);
-  await chrome.storage.local.set({ [storageKey]: merged });
-  await syncDismissals(account);
-  return merged;
-}
-
-async function createDriveFile(records) {
-  const boundary = `notification-manager-${crypto.randomUUID()}`;
-  const metadata = { name: DISMISSAL_FILE, mimeType: "application/json", parents: ["appDataFolder"] };
-  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ version: 1, records })}\r\n--${boundary}--\r\n`;
-  return googleRequest("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body
+export function saveDismissal(account, record) {
+  return enqueueDismissal(async () => {
+    const storageKey = `dismissals:${account.toLowerCase()}`;
+    const stored = await chrome.storage.local.get(storageKey);
+    const merged = mergeDismissals(stored[storageKey] || [], [record]);
+    await chrome.storage.local.set({ [storageKey]: merged });
+    return syncDismissalsNow(account);
   });
 }
 
-async function updateDriveFile(id, records) {
-  return googleRequest(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&fields=id`, {
-    method: "PATCH", headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify({ version: 1, records })
+async function createDismissalMarker(record) {
+  const metadata = {
+    name: `${DISMISSAL_MARKER_PREFIX}${crypto.randomUUID()}.json`,
+    mimeType: "application/json",
+    parents: ["appDataFolder"],
+    description: JSON.stringify({ version: 2, ...record })
+  };
+  return googleRequest(`${DRIVE}?fields=id`, {
+    method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(metadata)
   });
 }

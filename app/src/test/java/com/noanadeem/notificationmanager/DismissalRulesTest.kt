@@ -3,6 +3,7 @@ package com.noanadeem.notificationmanager
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -30,6 +31,30 @@ class DismissalRulesTest {
         val remote = DismissalRecord("other-device-event", start, now.toEpochMilli())
         val merged = mergeDismissals(listOf(local), listOf(remote), now)
         assertEquals(setOf(local, remote), merged.toSet())
+    }
+
+    @Test
+    fun concurrentClientsPublishIndependentMarkersInEitherOrder() = runBlocking {
+        val phone = DismissalRecord("Test Event - 1", now.minusSeconds(60).toEpochMilli(), now.toEpochMilli())
+        val extension = DismissalRecord("Test Event - 2", now.plusSeconds(60).toEpochMilli(), now.toEpochMilli())
+        for (order in listOf(listOf(phone, extension), listOf(extension, phone))) {
+            val driveMarkers = mutableListOf<DismissalRecord>()
+            val sameInitialSnapshot = emptyList<DismissalRecord>()
+            for (record in order) {
+                publishMissingDismissals(listOf(record), sameInitialSnapshot, now) { driveMarkers.add(it) }
+            }
+            assertEquals(setOf(phone, extension), mergeDismissals(driveMarkers, emptyList(), now).toSet())
+        }
+    }
+
+    @Test
+    fun legacyRecordIsNotRepublished() = runBlocking {
+        val legacy = DismissalRecord("Test Event - 1", now.minusSeconds(60).toEpochMilli(), now.toEpochMilli())
+        val local = DismissalRecord("Test Event - 2", now.minusSeconds(120).toEpochMilli(), now.toEpochMilli())
+        val created = mutableListOf<DismissalRecord>()
+        val merged = publishMissingDismissals(listOf(legacy, local), listOf(legacy), now) { created.add(it) }
+        assertEquals(listOf(local), created)
+        assertEquals(setOf(legacy, local), merged.toSet())
     }
 
     @Test

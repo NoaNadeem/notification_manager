@@ -7,12 +7,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 private const val FILE_NAME = "notification-manager-dismissals-v1.json"
+private const val MARKER_PREFIX = "notification-manager-dismissal-v2-"
 private const val MAX_LOOKBACK_DAYS = 365L
 
 internal data class DismissalRecord(
@@ -39,6 +41,18 @@ internal fun mergeDismissals(
 internal fun List<CalendarEvent>.withoutDismissals(records: List<DismissalRecord>): List<CalendarEvent> {
     val keys = records.mapTo(HashSet()) { it.key }
     return filterNot { "${it.id}/${it.start.toEpochMilli()}" in keys }
+}
+
+internal suspend fun publishMissingDismissals(
+    local: List<DismissalRecord>,
+    remote: List<DismissalRecord>,
+    now: Instant,
+    createMarker: suspend (DismissalRecord) -> Unit
+): List<DismissalRecord> {
+    val merged = mergeDismissals(local, remote, now)
+    val remoteKeys = remote.mapTo(HashSet()) { it.key }
+    for (record in merged) if (record.key !in remoteKeys) createMarker(record)
+    return merged
 }
 
 internal class DismissalStore(private val context: Context) {
@@ -68,32 +82,50 @@ internal suspend fun syncDismissals(
     now: Instant = Instant.now()
 ): List<DismissalRecord> = withContext(Dispatchers.IO) {
     val local = store.read(account, now)
-    val listUrl = Uri.parse("https://www.googleapis.com/drive/v3/files").buildUpon()
-        .appendQueryParameter("spaces", "appDataFolder")
-        .appendQueryParameter("q", "name = '$FILE_NAME' and trashed = false")
-        .appendQueryParameter("fields", "nextPageToken,files(id,name)")
-        .appendQueryParameter("pageSize", "100")
-        .build().toString()
-    val files = JSONObject(driveRequest(listUrl, token))
-    val matches = files.optJSONArray("files") ?: JSONArray()
-    if (files.optString("nextPageToken").isNotBlank()) {
-        throw IllegalStateException("Drive has too many dismissal files to sync safely.")
-    }
-    val fileIds = (0 until matches.length()).map { matches.getJSONObject(it).getString("id") }
-    val remote = fileIds.flatMap { id ->
+    val files = mutableListOf<JSONObject>()
+    var pageToken: String? = null
+    do {
+        val listUrl = Uri.parse("https://www.googleapis.com/drive/v3/files").buildUpon()
+            .appendQueryParameter("spaces", "appDataFolder")
+            .appendQueryParameter("q", "trashed = false")
+            .appendQueryParameter("fields", "nextPageToken,files(id,name,description)")
+            .appendQueryParameter("pageSize", "1000")
+            .apply { pageToken?.let { appendQueryParameter("pageToken", it) } }
+            .build().toString()
+        val page = JSONObject(driveRequest(listUrl, token))
+        val matches = page.optJSONArray("files") ?: JSONArray()
+        for (index in 0 until matches.length()) files.add(matches.getJSONObject(index))
+        pageToken = page.optString("nextPageToken").takeIf { it.isNotBlank() }
+    } while (pageToken != null)
+    val legacyIds = files.filter { it.optString("name") == FILE_NAME }.map { it.getString("id") }
+    val markerFiles = files.filter { it.optString("name").startsWith(MARKER_PREFIX) }
+    val legacy = legacyIds.flatMap { id ->
         parseDismissals(driveRequest("https://www.googleapis.com/drive/v3/files/$id?alt=media", token))
     }
+    val markerRecords = markerFiles.map(::parseDismissalMarker)
+    val remote = legacy + markerRecords
     val merged = mergeDismissals(local, remote, now)
     Log.i("NotificationManagerSync", "local=${local.size} drive=${remote.size} merged=${merged.size}")
     // Never replace the phone's copy until all remote records have been read successfully.
     store.write(account, merged)
-    val encoded = serializeDismissals(merged)
-    if (fileIds.isEmpty()) {
-        if (merged.isNotEmpty()) createDriveFile(token, encoded)
-    } else if (merged != remote) {
-        updateDriveFile(token, fileIds.first(), encoded)
+    publishMissingDismissals(local, remote, now) { record -> createDismissalMarker(token, record) }
+    val cutoff = now.minus(MAX_LOOKBACK_DAYS, ChronoUnit.DAYS).toEpochMilli()
+    for ((index, file) in markerFiles.withIndex()) {
+        if (markerRecords[index].eventStartMillis < cutoff) {
+            runCatching {
+                driveRequest("https://www.googleapis.com/drive/v3/files/${file.getString("id")}", token, "DELETE")
+            }.onFailure { Log.w("NotificationManagerSync", "Could not prune old dismissal marker", it) }
+        }
     }
     merged
+}
+
+private fun parseDismissalMarker(file: JSONObject): DismissalRecord {
+    val data = JSONObject(file.optString("description"))
+    require(data.getInt("version") == 2) { "Unsupported dismissal marker version." }
+    val eventId = data.getString("eventId")
+    require(eventId.isNotBlank()) { "Dismissal marker is missing an event ID." }
+    return DismissalRecord(eventId, data.getLong("start"), data.getLong("dismissed"))
 }
 
 private fun parseDismissals(raw: String): List<DismissalRecord> {
@@ -116,32 +148,24 @@ private fun serializeDismissals(records: List<DismissalRecord>): String {
     return JSONObject().put("version", 1).put("records", rows).toString()
 }
 
-internal fun estimateFullYearDismissalBytes(
+internal fun estimateFullYearMarkerPayloadBytes(
     events: List<CalendarEvent>,
     now: Instant = Instant.now()
-): Int = serializeDismissals(events.map { event ->
-    DismissalRecord(event.id, event.start.toEpochMilli(), now.toEpochMilli())
-}).toByteArray(Charsets.UTF_8).size
-
-private fun createDriveFile(token: String, contents: String) {
-    val boundary = "notification-manager-boundary"
-    val metadata = JSONObject().put("name", FILE_NAME)
-        .put("mimeType", "application/json")
-        .put("parents", JSONArray().put("appDataFolder"))
-    val body = buildString {
-        append("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
-        append(metadata.toString())
-        append("\r\n--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
-        append(contents)
-        append("\r\n--$boundary--\r\n")
-    }
-    driveRequest("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
-        token, "POST", body, "multipart/related; boundary=$boundary")
+): Int = events.sumOf { event ->
+    JSONObject().put("version", 2).put("eventId", event.id)
+        .put("start", event.start.toEpochMilli()).put("dismissed", now.toEpochMilli())
+        .toString().toByteArray(Charsets.UTF_8).size
 }
 
-private fun updateDriveFile(token: String, id: String, contents: String) {
-    driveRequest("https://www.googleapis.com/upload/drive/v3/files/$id?uploadType=media&fields=id",
-        token, "PATCH", contents, "application/json; charset=UTF-8")
+private fun createDismissalMarker(token: String, record: DismissalRecord) {
+    val metadata = JSONObject()
+        .put("name", "$MARKER_PREFIX${UUID.randomUUID()}.json")
+        .put("mimeType", "application/json")
+        .put("parents", JSONArray().put("appDataFolder"))
+        .put("description", JSONObject().put("version", 2).put("eventId", record.eventId)
+            .put("start", record.eventStartMillis).put("dismissed", record.dismissedAtMillis).toString())
+    driveRequest("https://www.googleapis.com/drive/v3/files?fields=id", token, "POST",
+        metadata.toString(), "application/json; charset=UTF-8")
 }
 
 private fun driveRequest(
@@ -171,6 +195,7 @@ private fun driveRequest(
             }.getOrNull().orEmpty()
             throw IllegalStateException("Drive sync failed (HTTP $response)${if (message.isBlank()) "" else ": $message"}")
         }
+        if (response == 204) return ""
         return connection.inputStream.bufferedReader().use { it.readText() }
     } finally {
         connection.disconnect()

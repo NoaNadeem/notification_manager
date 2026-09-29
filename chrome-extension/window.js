@@ -633,9 +633,11 @@ $("#estimate-storage").addEventListener("click", () => {
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= result.first && start <= result.now;
     });
-    const records = eventsInYear.map((event) => ({ eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: now }));
-    const bytes = new TextEncoder().encode(JSON.stringify({ version: 1, records })).byteLength;
-    if (request === storageEstimateRequest) showStorageEstimate(`${eventsInYear.length} events in the past year. If every one were dismissed, the Drive file would be ${bytes} bytes (${(bytes / 1024).toFixed(1)} KiB).`);
+    const encoder = new TextEncoder();
+    const bytes = eventsInYear.reduce((total, event) => total + encoder.encode(JSON.stringify({
+      version: 2, eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: now
+    })).byteLength, 0);
+    if (request === storageEstimateRequest) showStorageEstimate(`${eventsInYear.length} events in the past year. If every one were dismissed, their Drive record payloads would total ${bytes} bytes (${(bytes / 1024).toFixed(1)} KiB), plus Drive file metadata for each dismissal.`);
   })().catch((error) => {
     if (request === storageEstimateRequest) showStorageEstimate(`Could not estimate storage: ${error.message}`, true);
   });

@@ -622,8 +622,8 @@ private fun CalendarLoginScreen(
                 val now = Instant.now()
                 val events = fetchRecentEvents(token, primaryId, 365)
                     .filter { isInPastWindow(it.start, now, 365) }
-                val bytes = estimateFullYearDismissalBytes(events)
-                "${events.size} events in the past year. If every one were dismissed, the Drive file would be $bytes bytes (${String.format(java.util.Locale.US, "%.1f", bytes / 1024.0)} KiB)."
+                val bytes = estimateFullYearMarkerPayloadBytes(events)
+                "${events.size} events in the past year. If every one were dismissed, their Drive record payloads would total $bytes bytes (${String.format(java.util.Locale.US, "%.1f", bytes / 1024.0)} KiB), plus Drive file metadata for each dismissal."
                     .also { Log.i("NotificationManagerStorage", it) }
             } catch (e: Exception) {
                 "Could not estimate storage: ${e.message}"

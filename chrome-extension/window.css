@@ -87,7 +87,8 @@ footer { border-color:var(--border); min-height:36px; }
 dialog { width:min(440px,calc(100% - 40px)); border:1px solid var(--border); border-radius:9px; background:var(--panel); color:var(--text); padding:16px; box-shadow:0 12px 30px #0006; }
 dialog::backdrop { background:#0008; }
 dialog h2 { margin:0 0 12px; font-size:17px; }
-dialog button[data-days] { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+dialog button[data-days],dialog button[data-ahead-days] { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+#lookahead-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 dialog label { display:block; margin-top:12px; }
 dialog input { width:95px; margin-left:8px; padding:5px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .dialog-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:14px; }
@@ -103,9 +104,4 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 .tile,.tile.primary,.icon-button { background:var(--tile-custom,var(--tile)); }
 .tile.danger { background:var(--danger); }
 .tile:hover,.icon-button:hover { background:var(--tile-hover); }
-#skins-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
-#skins-dialog .skin-help { color:var(--muted); font-size:12px; }
-#skins-dialog select { margin-left:8px; color:var(--text); background:var(--bg); border:1px solid var(--border); }
-#skins-dialog label { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; }
-#skins-dialog input { width:105px; }
-.skin-error { color:var(--error); }
+#skins-dialog select { display:block; width:100%; margin:8px 0 0; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:8px; }

@@ -1,6 +1,6 @@
 # Notification Manager
 
-Android companion for past events on the signed-in account's primary Google Calendar.
+Android companion for events on the signed-in account's primary Google Calendar. By default it shows the past 7 days and the rest of today in the phone's local time zone. The menu offers independent lookback and lookahead settings.
 
 Pull down from the top of the event list to refresh Calendar events and Drive dismissals.
 

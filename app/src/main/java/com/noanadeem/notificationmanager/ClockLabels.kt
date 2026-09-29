@@ -22,6 +22,5 @@ internal fun headerClockLabel(now: Instant, zone: ZoneId): String {
     val minute = local.minute.toString().padStart(2, '0')
     val period = if (local.hour < 12) "a.m." else "p.m."
     val shortZone = local.format(DateTimeFormatter.ofPattern("z", Locale.US))
-    val fullZone = local.format(DateTimeFormatter.ofPattern("zzzz", Locale.US))
-    return "$weekday $month $day$suffix, $hour:$minute $period $shortZone ($fullZone)"
+    return "$weekday $month $day$suffix, $hour:$minute $period $shortZone"
 }

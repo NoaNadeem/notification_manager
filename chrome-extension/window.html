@@ -29,6 +29,7 @@
       <button id="logout">⇥ &nbsp; Disconnect / Switch Chrome Profile</button>
       <div id="account-email" class="menu-account"></div>
       <button id="lookback-open">◷ &nbsp; Lookback: <span id="lookback-label">7 days</span></button>
+      <button id="lookahead-open">◷ &nbsp; Lookahead: <span id="lookahead-label">0 days</span></button>
       <button id="estimate-storage">Estimate 1-year storage</button>
       <button id="theme-toggle">Dark mode: On</button>
       <button id="skins-open">Skins</button>
@@ -40,7 +41,7 @@
     <p>Connect the Chrome profile that uses your primary Google Calendar.</p>
     <button id="connect">Connect Google Calendar</button>
   </section>
-  <main id="event-list" aria-label="Past calendar events"></main>
+  <main id="event-list" aria-label="Calendar events"></main>
   <footer><span id="count"></span></footer>
   <dialog id="lookback-dialog">
     <h2>Show past events</h2>
@@ -50,12 +51,20 @@
     <label>Custom days (1–365) <input id="custom-lookback" type="number" min="1" max="365" step="1"></label>
     <div class="dialog-actions"><button id="lookback-cancel">Cancel</button><button id="lookback-apply">Apply</button></div>
   </dialog>
+  <dialog id="lookahead-dialog">
+    <h2>Show upcoming events</h2>
+    <button data-ahead-days="0">Through today</button>
+    <button data-ahead-days="1">Through tomorrow</button>
+    <button data-ahead-days="3">Through 3 days ahead</button>
+    <button data-ahead-days="7">Through 7 days ahead</button>
+    <button data-ahead-days="14">Through 14 days ahead</button>
+    <button data-ahead-days="30">Through 30 days ahead</button>
+    <label>Custom days (0–36500) <input id="custom-lookahead" type="number" min="0" max="36500" step="1"></label>
+    <div class="dialog-actions"><button id="lookahead-cancel">Cancel</button><button id="lookahead-apply">Apply</button></div>
+  </dialog>
   <dialog id="skins-dialog">
     <h2>Skins</h2>
     <label>Theme <select id="skin-name"><option>Green</option><option>Blue</option><option>Purple</option><option>Rose</option></select></label>
-    <p class="skin-help">Optional colors. Leave blank to use the theme or light/dark default. The same override applies in both modes.</p>
-    <div id="skin-fields"></div>
-    <p id="skin-error" class="skin-error" role="status"></p>
     <div class="dialog-actions"><button id="skins-cancel">Cancel</button><button id="skins-apply">Apply</button></div>
   </dialog>
   <dialog id="calendar-dialog">

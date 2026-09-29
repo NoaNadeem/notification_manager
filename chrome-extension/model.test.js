@@ -1,6 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, compareEvents } from "./model.js";
+import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, compareEvents, displayWindow } from "./model.js";
+
+test("zero lookahead includes the rest of today in browser local time", () => {
+  const now = new Date(2026, 8, 28, 10, 30).getTime();
+  const bounds = displayWindow(now, 7, 0);
+  assert.equal(bounds.lastExclusive, new Date(2026, 8, 29).getTime());
+  assert.ok(new Date(2026, 8, 28, 23, 59).getTime() < bounds.lastExclusive);
+  assert.ok(new Date(2026, 8, 29, 0, 0).getTime() >= bounds.lastExclusive);
+  assert.equal(displayWindow(now, 7, 3).lastExclusive, new Date(2026, 9, 2).getTime());
+  assert.equal(ageLabel(now + 3_600_000, now), "In 1 hr");
+});
+
+test("lookahead follows calendar days across daylight saving changes", () => {
+  const previousZone = process.env.TZ;
+  process.env.TZ = "America/Los_Angeles";
+  try {
+    const now = new Date(2026, 2, 8, 1, 30).getTime();
+    assert.equal(displayWindow(now, 7, 0).lastExclusive, new Date(2026, 2, 9).getTime());
+    assert.equal(displayWindow(now, 7, 1).lastExclusive, new Date(2026, 2, 10).getTime());
+  } finally {
+    if (previousZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousZone;
+  }
+});
 
 test("old dot uses 48 hours; long, shared, and all-day events get highlighted", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");

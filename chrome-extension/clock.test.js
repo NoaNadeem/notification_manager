@@ -6,9 +6,9 @@ process.env.TZ = "America/Los_Angeles";
 
 test("header uses daylight time in September and standard time in January", () => {
   assert.equal(headerClockLabel(new Date("2026-09-28T14:01:00Z"), "America/Los_Angeles"),
-    "Mon Sept 28th, 7:01 a.m. PDT (Pacific Daylight Time)");
+    "Mon Sept 28th, 7:01 a.m. PDT");
   assert.equal(headerClockLabel(new Date("2026-01-28T15:01:00Z"), "America/Los_Angeles"),
-    "Wed Jan 28th, 7:01 a.m. PST (Pacific Standard Time)");
+    "Wed Jan 28th, 7:01 a.m. PST");
 });
 
 test("day move tooltip has destination date; hour move includes time zone", () => {
@@ -16,7 +16,7 @@ test("day move tooltip has destination date; hour move includes time zone", () =
   const now = new Date("2026-09-28T14:01:00Z");
   assert.equal(moveTooltip(event, { days: 3 }, now, "America/Los_Angeles"), "Move to Thu Oct 1st");
   assert.equal(moveTooltip(event, { hours: 4 }, now, "America/Los_Angeles"),
-    "Move to Mon Sept 28th, 11:01 a.m. PDT (Pacific Daylight Time)");
+    "Move to Mon Sept 28th, 11:01 a.m. PDT");
 });
 
 test("all-day zero-day tooltip points to today", () => {

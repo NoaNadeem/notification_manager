@@ -32,8 +32,6 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -121,6 +119,7 @@ private const val CONNECTION_PREFERENCES = "calendar_connection"
 private const val AUTO_CONNECT_KEY = "auto_connect"
 private const val ACCOUNT_NAME_KEY = "account_name"
 private const val LOOKBACK_DAYS_KEY = "lookback_days"
+private const val LOOKAHEAD_DAYS_KEY = "lookahead_days"
 private const val DARK_MODE_KEY = "dark_mode"
 
 private enum class ConnectionScreen { Checking, Disconnected, Connected, Error }
@@ -231,6 +230,9 @@ private fun CalendarLoginScreen(
     var lookbackDays by remember {
         mutableStateOf(preferences.getInt(LOOKBACK_DAYS_KEY, 7).coerceIn(1, 365))
     }
+    var lookaheadDays by remember {
+        mutableStateOf(preferences.getInt(LOOKAHEAD_DAYS_KEY, 0).coerceIn(0, 36500))
+    }
     var recentEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
     var eventsLoading by remember { mutableStateOf(false) }
     var eventsError by remember { mutableStateOf<String?>(null) }
@@ -296,7 +298,7 @@ private fun CalendarLoginScreen(
                         recentEvents = recentEvents.mapNotNull {
                             if (it.calendarId == action.event.calendarId && it.id == action.event.id) {
                                 movedEvent.takeIf { updated ->
-                                    isInPastWindow(updated.start, now, lookbackDays)
+                                    isInDisplayWindow(updated.start, now, lookbackDays, lookaheadDays)
                                 }
                             } else it
                         }.let(::sortCalendarEvents)
@@ -445,7 +447,7 @@ private fun CalendarLoginScreen(
                 eventsError = null
                 driveError = null
                 try {
-                    val fetched = fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays)
+                    val fetched = fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays)
                     recentEvents = fetched.withoutDismissals(dismissals)
                     try {
                         val merged = dismissalMutex.withLock {
@@ -611,7 +613,9 @@ private fun CalendarLoginScreen(
         coroutineScope.launch {
             val result = try {
                 val primaryId = verifyCalendarAccess(token)
+                val now = Instant.now()
                 val events = fetchRecentEvents(token, primaryId, 365)
+                    .filter { isInPastWindow(it.start, now, 365) }
                 val bytes = estimateFullYearDismissalBytes(events)
                 "${events.size} events in the past year. If every one were dismissed, the Drive file would be $bytes bytes (${String.format(java.util.Locale.US, "%.1f", bytes / 1024.0)} KiB)."
                     .also { Log.i("NotificationManagerStorage", it) }
@@ -726,10 +730,16 @@ private fun CalendarLoginScreen(
             onUndo = { undoableAction = null },
             onOtherAction = { undoableAction?.let(::commitAction) },
             lookbackDays = lookbackDays,
+            lookaheadDays = lookaheadDays,
             onRefresh = { authorizeCalendar(interactive = false) },
             onLookbackChange = { days ->
                 lookbackDays = days
                 preferences.edit().putInt(LOOKBACK_DAYS_KEY, days).apply()
+                authorizeCalendar(interactive = false)
+            },
+            onLookaheadChange = { days ->
+                lookaheadDays = days
+                preferences.edit().putInt(LOOKAHEAD_DAYS_KEY, days).apply()
                 authorizeCalendar(interactive = false)
             },
             onMove = ::moveEvent,
@@ -796,8 +806,10 @@ private fun CalendarConnectedScreen(
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     lookbackDays: Int,
+    lookaheadDays: Int,
     onRefresh: () -> Unit,
     onLookbackChange: (Int) -> Unit,
+    onLookaheadChange: (Int) -> Unit,
     onMove: (CalendarEvent, MoveTarget) -> Unit,
     onDismiss: (CalendarEvent) -> Unit,
     onEstimateStorage: () -> Unit,
@@ -807,8 +819,10 @@ private fun CalendarConnectedScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var expandedEventId by remember { mutableStateOf<String?>(null) }
     var showLookbackPicker by remember { mutableStateOf(false) }
+    var showLookaheadPicker by remember { mutableStateOf(false) }
     var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
+    var customLookaheadText by remember { mutableStateOf(lookaheadDays.toString()) }
     var datePickerEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -885,6 +899,16 @@ private fun CalendarConnectedScreen(
                             menuExpanded = false
                             customLookbackText = lookbackDays.toString()
                             showLookbackPicker = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Lookahead: $lookaheadDays days") },
+                        leadingIcon = { Text("◷") },
+                        enabled = !eventsLoading && !loading && movingEventId == null,
+                        onClick = {
+                            menuExpanded = false
+                            customLookaheadText = lookaheadDays.toString()
+                            showLookaheadPicker = true
                         }
                     )
                     DropdownMenuItem(
@@ -966,7 +990,7 @@ private fun CalendarConnectedScreen(
                 item {
                     Text(
                         if (eventsError != null) "Events could not be loaded. Pull down to try again."
-                        else "No events started in the last $lookbackDays days.",
+                        else "No events in the selected lookback and lookahead range.",
                         modifier = Modifier.padding(top = 16.dp)
                     )
                 }
@@ -1288,6 +1312,41 @@ private fun CalendarConnectedScreen(
         )
     }
 
+    if (showLookaheadPicker) {
+        val customDays = customLookaheadText.toIntOrNull()
+        AlertDialog(
+            onDismissRequest = { showLookaheadPicker = false },
+            title = { Text("Show upcoming events") },
+            text = {
+                Column {
+                    for (days in listOf(0, 1, 3, 7, 14, 30)) {
+                        TextButton(onClick = {
+                            showLookaheadPicker = false
+                            onLookaheadChange(days)
+                        }) { Text(if (days == 0) "Through today" else "Through $days days ahead") }
+                    }
+                    OutlinedTextField(
+                        value = customLookaheadText,
+                        onValueChange = { customLookaheadText = it.filter(Char::isDigit).take(5) },
+                        label = { Text("Custom days (0–36500)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = customDays != null && customDays in 0..36500,
+                    onClick = {
+                        showLookaheadPicker = false
+                        onLookaheadChange(customDays!!)
+                    }
+                ) { Text("Apply") }
+            },
+            dismissButton = { TextButton(onClick = { showLookaheadPicker = false }) { Text("Cancel") } }
+        )
+    }
+
     if (showSkins) SkinDialog(
         current = skin,
         onDismiss = { showSkins = false },
@@ -1324,38 +1383,20 @@ private fun CalendarConnectedScreen(
 @Composable
 private fun SkinDialog(current: Skin, onDismiss: () -> Unit, onApply: (Skin) -> Unit) {
     var selected by remember(current) { mutableStateOf(current.name) }
-    var fields by remember(current) { mutableStateOf(skinFields.keys.associateWith { current.overrides[it].orEmpty() }) }
-    val valid = fields.values.all(::validSkinHex)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Skins") },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("Theme colors")
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (name in skinNames) TextButton(onClick = { selected = name }) {
+            Column {
+                for (name in skinNames) {
+                    TextButton(onClick = { selected = name }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (selected == name) "✓ $name" else name)
                     }
-                }
-                Text("Optional color overrides. Leave blank to use the theme or light/dark default.",
-                    style = MaterialTheme.typography.bodySmall)
-                for ((field, label) in skinFields) {
-                    OutlinedTextField(
-                        value = fields[field].orEmpty(),
-                        onValueChange = { fields = fields + (field to it.take(7)) },
-                        label = { Text(label) },
-                        placeholder = { Text("#RRGGBB") },
-                        isError = !validSkinHex(fields[field].orEmpty()),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = valid, onClick = {
-                onApply(Skin(selected, fields.filterValues { it.isNotBlank() }.mapValues { it.value.trim() }))
-            }) { Text("Apply") }
+            TextButton(onClick = { onApply(Skin(selected)) }) { Text("Apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

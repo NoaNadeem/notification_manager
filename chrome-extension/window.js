@@ -1,4 +1,4 @@
-import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, compareEvents } from "./model.js";
+import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, compareEvents, displayWindow } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
@@ -19,8 +19,8 @@ const menu = $("#menu");
 const menuToggle = $("#menu-toggle");
 const searchQueryInput = $("#search-query");
 const lookbackDialog = $("#lookback-dialog");
+const lookaheadDialog = $("#lookahead-dialog");
 const skinsDialog = $("#skins-dialog");
-const skinFields = { dot: "Old-event dot", emphasized: "Long/shared event", event: "Base event", panel: "Header and footer", title: "Title", tile: "Action tiles" };
 const skinPresets = {
   Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
   Blue: ["#64C9FF", "#19394D", "#D6F0FF"],
@@ -33,9 +33,9 @@ let calendarZone;
 let events = [];
 let dismissals = [];
 let lookbackDays = 7;
+let lookaheadDays = 0;
 let darkMode = true;
 let skinName = "Green";
-let skinOverrides = {};
 let signedOut = false;
 let loading = false;
 let dateTarget;
@@ -77,12 +77,8 @@ function updateHeaderClock() {
 function applySkin() {
   const root = document.documentElement;
   const preset = skinPresets[skinName] || skinPresets.Green;
-  root.style.setProperty("--dot-color", skinOverrides.dot || preset[0]);
-  root.style.setProperty("--emphasized-bg", skinOverrides.emphasized || preset[darkMode ? 1 : 2]);
-  for (const [field, variable] of Object.entries({ event: "--event-bg", panel: "--panel-custom", title: "--title-custom", tile: "--tile-custom" })) {
-    if (skinOverrides[field]) root.style.setProperty(variable, skinOverrides[field]);
-    else root.style.removeProperty(variable);
-  }
+  root.style.setProperty("--dot-color", preset[0]);
+  root.style.setProperty("--emphasized-bg", preset[darkMode ? 1 : 2]);
 }
 
 function scheduleHeaderClock() {
@@ -171,10 +167,10 @@ async function load(interactive = false) {
       await chrome.storage.local.set({ signedOut: false });
       showInfo("");
     }
-    const recent = await recentEvents(account, lookbackDays);
+    const recent = await recentEvents(account, lookbackDays, lookaheadDays);
     events = recent.events.filter((event) => {
       const start = eventStartMs(event, calendarZone);
-      return Number.isFinite(start) && start >= recent.first && start <= recent.now;
+      return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
     }).sort((a, b) => compareEvents(a, b, calendarZone));
     try {
       dismissals = await syncDismissals(account);
@@ -208,7 +204,7 @@ function render() {
     empty.className = "empty";
     empty.textContent = !account ? "Connect Google Calendar to load events."
       : searchActive && searchQueryInput.value.trim() ? "No loaded events match this search."
-      : `No events started in the last ${lookbackDays} days.`;
+      : "No events in the selected lookback and lookahead range.";
     list.append(empty);
   } else {
     for (const event of filtered) list.append(renderEvent(event));
@@ -403,7 +399,8 @@ async function commitAction(action) {
       const moved = await moveEvent(account, event.id, action.option);
       events = events.filter((item) => item !== event);
       const start = eventStartMs(moved, calendarZone);
-      if (Number.isFinite(start) && start <= Date.now() && start >= Date.now() - lookbackDays * 86_400_000) {
+      const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays);
+      if (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b, calendarZone));
       }
@@ -459,6 +456,19 @@ async function changeLookback(days) {
   await load();
 }
 
+async function changeLookahead(days) {
+  if (!Number.isInteger(days) || days < 0 || days > 36500) {
+    showError("Choose 0–36500 days.");
+    return;
+  }
+  await undo.commit();
+  lookaheadDialog.close();
+  lookaheadDays = days;
+  $("#lookahead-label").textContent = `${days} days`;
+  await chrome.storage.local.set({ lookaheadDays: days });
+  await load();
+}
+
 async function logout() {
   storageEstimateRequest++;
   clearTimeout(storageEstimateTimer);
@@ -502,6 +512,12 @@ $("#lookback-open").addEventListener("click", () => {
   $("#custom-lookback").value = String(lookbackDays);
   lookbackDialog.showModal();
 });
+$("#lookahead-open").addEventListener("click", () => {
+  closeMenu();
+  void undo.commit();
+  $("#custom-lookahead").value = String(lookaheadDays);
+  lookaheadDialog.showModal();
+});
 $("#estimate-storage").addEventListener("click", () => {
   closeMenu();
   const request = ++storageEstimateRequest;
@@ -535,26 +551,14 @@ $("#skins-open").addEventListener("click", () => {
   closeMenu();
   void undo.commit();
   $("#skin-name").value = skinName;
-  for (const field of Object.keys(skinFields)) $(`#skin-${field}`).value = skinOverrides[field] || "";
-  $("#skin-error").textContent = "";
   skinsDialog.showModal();
 });
 $("#skins-cancel").addEventListener("click", () => skinsDialog.close());
 $("#skins-apply").addEventListener("click", () => {
-  const overrides = {};
-  for (const field of Object.keys(skinFields)) {
-    const value = $(`#skin-${field}`).value.trim();
-    if (value && !/^#[0-9a-fA-F]{6}$/.test(value)) {
-      $("#skin-error").textContent = `${skinFields[field]} needs a #RRGGBB color.`;
-      return;
-    }
-    if (value) overrides[field] = value;
-  }
   skinName = $("#skin-name").value;
-  skinOverrides = overrides;
   applySkin();
   skinsDialog.close();
-  void chrome.storage.local.set({ skinName, skinOverrides });
+  void chrome.storage.local.set({ skinName });
 });
 $("#search-toggle").addEventListener("click", () => {
   void undo.commit();
@@ -581,8 +585,13 @@ searchQueryInput.addEventListener("keydown", (event) => {
 for (const choice of document.querySelectorAll("[data-days]")) {
   choice.addEventListener("click", () => void changeLookback(Number(choice.dataset.days)));
 }
+for (const choice of document.querySelectorAll("[data-ahead-days]")) {
+  choice.addEventListener("click", () => void changeLookahead(Number(choice.dataset.aheadDays)));
+}
 $("#lookback-apply").addEventListener("click", () => void changeLookback(Number($("#custom-lookback").value)));
 $("#lookback-cancel").addEventListener("click", () => lookbackDialog.close());
+$("#lookahead-apply").addEventListener("click", () => void changeLookahead(Number($("#custom-lookahead").value)));
+$("#lookahead-cancel").addEventListener("click", () => lookaheadDialog.close());
 datePicker.addEventListener("input", () => { $("#calendar-apply").disabled = !datePicker.value; });
 $("#calendar-cancel").addEventListener("click", () => calendarDialog.close());
 $("#calendar-apply").addEventListener("click", () => {
@@ -598,32 +607,20 @@ window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {
   updateHeaderClock();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 
-for (const [field, label] of Object.entries(skinFields)) {
-  const row = document.createElement("label");
-  row.textContent = label;
-  const input = document.createElement("input");
-  input.id = `skin-${field}`;
-  input.placeholder = "#RRGGBB";
-  input.maxLength = 7;
-  input.setAttribute("aria-label", `${label} color override`);
-  row.append(input);
-  $("#skin-fields").append(row);
-}
-
-const saved = await chrome.storage.local.get(["lookbackDays", "darkMode", "signedOut", "skinName", "skinOverrides"]);
+const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "darkMode", "signedOut", "skinName"]);
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
+lookaheadDays = Number.isInteger(saved.lookaheadDays) && saved.lookaheadDays >= 0 && saved.lookaheadDays <= 36500 ? saved.lookaheadDays : 0;
 darkMode = saved.darkMode !== false;
 skinName = skinPresets[saved.skinName] ? saved.skinName : "Green";
-skinOverrides = Object.fromEntries(Object.entries(saved.skinOverrides || {}).filter(([field, value]) =>
-  field in skinFields && /^#[0-9a-fA-F]{6}$/.test(value)));
 applySkin();
 signedOut = saved.signedOut === true;
 document.documentElement.classList.toggle("light", !darkMode);
 $("#theme-toggle").textContent = `Dark mode: ${darkMode ? "On" : "Off"}`;
 $("#lookback-label").textContent = `${lookbackDays} days`;
+$("#lookahead-label").textContent = `${lookaheadDays} days`;
 if (signedOut) {
   connectPanel.hidden = false;
   showInfo("Disconnected. Connect this Chrome profile to load your primary Calendar.");

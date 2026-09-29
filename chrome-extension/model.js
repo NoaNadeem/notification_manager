@@ -2,6 +2,15 @@ export const DISMISSAL_FILE = "notification-manager-dismissals-v1.json";
 const DAY_MS = 86_400_000;
 
 export function ageLabel(startMs, nowMs = Date.now()) {
+  if (startMs > nowMs) {
+    const remaining = startMs - nowMs;
+    if (remaining < DAY_MS) {
+      const hours = Math.max(1, Math.ceil(remaining / 3_600_000));
+      return `In ${hours} ${hours === 1 ? "hr" : "hrs"}`;
+    }
+    const days = Math.ceil(remaining / DAY_MS);
+    return `In ${days} ${days === 1 ? "day" : "days"}`;
+  }
   const elapsed = Math.max(0, nowMs - startMs);
   if (elapsed < DAY_MS) {
     const hours = Math.max(1, Math.ceil(elapsed / 3_600_000));
@@ -9,6 +18,17 @@ export function ageLabel(startMs, nowMs = Date.now()) {
   }
   const days = Math.ceil(elapsed / DAY_MS);
   return `${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+export function displayWindow(nowMs, lookbackDays, lookaheadDays) {
+  if (!Number.isInteger(lookbackDays) || lookbackDays < 1 || lookbackDays > 365 ||
+      !Number.isInteger(lookaheadDays) || lookaheadDays < 0 || lookaheadDays > 36500) {
+    throw new RangeError("Invalid lookback or lookahead days.");
+  }
+  const end = new Date(nowMs);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + lookaheadDays + 1);
+  return { first: nowMs - lookbackDays * DAY_MS, lastExclusive: end.getTime() };
 }
 
 export function eventStartMs(event, calendarTimeZone) {

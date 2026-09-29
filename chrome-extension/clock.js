@@ -26,9 +26,7 @@ function timeLabel(date, zone) {
 }
 
 function zoneLabels(date, zone) {
-  const short = parts(date, { timeZoneName: "short" }, zone).timeZoneName;
-  const long = parts(date, { timeZoneName: "long" }, zone).timeZoneName;
-  return `${short} (${long})`;
+  return parts(date, { timeZoneName: "short" }, zone).timeZoneName;
 }
 
 export function headerClockLabel(now = new Date(), zone = localZone()) {

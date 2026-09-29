@@ -15,6 +15,27 @@ class CalendarEventRulesTest {
     private val now = Instant.parse("2026-09-28T18:00:00Z")
 
     @Test
+    fun zeroLookaheadIncludesRestOfPhoneDayAndExcludesTomorrow() {
+        val pacific = ZoneId.of("America/Los_Angeles")
+        val tomorrow = LocalDate.parse("2026-09-29").atStartOfDay(pacific).toInstant()
+        assertEquals(tomorrow, displayEndExclusive(now, 0, pacific))
+        assertTrue(isInDisplayWindow(tomorrow.minusSeconds(1), now, 7, 0, pacific))
+        assertFalse(isInDisplayWindow(tomorrow, now, 7, 0, pacific))
+        assertTrue(isInDisplayWindow(tomorrow, now, 7, 1, pacific))
+        assertEquals("In 1 hr", CalendarEvent("primary", "future", "Future", now.plusSeconds(3600), null, pacific).ageDescription(now))
+    }
+
+    @Test
+    fun lookaheadUsesCalendarDaysAcrossDaylightSavingChange() {
+        val pacific = ZoneId.of("America/Los_Angeles")
+        val beforeSpringForward = LocalDate.parse("2026-03-08").atTime(1, 30).atZone(pacific).toInstant()
+        assertEquals(LocalDate.parse("2026-03-09").atStartOfDay(pacific).toInstant(),
+            displayEndExclusive(beforeSpringForward, 0, pacific))
+        assertEquals(LocalDate.parse("2026-03-10").atStartOfDay(pacific).toInstant(),
+            displayEndExclusive(beforeSpringForward, 1, pacific))
+    }
+
+    @Test
     fun greenCuesAndAllDayOrderingUseEventDetails() {
         val zone = ZoneId.of("UTC")
         val short = CalendarEvent("me@example.com", "short", "Short", now.minusSeconds(7200), null, zone,

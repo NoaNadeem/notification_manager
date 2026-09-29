@@ -36,6 +36,16 @@ internal data class CalendarEvent(
         (end != null && Duration.between(start, end) >= Duration.ofHours(1))
 
     fun ageDescription(now: Instant = Instant.now()): String {
+        if (start.isAfter(now)) {
+            val seconds = Duration.between(now, start).seconds
+            return if (seconds < 86_400) {
+                val hours = ((seconds + 3_599) / 3_600).coerceAtLeast(1)
+                "In $hours ${if (hours == 1L) "hr" else "hrs"}"
+            } else {
+                val days = (seconds + 86_399) / 86_400
+                "In $days ${if (days == 1L) "day" else "days"}"
+            }
+        }
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
         return if (elapsedSeconds < 86_400) {
             val hours = ((elapsedSeconds + 3_599) / 3_600).coerceAtLeast(1)
@@ -61,10 +71,14 @@ internal suspend fun fetchRecentEvents(
     accessToken: String,
     primaryCalendarId: String,
     lookbackDays: Int,
+    lookaheadDays: Int = 0,
+    phoneZone: ZoneId = ZoneId.systemDefault(),
     now: Instant = Instant.now()
 ): List<CalendarEvent> = withContext(Dispatchers.IO) {
     require(lookbackDays in 1..365)
+    require(lookaheadDays in 0..36500)
     val earliest = now.minus(lookbackDays.toLong(), ChronoUnit.DAYS)
+    val latestExclusive = displayEndExclusive(now, lookaheadDays, phoneZone)
     val events = mutableListOf<CalendarEvent>()
     var eventPage: String? = null
     do {
@@ -73,7 +87,7 @@ internal suspend fun fetchRecentEvents(
             .appendPath(primaryCalendarId)
             .appendPath("events")
             .appendQueryParameter("timeMin", earliest.toString())
-            .appendQueryParameter("timeMax", now.plusSeconds(1).toString())
+            .appendQueryParameter("timeMax", latestExclusive.toString())
             .appendQueryParameter("singleEvents", "true")
             .appendQueryParameter("showDeleted", "false")
             .appendQueryParameter("maxResults", "2500")
@@ -83,7 +97,7 @@ internal suspend fun fetchRecentEvents(
         val response = getCalendarJson(url, accessToken)
         // timeMin filters by end time, so check the start time ourselves.
         events += parseCalendarPage(response, primaryCalendarId)
-            .filter { isInPastWindow(it.start, now, lookbackDays) }
+            .filter { isInDisplayWindow(it.start, now, lookbackDays, lookaheadDays, phoneZone) }
         eventPage = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (eventPage != null)
     sortCalendarEvents(events)
@@ -316,6 +330,18 @@ internal fun isInPastWindow(start: Instant, now: Instant, lookbackDays: Int): Bo
     require(lookbackDays in 1..365)
     return start >= now.minus(lookbackDays.toLong(), ChronoUnit.DAYS) && start <= now
 }
+
+internal fun displayEndExclusive(now: Instant, lookaheadDays: Int, phoneZone: ZoneId): Instant {
+    require(lookaheadDays in 0..36500)
+    return now.atZone(phoneZone).toLocalDate().plusDays(lookaheadDays.toLong() + 1)
+        .atStartOfDay(phoneZone).toInstant()
+}
+
+internal fun isInDisplayWindow(
+    start: Instant, now: Instant, lookbackDays: Int, lookaheadDays: Int,
+    phoneZone: ZoneId = ZoneId.systemDefault()
+): Boolean = start >= now.minus(lookbackDays.toLong(), ChronoUnit.DAYS) &&
+    start < displayEndExclusive(now, lookaheadDays, phoneZone)
 
 private fun movedDateTime(instant: Instant, zone: ZoneId, original: JSONObject): JSONObject =
     JSONObject().put("dateTime", instant.atZone(zone).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))

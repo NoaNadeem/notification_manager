@@ -1,4 +1,4 @@
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow } from "./model.js";
 
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
@@ -30,15 +30,15 @@ export async function primaryCalendar(interactive = false) {
   return googleRequest(`${CALENDAR}/primary`, {}, interactive);
 }
 
-export async function recentEvents(calendarId, lookbackDays) {
+export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0) {
   const now = Date.now();
-  const first = now - lookbackDays * 86_400_000;
+  const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays);
   const all = [];
   let pageToken;
   do {
     const url = new URL(`${CALENDAR}/${encodeURIComponent(calendarId)}/events`);
     url.searchParams.set("timeMin", new Date(first).toISOString());
-    url.searchParams.set("timeMax", new Date(now + 1000).toISOString());
+    url.searchParams.set("timeMax", new Date(lastExclusive).toISOString());
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("showDeleted", "false");
     url.searchParams.set("maxResults", "2500");
@@ -49,7 +49,7 @@ export async function recentEvents(calendarId, lookbackDays) {
     }
     pageToken = page.nextPageToken;
   } while (pageToken);
-  return { events: all, now, first };
+  return { events: all, now, first, lastExclusive };
 }
 
 export async function searchPrimaryCalendar(calendarId, query) {

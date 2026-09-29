@@ -27,9 +27,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8p
 .tile { min-width: 37px; height: 31px; padding: 0 7px; border: 0; border-radius: 6px; color: #f0f1f2; background: #3a4049; font-size: 12px; font-weight: 700; }
 .tile.primary { background: #4a515b; }
 .tile.more { font-size: 19px; line-height: 1; }
-.flyout { display: none; position: relative; margin-top: 9px; padding: 8px; border-radius: 7px; background: #30343b; }
-.flyout::before { content: ""; position: absolute; height: 9px; top: -9px; left: 0; right: 0; }
-.event:has(.more:hover) .flyout, .event:has(.more:focus) .flyout, .event.flyout-open .flyout, .flyout:hover, .flyout:focus-within { display: block; }
+.flyout { display: none; margin-top: 9px; padding: 8px; border-radius: 7px; background: #30343b; }
+.event.flyout-open .flyout { display: block; }
 .tile-row { display: flex; gap: 6px; margin: 3px 0; }
 .tile-row .tile { flex: 1; }
 .tile:disabled { opacity: .28; cursor: default; }

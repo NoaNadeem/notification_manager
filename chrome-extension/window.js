@@ -15,6 +15,18 @@ let events = [];
 let dismissals = [];
 let loading = false;
 let dateTarget;
+let openFlyoutRow;
+
+function showFlyout(row) {
+  if (openFlyoutRow && openFlyoutRow !== row) openFlyoutRow.classList.remove("flyout-open");
+  openFlyoutRow = row;
+  row.classList.add("flyout-open");
+}
+
+function hideFlyout(row) {
+  row.classList.remove("flyout-open");
+  if (openFlyoutRow === row) openFlyoutRow = undefined;
+}
 
 const button = (label, title, action, className = "tile") => {
   const element = document.createElement("button");
@@ -62,6 +74,7 @@ async function load(interactive = false) {
 }
 
 function render() {
+  openFlyoutRow = undefined;
   list.replaceChildren();
   const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
   const visible = events.filter((event) => !dismissed.has(dismissalKey(event.id, eventStartMs(event, calendarZone))));
@@ -111,8 +124,14 @@ function renderEvent(event) {
   const actions = document.createElement("div");
   actions.className = "actions";
   actions.append(button("1D", "Move to 24 hours from now", () => void applyMove(event, { days: 1 }, row), "tile primary"));
-  const more = button("⋯", "More move and dismiss options", () => row.classList.toggle("flyout-open"), "tile more");
+  const more = button("⋯", "More move and dismiss options", () => showFlyout(row), "tile more");
   more.setAttribute("aria-haspopup", "true");
+  more.addEventListener("pointerenter", () => showFlyout(row));
+  more.addEventListener("focus", () => showFlyout(row));
+  row.addEventListener("pointerleave", () => hideFlyout(row));
+  row.addEventListener("focusout", (event) => {
+    if (!row.contains(event.relatedTarget)) hideFlyout(row);
+  });
   actions.append(more);
   top.append(details, actions);
   row.append(top);

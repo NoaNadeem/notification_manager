@@ -6,7 +6,7 @@ test("opening an event activates its tab and focuses a normal Chrome window", as
   const calls = [];
   const api = {
     windows: {
-      getLastFocused: async (options) => { calls.push(["last", options]); return { id: 12, type: "normal" }; },
+      getLastFocused: async (options) => { calls.push(["last", options]); return { id: 12, type: "normal", incognito: false }; },
       update: async (id, options) => { calls.push(["focus", id, options]); }
     },
     tabs: { create: async (options) => { calls.push(["tab", options]); } }
@@ -30,5 +30,39 @@ test("opening an event creates a focused browser window when only the manager po
     tabs: { create: async () => { throw new Error("Unexpected tab"); } }
   };
   await openInBrowser(api, "https://calendar.google.com/event");
-  assert.deepEqual(calls, [{ url: "https://calendar.google.com/event", type: "normal", focused: true }]);
+  assert.deepEqual(calls, [{ url: "https://calendar.google.com/event", type: "normal", focused: true, incognito: false }]);
+});
+
+test("opening an event skips the last focused Incognito window", async () => {
+  const calls = [];
+  const api = {
+    windows: {
+      getLastFocused: async () => ({ id: 7, type: "normal", incognito: true }),
+      getAll: async () => [
+        { id: 7, type: "normal", incognito: true, focused: true },
+        { id: 12, type: "normal", incognito: false, focused: false }
+      ],
+      update: async (id, options) => { calls.push(["focus", id, options]); }
+    },
+    tabs: { create: async (options) => { calls.push(["tab", options]); } }
+  };
+  await openInBrowser(api, "https://calendar.google.com/event");
+  assert.deepEqual(calls, [
+    ["tab", { windowId: 12, url: "https://calendar.google.com/event", active: true }],
+    ["focus", 12, { focused: true }]
+  ]);
+});
+
+test("opening an event makes a regular window if only Incognito windows exist", async () => {
+  const calls = [];
+  const api = {
+    windows: {
+      getLastFocused: async () => ({ id: 7, type: "normal", incognito: true }),
+      getAll: async () => [{ id: 7, type: "normal", incognito: true }],
+      create: async (options) => { calls.push(options); }
+    },
+    tabs: { create: async () => { throw new Error("Unexpected tab"); } }
+  };
+  await openInBrowser(api, "https://calendar.google.com/event");
+  assert.deepEqual(calls, [{ url: "https://calendar.google.com/event", type: "normal", focused: true, incognito: false }]);
 });

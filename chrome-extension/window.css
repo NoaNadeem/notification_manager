@@ -36,7 +36,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8p
 .event.busy { opacity: .6; pointer-events: none; }
 footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #32363d; padding: 10px 20px; }
 select { background: #343941; border: 0; border-radius: 5px; color: #f4f4f4; padding: 4px; }
-#date-picker { position: fixed; left: -1000px; bottom: 0; }
+#calendar-dialog input { width:auto; min-width:150px; }
 
 /* Desktop parity: menu, search, theme, and a ribbon that can open above the last row. */
 :root { --bg:#17191d; --panel:#22262c; --panel-strong:#30343b; --border:#32363d; --text:#f2f3f5; --muted:#a8adb7; --tile:#3a4049; --tile-main:#4a515b; --tile-hover:#555d68; --link:#9cb8e9; --error:#ffaaa6; --danger:#594343; }

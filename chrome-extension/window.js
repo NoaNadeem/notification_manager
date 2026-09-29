@@ -3,6 +3,7 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
+import { openInBrowser } from "./open.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -13,6 +14,7 @@ const accountClock = $("#account-clock");
 const count = $("#count");
 const connectPanel = $("#connect-panel");
 const datePicker = $("#date-picker");
+const calendarDialog = $("#calendar-dialog");
 const menu = $("#menu");
 const menuToggle = $("#menu-toggle");
 const searchQueryInput = $("#search-query");
@@ -122,7 +124,7 @@ function openEventLink(url) {
       showError("Google Calendar did not provide a valid event link.");
       return;
     }
-    await chrome.tabs.create({ url });
+    await openInBrowser(chrome, url);
   })().catch((error) => showError(`Could not open event: ${error.message}`));
 }
 
@@ -271,7 +273,8 @@ function renderSearchFooter() {
       location.title = event.location;
       location.addEventListener("click", (click) => {
         click.preventDefault();
-        void chrome.tabs.create({ url: location.href });
+        void openInBrowser(chrome, location.href)
+          .catch((error) => showError(`Could not open location: ${error.message}`));
       });
       row.append(location);
     }
@@ -322,7 +325,7 @@ function renderEvent(event) {
     location.href = locationHref(event.location);
     location.addEventListener("click", (click) => {
       click.preventDefault();
-      void undo.commit().then(() => chrome.tabs.create({ url: location.href }))
+      void undo.commit().then(() => openInBrowser(chrome, location.href))
         .catch((error) => showError(`Could not open location: ${error.message}`));
     });
     details.append(location);
@@ -367,8 +370,9 @@ function renderEvent(event) {
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";
-    if (datePicker.showPicker) datePicker.showPicker();
-    else datePicker.click();
+    $("#calendar-apply").disabled = true;
+    calendarDialog.showModal();
+    datePicker.focus();
   }));
   topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   for (const days of [2, 3, 4, 7]) {
@@ -579,16 +583,22 @@ for (const choice of document.querySelectorAll("[data-days]")) {
 }
 $("#lookback-apply").addEventListener("click", () => void changeLookback(Number($("#custom-lookback").value)));
 $("#lookback-cancel").addEventListener("click", () => lookbackDialog.close());
-datePicker.addEventListener("change", () => {
-  if (datePicker.value && dateTarget) void stageAction(dateTarget, "move", { date: datePicker.value });
-  dateTarget = undefined;
+datePicker.addEventListener("input", () => { $("#calendar-apply").disabled = !datePicker.value; });
+$("#calendar-cancel").addEventListener("click", () => calendarDialog.close());
+$("#calendar-apply").addEventListener("click", () => {
+  if (!datePicker.value || !dateTarget) return;
+  const event = dateTarget;
+  const date = datePicker.value;
+  calendarDialog.close();
+  void stageAction(event, "move", { date });
 });
+calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
 $("#connect").addEventListener("click", () => void load(true));
 window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {
   updateHeaderClock();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 
 for (const [field, label] of Object.entries(skinFields)) {

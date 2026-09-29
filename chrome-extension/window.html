@@ -58,7 +58,11 @@
     <p id="skin-error" class="skin-error" role="status"></p>
     <div class="dialog-actions"><button id="skins-cancel">Cancel</button><button id="skins-apply">Apply</button></div>
   </dialog>
-  <input id="date-picker" type="date" aria-label="Move event to date">
+  <dialog id="calendar-dialog">
+    <h2>Move event to date</h2>
+    <label>New date <input id="date-picker" type="date" aria-label="Move event to date"></label>
+    <div class="dialog-actions"><button id="calendar-cancel">Cancel</button><button id="calendar-apply" disabled>Move to date</button></div>
+  </dialog>
   <script type="module" src="window.js"></script>
 </body>
 </html>

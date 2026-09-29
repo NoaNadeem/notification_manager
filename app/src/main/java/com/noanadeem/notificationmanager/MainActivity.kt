@@ -243,11 +243,20 @@ private fun CalendarLoginScreen(
     var driveError by remember { mutableStateOf<String?>(null) }
     var currentAccessToken by remember { mutableStateOf<String?>(null) }
     var storageEstimate by remember { mutableStateOf<String?>(null) }
+    var storageEstimateRequest by remember { mutableStateOf(0) }
     var calendarSearchQuery by remember { mutableStateOf<String?>(null) }
     var calendarSearchResults by remember { mutableStateOf<CalendarSearchResults?>(null) }
     var calendarSearchLoading by remember { mutableStateOf(false) }
     var calendarSearchError by remember { mutableStateOf<String?>(null) }
     var calendarSearchRequest by remember { mutableStateOf(0) }
+
+    LaunchedEffect(storageEstimate, storageEstimateRequest) {
+        val message = storageEstimate
+        if (message != null && message != "Counting events from the past year…") {
+            delay(30_000L)
+            if (storageEstimate == message) storageEstimate = null
+        }
+    }
 
     fun searchCalendar(query: String) {
         val term = query.trim()
@@ -591,6 +600,8 @@ private fun CalendarLoginScreen(
     }
 
     fun estimateStorage() {
+        storageEstimateRequest += 1
+        val request = storageEstimateRequest
         val token = currentAccessToken
         if (token == null) {
             storageEstimate = "Reconnect Calendar before estimating storage."
@@ -598,7 +609,7 @@ private fun CalendarLoginScreen(
         }
         storageEstimate = "Counting events from the past year…"
         coroutineScope.launch {
-            storageEstimate = try {
+            val result = try {
                 val primaryId = verifyCalendarAccess(token)
                 val events = fetchRecentEvents(token, primaryId, 365)
                 val bytes = estimateFullYearDismissalBytes(events)
@@ -607,10 +618,13 @@ private fun CalendarLoginScreen(
             } catch (e: Exception) {
                 "Could not estimate storage: ${e.message}"
             }
+            if (request == storageEstimateRequest) storageEstimate = result
         }
     }
 
     fun logout() {
+        storageEstimateRequest += 1
+        storageEstimate = null
         loading = true
         errorMessage = null
         val selectedAccount = accountName

@@ -42,12 +42,30 @@ let searchActive = false;
 let remoteSearch;
 let remoteSearchRequest = 0;
 let clockTimer;
+let storageEstimateTimer;
+let storageEstimateRequest = 0;
+let storageEstimateMessage;
+let storageEstimateNode;
 const committing = new Set();
 
 const undo = new UndoController(commitAction, () => render());
 
 function showError(message) { notice.textContent = message; }
 function showInfo(message) { info.textContent = message; }
+function showStorageEstimate(message, isError = false, expires = true) {
+  clearTimeout(storageEstimateTimer);
+  if (storageEstimateNode?.textContent === storageEstimateMessage) storageEstimateNode.textContent = "";
+  storageEstimateNode = isError ? notice : info;
+  storageEstimateMessage = message;
+  storageEstimateNode.textContent = message;
+  if (expires) {
+    storageEstimateTimer = setTimeout(() => {
+      if (storageEstimateNode?.textContent === storageEstimateMessage) storageEstimateNode.textContent = "";
+      storageEstimateMessage = undefined;
+      storageEstimateNode = undefined;
+    }, 30_000);
+  }
+}
 function eventKey(event) { return dismissalKey(event.id, eventStartMs(event, calendarZone)); }
 
 function updateHeaderClock() {
@@ -438,6 +456,8 @@ async function changeLookback(days) {
 }
 
 async function logout() {
+  storageEstimateRequest++;
+  clearTimeout(storageEstimateTimer);
   await undo.commit();
   try {
     await chrome.identity.clearAllCachedAuthTokens();
@@ -480,10 +500,11 @@ $("#lookback-open").addEventListener("click", () => {
 });
 $("#estimate-storage").addEventListener("click", () => {
   closeMenu();
+  const request = ++storageEstimateRequest;
   void (async () => {
     await undo.commit();
     if (!account) throw new Error("Reconnect Calendar before estimating storage.");
-    showInfo("Counting events from the past year…");
+    showStorageEstimate("Counting events from the past year…", false, false);
     const result = await recentEvents(account, 365);
     const now = Date.now();
     const eventsInYear = result.events.filter((event) => {
@@ -492,8 +513,10 @@ $("#estimate-storage").addEventListener("click", () => {
     });
     const records = eventsInYear.map((event) => ({ eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: now }));
     const bytes = new TextEncoder().encode(JSON.stringify({ version: 1, records })).byteLength;
-    showInfo(`${eventsInYear.length} events in the past year. If every one were dismissed, the Drive file would be ${bytes} bytes (${(bytes / 1024).toFixed(1)} KiB).`);
-  })().catch((error) => showError(`Could not estimate storage: ${error.message}`));
+    if (request === storageEstimateRequest) showStorageEstimate(`${eventsInYear.length} events in the past year. If every one were dismissed, the Drive file would be ${bytes} bytes (${(bytes / 1024).toFixed(1)} KiB).`);
+  })().catch((error) => {
+    if (request === storageEstimateRequest) showStorageEstimate(`Could not estimate storage: ${error.message}`, true);
+  });
 });
 $("#theme-toggle").addEventListener("click", () => {
   closeMenu();

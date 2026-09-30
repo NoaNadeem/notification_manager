@@ -1524,7 +1524,7 @@ private fun CalendarConnectedScreen(
                 Text("Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}")
                 Text("Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}")
                 syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
-                Text("Recent actions is a 30-day log on this device of moves, dismissals, Undo, and failures.",
+                Text("Recent actions is a 3-day log on this device of moves, dismissals, Undo, and failures.",
                     style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { showHistory = true }) {
                     Text("View recent actions")
@@ -1536,10 +1536,10 @@ private fun CalendarConnectedScreen(
     if (showHistory) {
         val context = LocalContext.current
         var copied by remember { mutableStateOf(false) }
-        val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - 30L * 86_400_000L }
+        val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - HISTORY_MILLIS }
             .asReversed()
         val export = buildString {
-            appendLine("Notification Manager action log (Android, last 30 days)")
+            appendLine("Notification Manager action log (Android, last 3 days)")
             if (entries.isEmpty()) append("No actions.")
             entries.forEach { entry ->
                 appendLine(JSONObject().put("at", Instant.ofEpochMilli(entry.at).toString())

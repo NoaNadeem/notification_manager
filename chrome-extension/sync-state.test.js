@@ -13,9 +13,11 @@ test("offline, pending, stale, and failed synchronization remain distinguishable
   assert.match(syncDetail({ ...fresh, remoteNewer: true, conflictResolved: true, history: [] }, now), /Yes, merged/);
 });
 
-test("local history keeps only thirty days", () => {
+test("local history keeps three days and caps heavy usage", () => {
   const now = 40 * 86_400_000;
-  const old = { at: now - 31 * 86_400_000 };
+  const old = { at: now - 4 * 86_400_000 };
+  const withinWindow = { at: now - 2 * 86_400_000, status: "synced" };
   const recent = { at: now, status: "undone" };
-  assert.deepEqual(updateHistory([old], recent, now), [recent]);
+  assert.deepEqual(updateHistory([old, withinWindow], recent, now), [withinWindow, recent]);
+  assert.equal(updateHistory(Array.from({ length: 500 }, (_, id) => ({ at: now, id })), recent, now).length, 500);
 });

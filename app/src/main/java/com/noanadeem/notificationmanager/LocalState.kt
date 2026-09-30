@@ -7,7 +7,7 @@ import java.time.ZoneId
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val HISTORY_MILLIS = 30L * 86_400_000L
+internal const val HISTORY_MILLIS = 3L * 86_400_000L
 
 internal data class ActionEntry(
     val action: String,
@@ -59,14 +59,14 @@ internal class LocalStateStore(context: Context) {
                     val row = rows.getJSONObject(index)
                     ActionEntry(row.getString("action"), row.getString("eventId"), row.getLong("start"),
                         row.getLong("at"), row.getString("status"), row.optString("error").takeIf { it.isNotBlank() })
-                }.filter { it.at >= System.currentTimeMillis() - HISTORY_MILLIS }
+                }.filter { it.at >= System.currentTimeMillis() - HISTORY_MILLIS }.takeLast(500)
             )
         }.getOrDefault(LocalSyncState())
     }
 
     fun writeSync(account: String, state: LocalSyncState) {
         val rows = JSONArray()
-        state.history.filter { it.at >= System.currentTimeMillis() - HISTORY_MILLIS }.forEach { entry ->
+        state.history.filter { it.at >= System.currentTimeMillis() - HISTORY_MILLIS }.takeLast(500).forEach { entry ->
             rows.put(JSONObject().put("action", entry.action).put("eventId", entry.eventId)
                 .put("start", entry.start).put("at", entry.at).put("status", entry.status)
                 .put("error", entry.error ?: ""))

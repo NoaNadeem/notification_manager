@@ -5,7 +5,7 @@ import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
-import { updateHistory, syncHeadline, syncDetail } from "./sync-state.js";
+import { updateHistory, syncHeadline, syncDetail, HISTORY_MS } from "./sync-state.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -81,7 +81,7 @@ function renderWindowLabel() {
 }
 
 async function saveSyncState() {
-  syncState.history = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).slice(-500);
+  syncState.history = (syncState.history || []).filter((entry) => entry.at >= Date.now() - HISTORY_MS).slice(-500);
   if (account) await chrome.storage.local.set({ [`syncState:${account.toLowerCase()}`]: syncState });
   renderSync();
 }
@@ -709,8 +709,8 @@ $("#sync-close").addEventListener("click", () => syncDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 $("#history-open").addEventListener("click", () => {
-  const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).toReversed();
-  $("#history-log").value = "Notification Manager action log (Chrome extension, last 30 days)\n" +
+  const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - HISTORY_MS).toReversed();
+  $("#history-log").value = "Notification Manager action log (Chrome extension, last 3 days)\n" +
     (entries.length ? entries.map((entry) => JSON.stringify({
       at: new Date(entry.at).toISOString(), action: entry.action, eventId: entry.eventId,
       eventStart: Number.isFinite(entry.start) ? new Date(entry.start).toISOString() : null,

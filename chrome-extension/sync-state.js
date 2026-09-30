@@ -1,4 +1,4 @@
-const HISTORY_MS = 30 * 86_400_000;
+export const HISTORY_MS = 3 * 86_400_000;
 
 export function updateHistory(history, entry, now = Date.now()) {
   return [...history, entry].filter((item) => item.at >= now - HISTORY_MS).slice(-500);
@@ -19,6 +19,6 @@ export function syncDetail(state, now = Date.now()) {
     `Local-only dismissals: ${state.pending?.length || 0}\n` +
     `Newer state from another device: ${state.remoteNewer ? "Yes, merged" : "No new state detected"}\n` +
     `Conflict resolved: ${state.conflictResolved ? "Yes, dismissal union preserved" : "None detected"}\n` +
-    `History: ${(state.history || []).filter((item) => item.at >= now - HISTORY_MS).length} actions (30 days)` +
+    `History: ${(state.history || []).filter((item) => item.at >= now - HISTORY_MS).length} actions (3 days)` +
     (state.error ? `\nLast error: ${state.error}` : "");
 }

@@ -15,10 +15,13 @@ class LocalSyncStateTest {
     }
 
     @Test
-    fun localHistoryDropsEntriesOlderThanThirtyDays() {
+    fun localHistoryKeepsThreeDaysAndCapsHeavyUsage() {
         val now = 40L * 86_400_000L
-        val old = ActionEntry("dismiss", "old", 0, now - 31L * 86_400_000L, "synced")
+        val old = ActionEntry("dismiss", "old", 0, now - 4L * 86_400_000L, "synced")
+        val withinWindow = ActionEntry("dismiss", "within", 0, now - 2L * 86_400_000L, "synced")
         val recent = ActionEntry("move", "recent", 1, now, "undone")
-        assertEquals(listOf(recent), LocalSyncState(history = listOf(old)).addHistory(recent, now).history)
+        assertEquals(listOf(withinWindow, recent),
+            LocalSyncState(history = listOf(old, withinWindow)).addHistory(recent, now).history)
+        assertEquals(500, LocalSyncState(history = List(500) { recent }).addHistory(recent, now).history.size)
     }
 }

@@ -709,19 +709,28 @@ $("#sync-close").addEventListener("click", () => syncDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 $("#history-open").addEventListener("click", () => {
-  syncDialog.close();
-  const container = $("#history-list");
-  container.replaceChildren();
   const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).toReversed();
-  if (!entries.length) container.textContent = "No actions in the last 30 days.";
-  for (const entry of entries) {
-    const item = document.createElement("p");
-    item.textContent = `${new Date(entry.at).toLocaleString()} · ${entry.action} · ${entry.eventId} · ${entry.status}${entry.error ? ` · ${entry.error}` : ""}`;
-    container.append(item);
-  }
+  $("#history-log").value = "Notification Manager action log (Chrome extension, last 30 days)\n" +
+    (entries.length ? entries.map((entry) => JSON.stringify({
+      at: new Date(entry.at).toISOString(), action: entry.action, eventId: entry.eventId,
+      eventStart: Number.isFinite(entry.start) ? new Date(entry.start).toISOString() : null,
+      status: entry.status, error: entry.error || null
+    })).join("\n") : "No actions.");
+  $("#history-copy-status").textContent = "";
   $("#history-dialog").showModal();
 });
 $("#history-close").addEventListener("click", () => $("#history-dialog").close());
+$("#history-copy").addEventListener("click", async () => {
+  const log = $("#history-log");
+  try {
+    await navigator.clipboard.writeText(log.value);
+    $("#history-copy-status").textContent = "Copied to clipboard.";
+  } catch {
+    log.focus();
+    log.select();
+    $("#history-copy-status").textContent = "Copy failed. The log is selected so you can copy it manually.";
+  }
+});
 for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
   const choice = button(preset.label, preset.label, () => void (async () => {
     await undo.commit();

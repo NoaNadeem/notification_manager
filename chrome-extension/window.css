@@ -102,7 +102,8 @@ dialog button[data-days],dialog button[data-ahead-days],#preset-choices button,#
 #presets-dialog,#sync-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #lookahead-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #history-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
-#history-list,#sync-detail { overflow-wrap:anywhere; }
+#history-log { display:block; box-sizing:border-box; width:100%; height:min(52vh,370px); min-height:160px; padding:9px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; overflow:auto; resize:vertical; font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+#sync-detail { overflow-wrap:anywhere; }
 dialog label { display:block; margin-top:12px; }
 dialog input { width:95px; margin-left:8px; padding:5px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .dialog-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:14px; }

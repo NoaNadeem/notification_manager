@@ -61,8 +61,9 @@
   </dialog>
   <dialog id="history-dialog">
     <h2>Recent actions</h2>
-    <div id="history-list"></div>
-    <div class="dialog-actions"><button id="history-close">Close</button></div>
+    <textarea id="history-log" readonly aria-label="Recent actions log"></textarea>
+    <p id="history-copy-status" class="dialog-help" role="status"></p>
+    <div class="dialog-actions"><button id="history-copy">Copy log</button><button id="history-close">Back</button></div>
   </dialog>
   <dialog id="lookback-dialog">
     <h2>Show past events</h2>

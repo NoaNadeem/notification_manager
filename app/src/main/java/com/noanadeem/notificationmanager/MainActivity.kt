@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.accounts.Account
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -1510,7 +1512,7 @@ private fun CalendarConnectedScreen(
         }
     }
 
-    if (showSyncDetails) AlertDialog(
+    if (showSyncDetails && !showHistory) AlertDialog(
         onDismissRequest = { showSyncDetails = false },
         title = { Text("Sync details") },
         text = {
@@ -1524,30 +1526,48 @@ private fun CalendarConnectedScreen(
                 syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
                 Text("Recent actions is a 30-day log on this device of moves, dismissals, Undo, and failures.",
                     style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { showSyncDetails = false; showHistory = true }) {
+                TextButton(onClick = { showHistory = true }) {
                     Text("View recent actions")
                 }
             }
         },
         confirmButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
     )
-    if (showHistory) AlertDialog(
-        onDismissRequest = { showHistory = false },
-        title = { Text("Recent actions") },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - 30L * 86_400_000L }
-                    .takeLast(15).reversed()
-                if (entries.isEmpty()) Text("No actions in the last 30 days.")
-                entries.forEach { entry ->
-                    Text("${formatSyncTime(entry.at)} · ${entry.action} · ${entry.eventId} · ${entry.status}" +
-                        (entry.error?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(vertical = 4.dp))
-                }
+    if (showHistory) {
+        val context = LocalContext.current
+        var copied by remember { mutableStateOf(false) }
+        val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - 30L * 86_400_000L }
+            .asReversed()
+        val export = buildString {
+            appendLine("Notification Manager action log (Android, last 30 days)")
+            if (entries.isEmpty()) append("No actions.")
+            entries.forEach { entry ->
+                appendLine(JSONObject().put("at", Instant.ofEpochMilli(entry.at).toString())
+                    .put("action", entry.action).put("eventId", entry.eventId)
+                    .put("eventStart", Instant.ofEpochMilli(entry.start).toString())
+                    .put("status", entry.status).put("error", entry.error).toString())
             }
-        },
-        confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Close") } }
-    )
+        }
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("Recent actions") },
+            text = {
+                SelectionContainer {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(export, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Notification Manager action log", export))
+                    copied = true
+                }) { Text(if (copied) "Copied" else "Copy log") }
+            },
+            dismissButton = { TextButton(onClick = { showHistory = false }) { Text("Back") } }
+        )
+    }
     if (showPresets) AlertDialog(
         onDismissRequest = { showPresets = false },
         title = { Text("Review window") },

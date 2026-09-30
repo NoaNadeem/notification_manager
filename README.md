@@ -6,6 +6,8 @@ The app caches the last loaded event list and dismissal keys on the phone for of
 
 Pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** is also available in the three-dot menu.
 
+The pencil opens the event in the Google Calendar Android app when it is installed. From the event details, tap Google Calendar's Edit control. If the app cannot handle the event link, the pencil falls back to the browser editor.
+
 The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.
 
 ## Install development updates over Wi-Fi

@@ -12,6 +12,9 @@ test("pointer pull refreshes only after release beyond threshold at the top", ()
   assert.equal(gesture.end(1, true), false);
   gesture.start(1, 100, true);
   assert.equal(gesture.move(1, 175, true), 75);
+  assert.equal(gesture.end(1, true), false);
+  gesture.start(1, 100, true);
+  assert.equal(gesture.move(1, 205, true), 105);
   assert.equal(gesture.end(1, true), true);
   assert.equal(refreshes, 1);
 });
@@ -22,11 +25,13 @@ test("wheel overscroll refreshes once per pull and resets for the next pull", ()
   const gesture = new PullRefreshGesture(() => {}, () => { refreshes++; }, () => now);
   assert.equal(gesture.wheel(-35, true), false);
   now += 50;
-  assert.equal(gesture.wheel(-40, true), true);
+  assert.equal(gesture.wheel(-40, true), false);
+  now += 50;
+  assert.equal(gesture.wheel(-30, true), true);
   assert.equal(gesture.wheel(-80, true), false);
   assert.equal(refreshes, 1);
   gesture.wheel(10, true);
-  assert.equal(gesture.wheel(-70, true), true);
+  assert.equal(gesture.wheel(-100, true), true);
   assert.equal(refreshes, 2);
 });
 

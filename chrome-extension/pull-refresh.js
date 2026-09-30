@@ -1,5 +1,5 @@
 export class PullRefreshGesture {
-  constructor(onProgress, onRefresh, now = () => Date.now(), threshold = 70) {
+  constructor(onProgress, onRefresh, now = () => Date.now(), threshold = 100) {
     this.onProgress = onProgress;
     this.onRefresh = onRefresh;
     this.now = now;

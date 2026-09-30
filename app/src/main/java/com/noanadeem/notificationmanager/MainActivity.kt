@@ -462,17 +462,15 @@ private fun CalendarLoginScreen(
                     currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before opening this event."),
                     event
                 )
-                val targetLink = calendarEventOpenLink(link, edit = true)
+                val calendarLink = calendarEventOpenLink(link, edit = false)
                     ?: throw IllegalStateException("Google Calendar returned an invalid event link.")
-                val uri = Uri.parse(targetLink)
                 try {
-                    if (targetLink != link) {
-                        activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.android.chrome"))
-                    } else {
-                        activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.calendar"))
-                    }
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(calendarLink))
+                        .setPackage("com.google.android.calendar"))
                 } catch (_: ActivityNotFoundException) {
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+                    val webEditLink = calendarEventOpenLink(link, edit = true) ?: calendarLink
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webEditLink))
+                        .addCategory(Intent.CATEGORY_BROWSABLE))
                 }
                 actionError = null
             } catch (e: Exception) {
@@ -1278,7 +1276,7 @@ private fun CalendarConnectedScreen(
                             )
                             else if (event.isRecurring) MoveTile(
                                 label = "✎",
-                                description = "Edit recurring occurrence in Google Calendar",
+                                description = "Open recurring occurrence in Google Calendar to edit",
                                 enabled = true,
                                 modifier = Modifier.size(44.dp),
                                 onClick = { onOpenEvent(event) }

@@ -26,6 +26,15 @@ export function calendarEditUrl(htmlLink) {
   } catch { return null; }
 }
 
+export function calendarEventAction(event, kind = "view") {
+  if (kind !== "view" && kind !== "edit") throw new Error("Unsupported Calendar action.");
+  try {
+    const view = new URL(event?.htmlLink);
+    if (view.protocol !== "https:" || !["www.google.com", "calendar.google.com"].includes(view.hostname)) return null;
+    return { kind, url: kind === "edit" ? calendarEditUrl(view.href) || view.href : view.href };
+  } catch { return null; }
+}
+
 export function createOpenGuard(open, cooldownMs = 8_000, now = () => Date.now()) {
   const openedAt = new Map();
   const pending = new Set();

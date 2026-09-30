@@ -14,7 +14,9 @@ Fixture matrix for both test suites:
 | Spring-forward or fall-back day | Next local midnight remains the boundary |
 | Wednesday end-of-week preset | Monday 00:00 through Thursday 00:00 |
 | All-day with exclusive end | Keeps the same number of dates when moved |
+| All-day event in another Calendar time zone | Age begins at midnight in that Calendar's zone; display order uses device-local date |
 | Recurring instances with shared parent | Moving either is rejected; dismissing one leaves the other |
+| Recurring exception shifted in Google Calendar | Treats its current start as the dismissal key; a later start change can make it reappear |
 | One-hour or longer event; external attendee | Highlighted and included by the real-event filter |
 | Search on a primary calendar with shared calendars visible | Only the authenticated primary calendar ID is queried |
 

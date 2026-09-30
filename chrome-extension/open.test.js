@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEditUrl, calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
+
+test("title and pencil share validated Calendar URL rules and editor fallback", () => {
+  const event = { htmlLink: "https://www.google.com/calendar/event?eid=YWJj" };
+  assert.deepEqual(calendarEventAction(event), { kind: "view", url: event.htmlLink });
+  assert.deepEqual(calendarEventAction(event, "edit"), {
+    kind: "edit", url: "https://calendar.google.com/calendar/u/0/r/eventedit/YWJj"
+  });
+  const withoutId = { htmlLink: "https://calendar.google.com/calendar/event/123" };
+  assert.equal(calendarEventAction(withoutId, "edit").url, withoutId.htmlLink);
+  assert.equal(calendarEventAction({ htmlLink: "https://evil.example/calendar?eid=YWJj" }), null);
+  assert.equal(calendarEventAction({ htmlLink: "http://calendar.google.com/calendar?eid=YWJj" }), null);
+});
 
 test("pencil targets Google's edit route when the event link has an eid", () => {
   assert.equal(calendarEditUrl("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"),

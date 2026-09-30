@@ -11,10 +11,33 @@ test("Undo cancels a pending move without committing it", async () => {
     return 1;
   }, () => { callback = null; });
   await controller.stage({ type: "move", option: { days: 1 } });
+  assert.equal(controller.state.kind, "Pending");
   await controller.undo();
+  assert.equal(controller.state.kind, "Idle");
   assert.equal(controller.current, null);
   assert.equal(callback, null);
   assert.deepEqual(commits, []);
+});
+
+test("undo lifecycle records committing and failed states without leaving a stale Undo action", async () => {
+  const states = [];
+  let release;
+  const wait = new Promise((resolve) => { release = resolve; });
+  const controller = new UndoController(async () => {
+    states.push(controller.state.kind);
+    await wait;
+    return false;
+  }, () => {}, () => 1, () => {});
+  await controller.stage({ type: "move", option: { days: 1 } });
+  const commit = controller.commit();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(states, ["Committing"]);
+  assert.equal(controller.current, null);
+  release();
+  await commit;
+  assert.equal(controller.state.kind, "Failed");
+  await controller.stage({ type: "dismiss" });
+  assert.equal(controller.state.kind, "Pending");
 });
 
 test("browser timer methods keep their global receiver", async () => {

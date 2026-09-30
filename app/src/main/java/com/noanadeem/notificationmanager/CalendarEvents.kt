@@ -89,6 +89,12 @@ internal fun filterLoadedEvents(events: List<CalendarEvent>, query: String): Lis
     return if (term.isEmpty()) events else events.filter { it.title.contains(term, ignoreCase = true) }
 }
 
+internal fun primaryCalendarEventsUrl(primaryCalendarId: String): String {
+    require(primaryCalendarId.isNotBlank()) { "Primary Calendar ID is required." }
+    val encoded = URLEncoder.encode(primaryCalendarId, "UTF-8").replace("+", "%20")
+    return "https://www.googleapis.com/calendar/v3/calendars/$encoded/events"
+}
+
 internal suspend fun fetchRecentEvents(
     accessToken: String,
     primaryCalendarId: String,
@@ -105,10 +111,8 @@ internal suspend fun fetchRecentEvents(
     val events = mutableListOf<CalendarEvent>()
     var eventPage: String? = null
     do {
-        val url = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
+        val url = Uri.parse(primaryCalendarEventsUrl(primaryCalendarId))
             .buildUpon()
-            .appendPath(primaryCalendarId)
-            .appendPath("events")
             .appendQueryParameter("timeMin", earliest.toString())
             .appendQueryParameter("timeMax", latestExclusive.toString())
             .appendQueryParameter("singleEvents", "true")
@@ -138,10 +142,8 @@ internal suspend fun searchPrimaryCalendar(
     var pagesRead = 0
     var truncatedPage = false
     do {
-        val url = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
+        val url = Uri.parse(primaryCalendarEventsUrl(primaryCalendarId))
             .buildUpon()
-            .appendPath(primaryCalendarId)
-            .appendPath("events")
             .appendQueryParameter("q", term)
             .appendQueryParameter("singleEvents", "true")
             .appendQueryParameter("showDeleted", "false")
@@ -174,6 +176,12 @@ internal fun calendarEditLink(htmlLink: String): String? {
     val eid = URLDecoder.decode(rawEid, "UTF-8")
     if (!eid.matches(Regex("[A-Za-z0-9_+/=-]+"))) return null
     return "https://calendar.google.com/calendar/u/0/r/eventedit/${URLEncoder.encode(eid, "UTF-8")}"
+}
+
+internal fun calendarEventOpenLink(htmlLink: String, edit: Boolean): String? {
+    val uri = runCatching { URI(htmlLink) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.host !in setOf("www.google.com", "calendar.google.com")) return null
+    return if (edit) calendarEditLink(htmlLink) ?: htmlLink else htmlLink
 }
 
 internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<CalendarEvent> {

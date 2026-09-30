@@ -39,11 +39,11 @@ export async function googleRequest(url, options = {}, interactive = false) {
   return body ? JSON.parse(body) : {};
 }
 
-export async function primaryCalendar(interactive = false) {
-  return googleRequest(`${CALENDAR}/primary`, {}, interactive);
+export async function primaryCalendar(interactive = false, request = googleRequest) {
+  return request(`${CALENDAR}/primary`, {}, interactive);
 }
 
-export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null) {
+export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null, request = googleRequest) {
   const now = Date.now();
   const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays, preset);
   const all = [];
@@ -56,7 +56,7 @@ export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, 
     url.searchParams.set("showDeleted", "false");
     url.searchParams.set("maxResults", "2500");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const page = await googleRequest(url.href);
+    const page = await request(url.href);
     for (const event of page.items || []) {
       if (event.status !== "cancelled") all.push(event);
     }
@@ -65,7 +65,7 @@ export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, 
   return { events: all, now, first, lastExclusive };
 }
 
-export async function searchPrimaryCalendar(calendarId, query) {
+export async function searchPrimaryCalendar(calendarId, query, request = googleRequest) {
   const term = query.trim();
   if (!term) throw new Error("Enter a search term.");
   const all = [];
@@ -78,7 +78,7 @@ export async function searchPrimaryCalendar(calendarId, query) {
     url.searchParams.set("showDeleted", "false");
     url.searchParams.set("maxResults", "100");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const result = await googleRequest(url.href);
+    const result = await request(url.href);
     pages++;
     all.push(...(result.items || []).filter((event) => event.status !== "cancelled").slice(0, 100 - all.length));
     pageToken = result.nextPageToken;

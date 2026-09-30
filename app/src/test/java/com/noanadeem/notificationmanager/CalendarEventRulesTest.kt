@@ -15,6 +15,14 @@ class CalendarEventRulesTest {
     private val now = Instant.parse("2026-09-28T18:00:00Z")
 
     @Test
+    fun eventEndpointIsScopedToTheVerifiedPrimaryCalendarId() {
+        val owner = primaryCalendarEventsUrl("owner@example.com")
+        assertEquals("https://www.googleapis.com/calendar/v3/calendars/owner%40example.com/events", owner)
+        assertFalse(owner.contains("shared%40example.com"))
+        assertFalse(owner.contains("calendarList"))
+    }
+
+    @Test
     fun reviewPresetsUsePhoneCalendarDaysAndMondayBoundary() {
         val pacific = ZoneId.of("America/Los_Angeles")
         val wednesday = LocalDate.parse("2026-09-30").atTime(15, 0).atZone(pacific).toInstant()
@@ -74,6 +82,11 @@ class CalendarEventRulesTest {
             calendarEditLink("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"))
         assertEquals(null, calendarEditLink("https://example.com/calendar/event?eid=YWJj"))
         assertEquals(null, calendarEditLink("https://calendar.google.com/calendar/event?eid=%2Fbad%20id"))
+        assertEquals("https://calendar.google.com/calendar/u/0/r/eventedit/YWJj",
+            calendarEventOpenLink("https://www.google.com/calendar/event?eid=YWJj", edit = true))
+        assertEquals("https://calendar.google.com/calendar/event/123",
+            calendarEventOpenLink("https://calendar.google.com/calendar/event/123", edit = true))
+        assertEquals(null, calendarEventOpenLink("https://evil.example/calendar?eid=YWJj", edit = false))
     }
 
     @Test

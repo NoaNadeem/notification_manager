@@ -129,7 +129,7 @@ private const val DARK_MODE_KEY = "dark_mode"
 
 private enum class ConnectionScreen { Checking, Disconnected, Connected, Error }
 private data class PendingMove(val event: CalendarEvent, val target: MoveTarget)
-private sealed interface UndoableAction {
+internal sealed interface UndoableAction {
     val event: CalendarEvent
     val createdAtNanos: Long
 
@@ -145,6 +145,24 @@ private sealed interface UndoableAction {
         override val createdAtNanos: Long = System.nanoTime()
     ) : UndoableAction
 }
+
+internal sealed interface UndoState {
+    data object Idle : UndoState
+    data class Pending(val action: UndoableAction) : UndoState
+    data class Committing(val action: UndoableAction) : UndoState
+    data class Failed(val action: UndoableAction, val message: String) : UndoState
+}
+
+private val UndoState.pendingAction: UndoableAction?
+    get() = (this as? UndoState.Pending)?.action
+
+internal fun UndoState.beginCommit(action: UndoableAction): UndoState =
+    if (this is UndoState.Pending && this.action == action) UndoState.Committing(action) else this
+
+internal fun UndoState.finishCommit(action: UndoableAction, error: String? = null): UndoState =
+    if (this is UndoState.Committing && this.action == action) {
+        if (error == null) UndoState.Idle else UndoState.Failed(action, error)
+    } else this
 
 private fun UndoableAction.description(): String = when (this) {
     is UndoableAction.Dismiss -> "Dismissed"
@@ -277,9 +295,9 @@ private fun CalendarLoginScreen(
     var eventsError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<PendingMove?>(null) }
-    var undoableAction by remember { mutableStateOf<UndoableAction?>(null) }
+    var undoState by remember { mutableStateOf<UndoState>(UndoState.Idle) }
     var movingEventId by remember { mutableStateOf<String?>(null) }
-    var committingMoveIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf<List<DismissalRecord>>(emptyList()) }
     var driveError by remember { mutableStateOf<String?>(null) }
     var syncState by remember { mutableStateOf(
@@ -334,12 +352,15 @@ private fun CalendarLoginScreen(
     }
 
     fun commitAction(action: UndoableAction) {
-        if (undoableAction != action) return
-        undoableAction = null
+        if (undoState.pendingAction != action) return
+        val committing = undoState.beginCommit(action)
+        if (committing !is UndoState.Committing) return
+        undoState = committing
         coroutineScope.launch {
+            var commitError: String? = null
             when (action) {
                 is UndoableAction.Move -> {
-                    committingMoveIds = committingMoveIds + action.event.id
+                    committingActionIds = committingActionIds + action.event.id
                     try {
                         val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target)
                         val now = Instant.now()
@@ -359,14 +380,16 @@ private fun CalendarLoginScreen(
                             action.event.start.toEpochMilli(), System.currentTimeMillis(), "synced")))
                     } catch (e: Exception) {
                         actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
+                        commitError = actionError
                         val selectedAccount = accountName ?: action.event.calendarId
                         saveSync(selectedAccount, syncState.copy(error = e.message ?: "Move failed").addHistory(ActionEntry("move", action.event.id,
                             action.event.start.toEpochMilli(), System.currentTimeMillis(), "failed", e.message)))
                     } finally {
-                        committingMoveIds = committingMoveIds - action.event.id
+                        committingActionIds = committingActionIds - action.event.id
                     }
                 }
                 is UndoableAction.Dismiss -> {
+                    committingActionIds = committingActionIds + action.event.id
                     val selectedAccount = accountName ?: action.event.calendarId
                     val now = Instant.now()
                     val record = DismissalRecord(action.event.id, action.event.start.toEpochMilli(), now.toEpochMilli())
@@ -401,6 +424,7 @@ private fun CalendarLoginScreen(
                                 driveError = null
                             } catch (e: Exception) {
                                 driveError = "Dismissal of “${action.event.title}” was saved on this phone, but Drive sync failed: ${e.message}"
+                                commitError = driveError
                                 saveSync(selectedAccount, syncState.copy(error = e.message ?: "Drive sync failed",
                                     history = syncState.history.map { entry ->
                                         if (entry.eventId == record.eventId && entry.start == record.eventStartMillis &&
@@ -409,31 +433,36 @@ private fun CalendarLoginScreen(
                             }
                         } ?: run {
                             driveError = "Dismissal of “${action.event.title}” was saved on this phone; reconnect to sync with Drive."
+                            commitError = driveError
                             saveSync(selectedAccount, syncState.copy(error = "Reconnect to sync with Drive"))
                         }
                     } catch (e: Exception) {
                         actionError = "Could not dismiss “${action.event.title}”: ${e.message ?: "Saving failed."}"
+                        commitError = actionError
                         saveSync(selectedAccount, syncState.addHistory(ActionEntry("dismiss", action.event.id,
                             action.event.start.toEpochMilli(), System.currentTimeMillis(), "failed", e.message)))
+                    } finally {
+                        committingActionIds = committingActionIds - action.event.id
                     }
                 }
             }
+            undoState = undoState.finishCommit(action, commitError)
         }
     }
 
     fun openEvent(event: CalendarEvent) {
-        undoableAction?.let(::commitAction)
+        undoState.pendingAction?.let(::commitAction)
         coroutineScope.launch {
             try {
                 val link = event.htmlLink ?: fetchEventWebLink(
                     currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before opening this event."),
                     event
                 )
-                val editLink = calendarEditLink(link)
-                val uri = Uri.parse(editLink ?: link)
-                require(uri.scheme == "https") { "Google Calendar returned an invalid event link." }
+                val targetLink = calendarEventOpenLink(link, edit = true)
+                    ?: throw IllegalStateException("Google Calendar returned an invalid event link.")
+                val uri = Uri.parse(targetLink)
                 try {
-                    if (editLink != null) {
+                    if (targetLink != link) {
                         activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.android.chrome"))
                     } else {
                         activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.calendar"))
@@ -449,7 +478,7 @@ private fun CalendarLoginScreen(
     }
 
     fun openLocation(location: String) {
-        undoableAction?.let(::commitAction)
+        undoState.pendingAction?.let(::commitAction)
         try {
             val text = location.trim()
             val url = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE)
@@ -468,8 +497,8 @@ private fun CalendarLoginScreen(
         }
     }
 
-    LaunchedEffect(undoableAction?.createdAtNanos) {
-        val action = undoableAction ?: return@LaunchedEffect
+    LaunchedEffect(undoState.pendingAction?.createdAtNanos) {
+        val action = undoState.pendingAction ?: return@LaunchedEffect
         delay(UNDO_WINDOW_MILLIS)
         commitAction(action)
     }
@@ -496,8 +525,8 @@ private fun CalendarLoginScreen(
 
         if (move != null) {
             pendingMove = null
-            undoableAction?.let(::commitAction)
-            undoableAction = UndoableAction.Move(move.event, move.target, accessToken)
+            undoState.pendingAction?.let(::commitAction)
+            undoState = UndoState.Pending(UndoableAction.Move(move.event, move.target, accessToken))
             movingEventId = null
             return
         }
@@ -670,8 +699,12 @@ private fun CalendarLoginScreen(
             actionError = "Recurring events can only be dismissed or edited in Google Calendar."
             return
         }
+        if (!online) {
+            actionError = "Internet connection is required to move an event. Dismissals can still be saved offline."
+            return
+        }
         if (movingEventId != null) return
-        undoableAction?.let(::commitAction)
+        undoState.pendingAction?.let(::commitAction)
         pendingMove = PendingMove(event, target)
         movingEventId = event.id
         actionError = null
@@ -704,8 +737,9 @@ private fun CalendarLoginScreen(
     }
 
     fun dismissEvent(event: CalendarEvent) {
-        undoableAction?.let(::commitAction)
-        undoableAction = UndoableAction.Dismiss(event)
+        if (event.id in committingActionIds) return
+        undoState.pendingAction?.let(::commitAction)
+        undoState = UndoState.Pending(UndoableAction.Dismiss(event))
         actionError = null
     }
 
@@ -799,7 +833,7 @@ private fun CalendarLoginScreen(
                         authorizeCalendar(interactive = false)
                     }
                 }
-                Lifecycle.Event.ON_STOP -> undoableAction?.let(::commitAction)
+                Lifecycle.Event.ON_STOP -> undoState.pendingAction?.let(::commitAction)
                 else -> Unit
             }
         }
@@ -840,11 +874,11 @@ private fun CalendarLoginScreen(
             skin = skin,
             onSkinChange = onSkinChange,
             movingEventId = movingEventId,
-            committingMoveIds = committingMoveIds,
-            undoableEventId = undoableAction?.event?.id,
-            undoableActionDescription = undoableAction?.description(),
+            committingActionIds = committingActionIds,
+            undoableEventId = undoState.pendingAction?.event?.id,
+            undoableActionDescription = undoState.pendingAction?.description(),
             onUndo = {
-                undoableAction?.let { action ->
+                undoState.pendingAction?.let { action ->
                     val selectedAccount = accountName ?: action.event.calendarId
                     saveSync(selectedAccount, syncState.addHistory(ActionEntry(
                         if (action is UndoableAction.Dismiss) "dismiss" else "move",
@@ -852,9 +886,9 @@ private fun CalendarLoginScreen(
                         System.currentTimeMillis(), "undone"
                     )))
                 }
-                undoableAction = null
+                undoState = UndoState.Idle
             },
-            onOtherAction = { undoableAction?.let(::commitAction) },
+            onOtherAction = { undoState.pendingAction?.let(::commitAction) },
             lookbackDays = lookbackDays,
             lookaheadDays = lookaheadDays,
             windowPreset = windowPreset,
@@ -940,7 +974,7 @@ private fun CalendarConnectedScreen(
     skin: Skin,
     onSkinChange: (Skin) -> Unit,
     movingEventId: String?,
-    committingMoveIds: Set<String>,
+    committingActionIds: Set<String>,
     undoableEventId: String?,
     undoableActionDescription: String?,
     onUndo: () -> Unit,
@@ -1273,7 +1307,7 @@ private fun CalendarConnectedScreen(
                                 label = "1D",
                                 description = "Move event one day from now",
                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1))) },
-                                enabled = movingEventId == null && event.id !in committingMoveIds,
+                                enabled = movingEventId == null && event.id !in committingActionIds,
                                 modifier = Modifier.size(44.dp),
                                 onClick = {
                                     expandedEventId = null
@@ -1300,7 +1334,7 @@ private fun CalendarConnectedScreen(
                                         MoveTile(
                                             label = "✓",
                                             description = "Dismiss only this occurrence in this app",
-                                            enabled = movingEventId == null && event.id !in committingMoveIds,
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 expandedEventId = null
@@ -1327,7 +1361,7 @@ private fun CalendarConnectedScreen(
                                                 description = if (label == "0D") "Move all-day event to today"
                                                     else "Move event $label from now",
                                                 tooltip = { event.moveDestinationTooltip(target) },
-                                                enabled = movingEventId == null && event.id !in committingMoveIds,
+                                                enabled = movingEventId == null && event.id !in committingActionIds,
                                                 modifier = Modifier.size(44.dp),
                                                 onClick = { onMove(event, target) }
                                             )
@@ -1336,7 +1370,7 @@ private fun CalendarConnectedScreen(
                                         MoveTile(
                                             label = "📅",
                                             description = "Choose a calendar date",
-                                            enabled = movingEventId == null && event.id !in committingMoveIds,
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 onOtherAction()
@@ -1346,7 +1380,7 @@ private fun CalendarConnectedScreen(
                                         MoveTile(
                                             label = "✓",
                                             description = "Dismiss event in this app",
-                                            enabled = movingEventId == null && event.id !in committingMoveIds,
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 expandedEventId = null
@@ -1363,7 +1397,7 @@ private fun CalendarConnectedScreen(
                                                 label = label,
                                                 description = "Move event $label from now",
                                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(days))) },
-                                                enabled = movingEventId == null && event.id !in committingMoveIds,
+                                                enabled = movingEventId == null && event.id !in committingActionIds,
                                                 modifier = Modifier.size(44.dp),
                                                 onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
                                             )
@@ -1376,8 +1410,8 @@ private fun CalendarConnectedScreen(
                                             onClick = { onOpenEvent(event) }
                                         )
                                     }
-                                    if (movingEventId == event.id || event.id in committingMoveIds) {
-                                        Text("Moving event…", modifier = Modifier.padding(top = 8.dp))
+                                    if (movingEventId == event.id || event.id in committingActionIds) {
+                                        Text("Saving action…", modifier = Modifier.padding(top = 8.dp))
                                     }
                                     }
                                 }

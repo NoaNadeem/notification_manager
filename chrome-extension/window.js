@@ -3,7 +3,7 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { calendarEditUrl, createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { updateHistory, syncHeadline, syncDetail } from "./sync-state.js";
 
@@ -174,12 +174,13 @@ function moveTile(event, label, option, className = "tile") {
   return tile;
 }
 
-function openEventLink(url) {
-  if (!url || !url.startsWith("https://")) {
+function openEventLink(event, kind = "view") {
+  const action = calendarEventAction(event, kind);
+  if (!action) {
     showError("Google Calendar did not provide a valid event link.");
     return;
   }
-  void openEventOnce(url).catch((error) => showError(`Could not open event: ${error.message}`));
+  void openEventOnce(action.url).catch((error) => showError(`Could not open event: ${error.message}`));
 }
 
 function closeMenu() {
@@ -342,10 +343,10 @@ function renderSearchFooter() {
     }
     const title = document.createElement("a");
     title.className = "title";
-    title.href = event.htmlLink || "#";
+    title.href = calendarEventAction(event)?.url || "#";
     title.textContent = event.summary || "(Untitled event)";
     title.title = title.textContent;
-    title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event.htmlLink); });
+    title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event); });
     const date = document.createElement("small");
     date.textContent = event.start?.date
       ? `${event.start.date} · all day`
@@ -392,8 +393,8 @@ function renderEvent(event) {
   title.textContent = event.summary || "(Untitled event)";
   title.title = title.textContent;
   if (!action && !busy) {
-    title.href = event.htmlLink || "#";
-    title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event.htmlLink); });
+    title.href = calendarEventAction(event)?.url || "#";
+    title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event); });
   }
   const age = document.createElement("div");
   age.className = "age";
@@ -427,7 +428,7 @@ function renderEvent(event) {
     actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo"));
   } else if (!busy) {
     if (isRecurring(event)) {
-      actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(calendarEditUrl(event.htmlLink) || event.htmlLink), "tile primary"));
+      actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
       actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     } else {
     actions.append(moveTile(event, "1D", { days: 1 }, "tile primary"));
@@ -474,7 +475,7 @@ function renderEvent(event) {
   for (const days of [2, 3, 4, 7]) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
   }
-  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(calendarEditUrl(event.htmlLink) || event.htmlLink)));
+  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   flyout.append(topRow, bottomRow);
   row.append(flyout);
   return row;
@@ -484,6 +485,10 @@ async function stageAction(event, type, option) {
   showError("");
   if (type === "move" && isRecurring(event)) {
     showError("Recurring events can only be dismissed or edited in Google Calendar.");
+    return;
+  }
+  if (type === "move" && !navigator.onLine) {
+    showError("Internet connection is required to move an event. Dismissals can still be saved offline.");
     return;
   }
   try {
@@ -497,6 +502,7 @@ async function commitAction(action) {
   const { event } = action;
   const key = eventKey(event);
   let cacheWarning = "";
+  let failed = false;
   committing.add(key);
   render();
   try {
@@ -523,6 +529,7 @@ async function commitAction(action) {
     }
     showError(cacheWarning);
   } catch (error) {
+    failed = true;
     if (action.type === "dismiss") {
       const stored = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
       dismissals = stored[`dismissals:${account.toLowerCase()}`] || dismissals;
@@ -544,6 +551,7 @@ async function commitAction(action) {
     committing.delete(key);
     render();
   }
+  return !failed;
 }
 
 async function searchCalendar() {

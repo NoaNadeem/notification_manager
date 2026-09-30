@@ -7,10 +7,12 @@ export class UndoController {
     this.schedule = schedule;
     this.cancel = cancel;
     this.onUndo = onUndo;
-    this.current = null;
+    this.state = { kind: "Idle" };
     this.timer = null;
     this.queue = Promise.resolve();
   }
+
+  get current() { return this.state.kind === "Pending" ? this.state.action : null; }
 
   enqueue(operation) {
     const result = this.queue.then(operation);
@@ -23,14 +25,14 @@ export class UndoController {
       await this.commitCurrent();
       // A failed timer setup must not leave an Undo row that can never commit.
       const timer = this.schedule(() => { void this.commit(); }, UNDO_MS);
-      this.current = action;
+      this.state = { kind: "Pending", action };
       this.timer = timer;
       try {
         this.onChange(action);
       } catch (error) {
         this.cancel(timer);
         this.timer = null;
-        this.current = null;
+        this.state = { kind: "Idle" };
         throw error;
       }
     });
@@ -42,7 +44,7 @@ export class UndoController {
       const action = this.current;
       this.cancel(this.timer);
       this.timer = null;
-      this.current = null;
+      this.state = { kind: "Idle" };
       this.onChange(null);
       this.onUndo(action);
     });
@@ -55,9 +57,15 @@ export class UndoController {
     const action = this.current;
     this.cancel(this.timer);
     this.timer = null;
-    this.current = null;
-    this.onChange(null);
-    await this.onCommit(action);
+    this.state = { kind: "Committing", action };
+    try {
+      this.onChange(null);
+      const result = await this.onCommit(action);
+      this.state = result === false ? { kind: "Failed", action } : { kind: "Idle" };
+    } catch (error) {
+      this.state = { kind: "Failed", action, error };
+      throw error;
+    }
   }
 }
 

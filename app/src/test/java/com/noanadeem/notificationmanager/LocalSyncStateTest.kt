@@ -5,23 +5,22 @@ import org.junit.Test
 
 class LocalSyncStateTest {
     @Test
-    fun staleAndOfflineStatesAreVisible() {
+    fun successfulPendingAndStaleStatesAreVisible() {
         val now = 1_000_000_000L
         val fresh = LocalSyncState(calendarAt = now, dismissalAt = now)
-        assertEquals("Synced just now", fresh.headline(true, now))
-        assertEquals("Offline — changes saved on this device", fresh.headline(false, now))
-        assertEquals("Sync needs attention", fresh.headline(true, now + 3_600_001))
-        assertEquals("Local changes waiting to sync", fresh.copy(pending = setOf("event/1")).headline(true, now))
+        assertEquals("Synced just now", fresh.headline(now))
+        assertEquals("Sync needs attention", fresh.headline(now + 3_600_001))
+        assertEquals("Local changes waiting to sync", fresh.copy(pending = setOf("event/1")).headline(now))
     }
 
     @Test
-    fun localHistoryKeepsThreeDaysAndCapsHeavyUsage() {
-        val now = 40L * 86_400_000L
-        val old = ActionEntry("dismiss", "old", 0, now - 4L * 86_400_000L, "synced")
-        val withinWindow = ActionEntry("dismiss", "within", 0, now - 2L * 86_400_000L, "synced")
-        val recent = ActionEntry("move", "recent", 1, now, "undone")
-        assertEquals(listOf(withinWindow, recent),
-            LocalSyncState(history = listOf(old, withinWindow)).addHistory(recent, now).history)
-        assertEquals(500, LocalSyncState(history = List(500) { recent }).addHistory(recent, now).history.size)
+    fun cachedStatusWaitsForCurrentSessionRefresh() {
+        val sessionStartedAt = 2_000_000_000L
+        val cached = LocalSyncState(calendarAt = sessionStartedAt - 1_000, dismissalAt = sessionStartedAt - 1_000)
+        assertEquals(false, shouldShowSyncStatus(cached, sessionStartedAt, false, false))
+        assertEquals(false, shouldShowSyncStatus(cached, sessionStartedAt, true, true))
+        assertEquals(true, shouldShowSyncStatus(cached.copy(calendarAt = sessionStartedAt + 1),
+            sessionStartedAt, false, false))
+        assertEquals(true, shouldShowSyncStatus(cached, sessionStartedAt, false, true))
     }
 }

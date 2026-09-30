@@ -5,7 +5,7 @@ import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
-import { updateHistory, syncHeadline, syncDetail, HISTORY_MS } from "./sync-state.js";
+import { syncHeadline, syncDetail, shouldShowSyncStatus } from "./sync-state.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -40,11 +40,12 @@ let dismissals = [];
 let lookbackDays = 7;
 let lookaheadDays = 0;
 let windowPreset = null;
-let syncState = { calendarAt: null, dismissalAt: null, pending: [], error: null, remoteNewer: false, conflictResolved: false, history: [] };
+let syncState = { calendarAt: null, dismissalAt: null, pending: [], error: null, remoteNewer: false, conflictResolved: false };
 let darkMode = true;
 let skinName = "Green";
 let signedOut = false;
 let loading = false;
+let syncAttempted = false;
 let refreshBusy = false;
 let suppressNextClick = false;
 let wheelResetTimer;
@@ -61,13 +62,13 @@ let storageEstimateMessage;
 let storageEstimateNode;
 const committing = new Set();
 
-const undo = new UndoController(commitAction, () => render(), undefined, undefined, (action) => {
-  recordHistory(action, "undone");
-});
+const undo = new UndoController(commitAction, () => render());
 
 function renderSync() {
-  const headline = syncHeadline(syncState, navigator.onLine);
-  $("#sync-warning").textContent = headline === "Synced just now" ? "" : ` · ${headline}`;
+  const headline = syncHeadline(syncState);
+  const ready = shouldShowSyncStatus(syncAttempted, loading, signedOut, account);
+  $("#sync-warning").textContent = ready && headline !== "Synced just now" ? ` · ${headline}` : "";
+  $("#sync-open").hidden = !ready;
   $("#sync-menu-label").textContent = headline === "Synced just now" ? "Synced just now" : "Sync issues";
   $("#sync-open").classList.toggle("has-issues", headline !== "Synced just now");
   $("#sync-detail").textContent = `${headline}\n${syncDetail(syncState)}`;
@@ -81,17 +82,9 @@ function renderWindowLabel() {
 }
 
 async function saveSyncState() {
-  syncState.history = (syncState.history || []).filter((entry) => entry.at >= Date.now() - HISTORY_MS).slice(-500);
+  delete syncState.history;
   if (account) await chrome.storage.local.set({ [`syncState:${account.toLowerCase()}`]: syncState });
   renderSync();
-}
-
-function recordHistory(action, status, error = null) {
-  syncState.history = updateHistory(syncState.history || [], {
-    action: action.type, at: Date.now(), eventId: action.event.id,
-    start: eventStartMs(action.event, calendarZone), status, error
-  });
-  void saveSyncState().catch((failure) => showError(`Could not save sync status: ${failure.message}`));
 }
 const openEventOnce = createOpenGuard(async (url) => {
   await undo.commit();
@@ -222,6 +215,7 @@ function hideFlyout(row) {
 async function load(interactive = false) {
   if (loading || (signedOut && !interactive)) return;
   loading = true;
+  renderSync();
   showError("");
   count.textContent = "Loading…";
   try {
@@ -259,7 +253,6 @@ async function load(interactive = false) {
       syncState.conflictResolved = hadPending && syncState.remoteNewer;
       syncState.pending = [];
       syncState.dismissalAt = Date.now();
-      syncState.history = (syncState.history || []).map((entry) => entry.status === "local-only" ? { ...entry, status: "synced" } : entry);
       await saveSyncState();
     } catch (error) {
       const saved = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
@@ -277,6 +270,7 @@ async function load(interactive = false) {
     render();
   } finally {
     loading = false;
+    syncAttempted = true;
     renderSync();
   }
 }
@@ -497,10 +491,6 @@ async function stageAction(event, type, option) {
     showError("Recurring events can only be dismissed or edited in Google Calendar.");
     return;
   }
-  if (type === "move" && !navigator.onLine) {
-    showError("Internet connection is required to move an event. Dismissals can still be saved offline.");
-    return;
-  }
   try {
     await undo.stage({ event, type, option });
   } catch (error) {
@@ -527,7 +517,6 @@ async function commitAction(action) {
       }
       try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
       catch (cacheError) { cacheWarning = `Move succeeded, but offline cache was not updated: ${cacheError.message}`; }
-      recordHistory(action, "synced");
     } else {
       dismissals = await saveDismissal(account, {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now()
@@ -535,7 +524,7 @@ async function commitAction(action) {
       syncState.pending = (syncState.pending || []).filter((item) => item !== key);
       syncState.dismissalAt = Date.now();
       syncState.error = null;
-      recordHistory(action, "synced");
+      await saveSyncState();
     }
     showError(cacheWarning);
   } catch (error) {
@@ -547,14 +536,12 @@ async function commitAction(action) {
       if (savedLocally) {
         syncState.pending = [...new Set([...(syncState.pending || []), key])];
         syncState.error = error.message;
-        recordHistory(action, "local-only", error.message);
-      } else recordHistory(action, "failed", error.message);
+        await saveSyncState();
+      }
       showError(savedLocally
         ? `Dismissal of “${event.summary || "(Untitled event)"}” was saved locally, but Drive sync failed: ${error.message}`
         : `Could not dismiss “${event.summary || "(Untitled event)"}”: ${error.message}`);
     } else {
-      syncState.error = error.message;
-      recordHistory(action, "failed", error.message);
       showError(`Could not move “${event.summary || "(Untitled event)"}”: ${error.message}`);
     }
   } finally {
@@ -708,29 +695,6 @@ $("#sync-open").addEventListener("click", () => { closeMenu(); syncDialog.showMo
 $("#sync-close").addEventListener("click", () => syncDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
-$("#history-open").addEventListener("click", () => {
-  const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - HISTORY_MS).toReversed();
-  $("#history-log").value = "Notification Manager action log (Chrome extension, last 3 days)\n" +
-    (entries.length ? entries.map((entry) => JSON.stringify({
-      at: new Date(entry.at).toISOString(), action: entry.action, eventId: entry.eventId,
-      eventStart: Number.isFinite(entry.start) ? new Date(entry.start).toISOString() : null,
-      status: entry.status, error: entry.error || null
-    })).join("\n") : "No actions.");
-  $("#history-copy-status").textContent = "";
-  $("#history-dialog").showModal();
-});
-$("#history-close").addEventListener("click", () => $("#history-dialog").close());
-$("#history-copy").addEventListener("click", async () => {
-  const log = $("#history-log");
-  try {
-    await navigator.clipboard.writeText(log.value);
-    $("#history-copy-status").textContent = "Copied to clipboard.";
-  } catch {
-    log.focus();
-    log.select();
-    $("#history-copy-status").textContent = "Copy failed. The log is selected so you can copy it manually.";
-  }
-});
 for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
   const choice = button(preset.label, preset.label, () => void (async () => {
     await undo.commit();
@@ -848,15 +812,21 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !$("#history-dialog").open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();
   if (account && !signedOut && !loading && !undo.current && committing.size === 0) void load();
 });
-window.addEventListener("offline", renderSync);
-
 const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount"]);
+if (saved.lastAccount) {
+  const key = `syncState:${saved.lastAccount.toLowerCase()}`;
+  const stored = (await chrome.storage.local.get(key))[key];
+  if (stored && Object.hasOwn(stored, "history")) {
+    const { history: _discarded, ...withoutHistory } = stored;
+    await chrome.storage.local.set({ [key]: withoutHistory });
+  }
+}
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
 lookaheadDays = Number.isInteger(saved.lookaheadDays) && saved.lookaheadDays >= 0 && saved.lookaheadDays <= 36500 ? saved.lookaheadDays : 0;
 windowPreset = WINDOW_PRESETS[saved.windowPreset] ? saved.windowPreset : null;

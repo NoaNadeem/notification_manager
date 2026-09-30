@@ -10,12 +10,14 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
 import org.json.JSONArray
 import org.json.JSONObject
 
 private const val FILE_NAME = "notification-manager-dismissals-v1.json"
 private const val MARKER_PREFIX = "notification-manager-dismissal-v2-"
 private const val MAX_LOOKBACK_DAYS = 365L
+internal val dismissalSyncMutex = Mutex()
 
 internal data class DismissalRecord(
     val eventId: String,
@@ -72,6 +74,7 @@ internal class DismissalStore(private val context: Context) {
         check(preferences(account).edit().putString("records", serializeDismissals(records)).commit()) {
             "Could not save dismissal on this phone."
         }
+        NotificationWidget.updateAll(context)
     }
 }
 

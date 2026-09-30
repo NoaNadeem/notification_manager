@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="7dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:background="@drawable/widget_panel"
+        android:padding="7dp">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Notification Manager"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/widget_clock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#BFC7C9"
+                android:textSize="11sp"
+                android:maxLines="1" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_search" style="@style/WidgetHeaderButton" android:text="⌕" android:contentDescription="Search in app" />
+        <TextView android:id="@+id/widget_real_events" style="@style/WidgetHeaderButton" android:text="▤" android:contentDescription="Filter real events" />
+        <TextView android:id="@+id/widget_refresh" style="@style/WidgetHeaderButton" android:text="↻" android:contentDescription="Refresh on Wi-Fi" />
+        <TextView android:id="@+id/widget_menu" style="@style/WidgetHeaderButton" android:text="⋮" android:contentDescription="Open settings in app" />
+    </LinearLayout>
+    <ListView
+        android:id="@+id/widget_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="5dp"
+        android:paddingTop="5dp" />
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="Open the app to connect Calendar or refresh events"
+        android:textColor="#BFC7C9" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:background="@drawable/widget_panel"
+        android:padding="7dp">
+        <TextView
+            android:id="@+id/widget_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FF9890"
+            android:textSize="11sp"
+            android:maxLines="1" />
+        <TextView
+            android:id="@+id/widget_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#D6DDDF"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

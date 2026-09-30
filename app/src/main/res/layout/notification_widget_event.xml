@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/widget_panel"
+    android:padding="7dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical">
+        <TextView
+            android:id="@+id/widget_event_dot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● "
+            android:textColor="#A7FF57"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/widget_event_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+        <TextView android:id="@+id/widget_event_one_day" style="@style/WidgetTile"
+            android:layout_width="40dp" android:layout_weight="0" android:text="1D"
+            android:contentDescription="Move one day from now" />
+        <TextView android:id="@+id/widget_event_undo" style="@style/WidgetTile"
+            android:layout_width="55dp" android:layout_weight="0" android:text="Undo"
+            android:contentDescription="Undo pending action" android:visibility="gone" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/widget_event_age"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="#BFC7C9"
+        android:textSize="11sp" />
+    <TextView
+        android:id="@+id/widget_event_location"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#A8D3FF"
+        android:textSize="11sp"
+        android:visibility="gone" />
+    <LinearLayout
+        android:id="@+id/widget_event_options"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/widget_tile_a" style="@style/WidgetTile" android:text="1H" />
+            <TextView android:id="@+id/widget_tile_b" style="@style/WidgetTile" android:text="4H" />
+            <TextView android:id="@+id/widget_tile_c" style="@style/WidgetTile" android:text="8H" />
+            <TextView android:id="@+id/widget_tile_calendar" style="@style/WidgetTile" android:text="Cal" />
+            <TextView android:id="@+id/widget_tile_dismiss" style="@style/WidgetTile" android:text="✓" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="4dp">
+            <TextView android:id="@+id/widget_tile_2d" style="@style/WidgetTile" android:text="2D" />
+            <TextView android:id="@+id/widget_tile_3d" style="@style/WidgetTile" android:text="3D" />
+            <TextView android:id="@+id/widget_tile_4d" style="@style/WidgetTile" android:text="4D" />
+            <TextView android:id="@+id/widget_tile_7d" style="@style/WidgetTile" android:text="7D" />
+            <TextView android:id="@+id/widget_tile_open" style="@style/WidgetTile" android:text="✎" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

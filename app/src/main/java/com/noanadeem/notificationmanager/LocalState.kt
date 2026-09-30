@@ -28,7 +28,7 @@ internal fun shouldShowSyncStatus(
 ): Boolean = !refreshing && (state.calendarAt >= sessionStartedAt || state.dismissalAt >= sessionStartedAt ||
     hasCurrentError || state.pending.isNotEmpty())
 
-internal class LocalStateStore(context: Context) {
+internal class LocalStateStore(private val context: Context) {
     private val preferences = context.getSharedPreferences("notification_manager_local_state", Context.MODE_PRIVATE)
     private fun key(account: String) = account.lowercase().hashCode().toUInt().toString(16)
 
@@ -70,6 +70,11 @@ internal class LocalStateStore(context: Context) {
         check(preferences.edit().putString("sync_${key(account)}", json.toString()).commit()) {
             "Could not save local sync status."
         }
+        if (state.pending.isEmpty() && state.error == null) {
+            context.getSharedPreferences("notification_widget", Context.MODE_PRIVATE)
+                .edit().remove("status").apply()
+        }
+        NotificationWidget.updateAll(context)
     }
 
     fun readEvents(account: String): List<CalendarEvent> {
@@ -106,5 +111,6 @@ internal class LocalStateStore(context: Context) {
         check(preferences.edit().putString("events_${key(account)}", rows.toString()).commit()) {
             "Could not save offline Calendar cache."
         }
+        NotificationWidget.updateAll(context)
     }
 }

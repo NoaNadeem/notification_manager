@@ -187,8 +187,11 @@ private fun UndoableAction.description(): String = when (this) {
 private const val UNDO_WINDOW_MILLIS = 30_000L
 
 class MainActivity : ComponentActivity() {
+    private var widgetIntent by mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        widgetIntent = intent.takeIf { it.hasExtra("widget_destination") }
         setContent {
             val preferences = remember {
                 getSharedPreferences(CONNECTION_PREFERENCES, Context.MODE_PRIVATE)
@@ -205,6 +208,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     SelectionContainer {
                         CalendarLoginScreen(
+                            widgetIntent = widgetIntent,
                             darkMode = darkMode,
                             skin = skin,
                             onSkinChange = { updated ->
@@ -222,10 +226,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        widgetIntent = intent.takeIf { it.hasExtra("widget_destination") }
+    }
 }
 
 @Composable
 private fun CalendarLoginScreen(
+    widgetIntent: Intent?,
     darkMode: Boolean,
     skin: Skin,
     onSkinChange: (Skin) -> Unit,
@@ -265,7 +276,7 @@ private fun CalendarLoginScreen(
         connectivity.registerDefaultNetworkCallback(callback)
         onDispose { connectivity.unregisterNetworkCallback(callback) }
     }
-    val dismissalMutex = remember { Mutex() }
+    val dismissalMutex = remember { dismissalSyncMutex }
 
     var screen by remember {
         mutableStateOf(
@@ -754,6 +765,7 @@ private fun CalendarLoginScreen(
         val selectedAccount = accountName
         if (selectedAccount == null) {
             preferences.edit().putBoolean(AUTO_CONNECT_KEY, false).remove(ACCOUNT_NAME_KEY).apply()
+            NotificationWidget.updateAll(activity)
             recentEvents = emptyList()
             dismissals = emptyList()
             currentAccessToken = null
@@ -774,6 +786,7 @@ private fun CalendarLoginScreen(
         authorizationClient.revokeAccess(request)
             .addOnSuccessListener {
                 preferences.edit().putBoolean(AUTO_CONNECT_KEY, false).remove(ACCOUNT_NAME_KEY).apply()
+                NotificationWidget.updateAll(activity)
                 accountName = null
                 recentEvents = emptyList()
                 dismissals = emptyList()
@@ -830,6 +843,7 @@ private fun CalendarLoginScreen(
         }
 
         ConnectionScreen.Connected -> CalendarConnectedScreen(
+            widgetIntent = widgetIntent,
             loading = loading,
             errorMessage = errorMessage,
             accountName = accountName,
@@ -921,6 +935,7 @@ private fun CalendarLoginScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CalendarConnectedScreen(
+    widgetIntent: Intent?,
     loading: Boolean,
     errorMessage: String?,
     accountName: String?,
@@ -974,6 +989,23 @@ private fun CalendarConnectedScreen(
     var searchActive by remember { mutableStateOf(false) }
     var realEventsOnly by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var handledWidgetIntent by remember { mutableStateOf<Intent?>(null) }
+    LaunchedEffect(widgetIntent, events) {
+        if (widgetIntent == null || widgetIntent === handledWidgetIntent) return@LaunchedEffect
+        when (widgetIntent.getStringExtra("widget_destination")) {
+            "search" -> searchActive = true
+            "menu" -> menuExpanded = true
+            "calendar", "open" -> {
+                val eventId = widgetIntent.getStringExtra("event_id")
+                val start = widgetIntent.getLongExtra("event_start", Long.MIN_VALUE)
+                val selected = events.find { it.id == eventId && it.start.toEpochMilli() == start }
+                if (selected == null) return@LaunchedEffect
+                if (widgetIntent.getStringExtra("widget_destination") == "calendar") datePickerEvent = selected
+                else onOpenEvent(selected)
+            }
+        }
+        handledWidgetIntent = widgetIntent
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val searchFocusRequester = remember { FocusRequester() }
     val filteredEvents = remember(events, searchQuery, searchActive, realEventsOnly) {
@@ -1767,7 +1799,7 @@ private fun MoveTile(
     }
 }
 
-private suspend fun verifyCalendarAccess(accessToken: String): String = withContext(Dispatchers.IO) {
+internal suspend fun verifyCalendarAccess(accessToken: String): String = withContext(Dispatchers.IO) {
     val connection = URL("https://www.googleapis.com/calendar/v3/calendars/primary")
         .openConnection() as HttpURLConnection
     try {

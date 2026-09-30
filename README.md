@@ -6,6 +6,12 @@ The app caches the last loaded event list and dismissal keys on the phone for of
 
 Pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** is also available in the three-dot menu.
 
+## Samsung home-screen widget
+
+After installing the app, long-press an empty area of the Samsung home screen, choose **Widgets**, find **Notification Manager**, and drag the widget onto a home-screen page. Resize it to fill most of the page for a scrolling event list. It reads the same local event cache, dismissal keys, review window, and account as the app. The header has Search (opens the app's search), a real-events filter, a Wi-Fi-only Refresh button, and settings (opens the app). Tap an event's title or age to expand the familiar move, Calendar, Dismiss, and edit controls. Calendar opens the app's date picker; direct move and dismiss actions show Undo for about 30 seconds before committing. Recurring events show only edit and dismiss. If Google authorization needs interaction, open the app and reconnect; the widget shows an error instead of changing the event.
+
+While a widget is placed, WorkManager schedules a check approximately every hour, initially near the next local hour. The worker checks that the active network is Wi-Fi before making a Calendar request, and skips the scheduled fetch if the last successful Calendar refresh was less than 59 minutes ago. Android battery management can delay a scheduled check, so the time is not exact. Opening or refreshing the app and completing actions also update the widget from its local cache. The widget does not add a persistent Android notification.
+
 The pencil opens the event in the Google Calendar Android app when it is installed. From the event details, tap Google Calendar's Edit control. If the app cannot handle the event link, the pencil falls back to the browser editor.
 
 The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README.

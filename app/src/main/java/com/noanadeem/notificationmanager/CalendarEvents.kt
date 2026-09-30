@@ -68,7 +68,7 @@ internal sealed interface MoveTarget {
 }
 
 internal enum class WindowPreset(val label: String, val backDays: Int, val aheadDays: Int) {
-    CURRENT("Current: 7 days + today", 7, 0),
+    CURRENT("Current: 7 days back to today", 7, 0),
     DAILY("Daily cleanup: yesterday + today", 1, 0),
     WEEK_AHEAD("Week-ahead: 7 days back + 7 ahead", 7, 7),
     MEETINGS("Meeting-heavy: 2 days back + today", 2, 0),

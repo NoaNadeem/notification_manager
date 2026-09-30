@@ -36,6 +36,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -997,6 +999,7 @@ private fun CalendarConnectedScreen(
     var showLookbackPicker by remember { mutableStateOf(false) }
     var showLookaheadPicker by remember { mutableStateOf(false) }
     var showPresets by remember { mutableStateOf(false) }
+    var showSyncDetails by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
@@ -1044,7 +1047,8 @@ private fun CalendarConnectedScreen(
                 }) {
                     Icon(
                         painter = painterResource(android.R.drawable.ic_menu_search),
-                        contentDescription = "Search events"
+                        contentDescription = "Search events",
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 IconButton(
@@ -1086,22 +1090,12 @@ private fun CalendarConnectedScreen(
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
                     }
                     val headline = syncState.headline(online)
-                    Text(headline, style = MaterialTheme.typography.bodySmall,
-                        color = if (headline == "Synced just now") MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                    val syncDetails = listOf(
-                        "Calendar refreshed: ${formatSyncTime(syncState.calendarAt)}",
-                        "Dismissals synced: ${formatSyncTime(syncState.dismissalAt)}",
-                        "Local-only dismissals: ${syncState.pending.size}",
-                        "Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}",
-                        "Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}"
+                    DropdownMenuItem(
+                        text = { Text(if (headline == "Synced just now") "Synced just now" else "Sync issues",
+                            color = if (headline == "Synced just now") MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.error) },
+                        onClick = { menuExpanded = false; showSyncDetails = true }
                     )
-                    syncDetails.forEach { detail -> Text(detail, style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) }
-                    DropdownMenuItem(text = { Text("Recent actions") }, onClick = {
-                        menuExpanded = false; showHistory = true
-                    })
                     DropdownMenuItem(
                         text = { Text("Refresh events") },
                         leadingIcon = { Text("↻") },
@@ -1113,37 +1107,21 @@ private fun CalendarConnectedScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Review window: ${windowPreset?.label ?: "Custom"}") },
+                        text = {
+                            Text(
+                                "Window: " + when (windowPreset) {
+                                    WindowPreset.CURRENT -> "Current: 7 days back to today"
+                                    null -> if (lookbackDays == 7 && lookaheadDays == 0)
+                                        "Current: 7 days back to today"
+                                    else "Custom: $lookbackDays days back, $lookaheadDays ahead"
+                                    else -> windowPreset.label
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        },
                         enabled = !eventsLoading && !loading && movingEventId == null,
                         onClick = { menuExpanded = false; showPresets = true }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Lookback: $lookbackDays days") },
-                        leadingIcon = { Text("◷") },
-                        enabled = !eventsLoading && !loading && movingEventId == null,
-                        onClick = {
-                            menuExpanded = false
-                            customLookbackText = lookbackDays.toString()
-                            showLookbackPicker = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Lookahead: $lookaheadDays days") },
-                        leadingIcon = { Text("◷") },
-                        enabled = !eventsLoading && !loading && movingEventId == null,
-                        onClick = {
-                            menuExpanded = false
-                            customLookaheadText = lookaheadDays.toString()
-                            showLookaheadPicker = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Estimate 1-year storage") },
-                        enabled = !eventsLoading && !loading,
-                        onClick = {
-                            menuExpanded = false
-                            onEstimateStorage()
-                        }
                     )
                     DropdownMenuItem(
                         text = { Text("Dark mode: ${if (darkMode) "On" else "Off"}") },
@@ -1532,11 +1510,32 @@ private fun CalendarConnectedScreen(
         }
     }
 
+    if (showSyncDetails) AlertDialog(
+        onDismissRequest = { showSyncDetails = false },
+        title = { Text("Sync details") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(syncState.headline(online))
+                Text("Calendar refreshed: ${formatSyncTime(syncState.calendarAt)}")
+                Text("Dismissals synced: ${formatSyncTime(syncState.dismissalAt)}")
+                Text("Local-only dismissals: ${syncState.pending.size}")
+                Text("Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}")
+                Text("Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}")
+                syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
+                Text("Recent actions is a 30-day log on this device of moves, dismissals, Undo, and failures.",
+                    style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { showSyncDetails = false; showHistory = true }) {
+                    Text("View recent actions")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
+    )
     if (showHistory) AlertDialog(
         onDismissRequest = { showHistory = false },
         title = { Text("Recent actions") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 val entries = syncState.history.filter { it.at >= System.currentTimeMillis() - 30L * 86_400_000L }
                     .takeLast(15).reversed()
                 if (entries.isEmpty()) Text("No actions in the last 30 days.")
@@ -1553,13 +1552,23 @@ private fun CalendarConnectedScreen(
         onDismissRequest = { showPresets = false },
         title = { Text("Review window") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 WindowPreset.entries.forEach { preset ->
                     TextButton(onClick = {
                         showPresets = false
                         onPresetChange(preset)
                     }) { Text(preset.label) }
                 }
+                TextButton(onClick = {
+                    showPresets = false
+                    customLookbackText = lookbackDays.toString()
+                    showLookbackPicker = true
+                }) { Text("Custom lookback: $lookbackDays days") }
+                TextButton(onClick = {
+                    showPresets = false
+                    customLookaheadText = lookaheadDays.toString()
+                    showLookaheadPicker = true
+                }) { Text("Custom lookahead: $lookaheadDays days") }
             }
         },
         confirmButton = {},

@@ -61,6 +61,8 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 #menu { position:absolute; right:15px; top:55px; z-index:20; min-width:248px; max-width:min(360px,calc(100vw - 30px)); max-height:calc(100vh - 70px); overflow-y:auto; background:var(--panel-strong); border:1px solid var(--border); border-radius:8px; padding:5px; box-shadow:0 9px 22px #0005; }
 #menu button { display:block; width:100%; text-align:left; padding:9px 10px; color:var(--text); border:0; border-radius:5px; background:none; }
 #menu button:hover { background:var(--tile-hover); }
+#menu button.has-issues { color:var(--error); }
+#presets-open { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sync-warning { color:#ef5350; font-size:12px; }
 .notice,.info { padding:0 20px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; font-size:12px; }
 .notice { color:var(--error); }
@@ -95,7 +97,9 @@ footer { border-color:var(--border); min-height:36px; }
 dialog { width:min(440px,calc(100% - 40px)); border:1px solid var(--border); border-radius:9px; background:var(--panel); color:var(--text); padding:16px; box-shadow:0 12px 30px #0006; }
 dialog::backdrop { background:#0008; }
 dialog h2 { margin:0 0 12px; font-size:17px; }
-dialog button[data-days],dialog button[data-ahead-days],#preset-choices button { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+.dialog-help { color:var(--muted); font-size:12px; }
+dialog button[data-days],dialog button[data-ahead-days],#preset-choices button,#presets-dialog > button,#sync-dialog > button { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
+#presets-dialog,#sync-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #lookahead-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #history-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #history-list,#sync-detail { overflow-wrap:anywhere; }

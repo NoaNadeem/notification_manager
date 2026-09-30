@@ -24,6 +24,7 @@ const searchQueryInput = $("#search-query");
 const lookbackDialog = $("#lookback-dialog");
 const lookaheadDialog = $("#lookahead-dialog");
 const presetsDialog = $("#presets-dialog");
+const syncDialog = $("#sync-dialog");
 const skinsDialog = $("#skins-dialog");
 const skinPresets = {
   Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
@@ -67,7 +68,16 @@ const undo = new UndoController(commitAction, () => render(), undefined, undefin
 function renderSync() {
   const headline = syncHeadline(syncState, navigator.onLine);
   $("#sync-warning").textContent = headline === "Synced just now" ? "" : ` · ${headline}`;
+  $("#sync-menu-label").textContent = headline === "Synced just now" ? "Synced just now" : "Sync issues";
+  $("#sync-open").classList.toggle("has-issues", headline !== "Synced just now");
   $("#sync-detail").textContent = `${headline}\n${syncDetail(syncState)}`;
+}
+
+function renderWindowLabel() {
+  $("#preset-label").textContent = windowPreset === "current" || (!windowPreset && lookbackDays === 7 && lookaheadDays === 0)
+    ? "Current: 7 days back to today"
+    : windowPreset ? WINDOW_PRESETS[windowPreset].label
+    : `Custom: ${lookbackDays} days back, ${lookaheadDays} ahead`;
 }
 
 async function saveSyncState() {
@@ -579,7 +589,7 @@ async function changeLookback(days) {
   lookbackDialog.close();
   lookbackDays = days;
   windowPreset = null;
-  $("#preset-label").textContent = "Custom";
+  renderWindowLabel();
   $("#lookback-label").textContent = `${days} days`;
   await chrome.storage.local.set({ lookbackDays: days, windowPreset: null });
   await load();
@@ -594,7 +604,7 @@ async function changeLookahead(days) {
   lookaheadDialog.close();
   lookaheadDays = days;
   windowPreset = null;
-  $("#preset-label").textContent = "Custom";
+  renderWindowLabel();
   $("#lookahead-label").textContent = `${days} days`;
   await chrome.storage.local.set({ lookaheadDays: days, windowPreset: null });
   await load();
@@ -694,10 +704,12 @@ $("#real-events-toggle").addEventListener("click", () => {
   render();
 });
 $("#logout").addEventListener("click", () => { closeMenu(); void logout(); });
+$("#sync-open").addEventListener("click", () => { closeMenu(); syncDialog.showModal(); });
+$("#sync-close").addEventListener("click", () => syncDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 $("#history-open").addEventListener("click", () => {
-  closeMenu();
+  syncDialog.close();
   const container = $("#history-list");
   container.replaceChildren();
   const entries = (syncState.history || []).filter((entry) => entry.at >= Date.now() - 30 * 86_400_000).toReversed();
@@ -716,7 +728,7 @@ for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
     windowPreset = id;
     lookbackDays = preset.back;
     lookaheadDays = preset.ahead;
-    $("#preset-label").textContent = preset.label;
+    renderWindowLabel();
     $("#lookback-label").textContent = `${lookbackDays} days`;
     $("#lookahead-label").textContent = `${lookaheadDays} days`;
     await chrome.storage.local.set({ windowPreset: id, lookbackDays, lookaheadDays });
@@ -726,13 +738,13 @@ for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
   $("#preset-choices").append(choice);
 }
 $("#lookback-open").addEventListener("click", () => {
-  closeMenu();
+  presetsDialog.close();
   void undo.commit();
   $("#custom-lookback").value = String(lookbackDays);
   lookbackDialog.showModal();
 });
 $("#lookahead-open").addEventListener("click", () => {
-  closeMenu();
+  presetsDialog.close();
   void undo.commit();
   $("#custom-lookahead").value = String(lookaheadDays);
   lookaheadDialog.showModal();
@@ -827,7 +839,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !$("#history-dialog").open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();
@@ -839,7 +851,7 @@ const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
 lookaheadDays = Number.isInteger(saved.lookaheadDays) && saved.lookaheadDays >= 0 && saved.lookaheadDays <= 36500 ? saved.lookaheadDays : 0;
 windowPreset = WINDOW_PRESETS[saved.windowPreset] ? saved.windowPreset : null;
-$("#preset-label").textContent = windowPreset ? WINDOW_PRESETS[windowPreset].label : "Custom";
+renderWindowLabel();
 darkMode = saved.darkMode !== false;
 skinName = skinPresets[saved.skinName] ? saved.skinName : "Green";
 applySkin();

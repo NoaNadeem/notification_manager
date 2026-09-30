@@ -21,7 +21,7 @@ export function ageLabel(startMs, nowMs = Date.now()) {
 }
 
 export const WINDOW_PRESETS = {
-  current: { label: "Current: 7 days + today", back: 7, ahead: 0 },
+  current: { label: "Current: 7 days back to today", back: 7, ahead: 0 },
   daily: { label: "Daily cleanup: yesterday + today", back: 1, ahead: 0 },
   weekAhead: { label: "Week-ahead: 7 days back + 7 ahead", back: 7, ahead: 7 },
   meetings: { label: "Meeting-heavy: 2 days back + today", back: 2, ahead: 0 },

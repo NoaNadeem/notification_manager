@@ -249,6 +249,7 @@ private fun CalendarLoginScreen(
     }
     val coroutineScope = rememberCoroutineScope()
     val dismissalStore = remember(activity) { DismissalStore(activity) }
+    val moveHistoryStore = remember(activity) { MoveHistoryStore(activity) }
     val localStateStore = remember(activity) { LocalStateStore(activity) }
     val sessionStartedAt = remember { System.currentTimeMillis() }
     val connectivity = remember(activity) {
@@ -315,6 +316,9 @@ private fun CalendarLoginScreen(
     var movingEventId by remember { mutableStateOf<String?>(null) }
     var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf<List<DismissalRecord>>(emptyList()) }
+    var moves by remember { mutableStateOf(
+        preferences.getString(ACCOUNT_NAME_KEY, null)?.let(moveHistoryStore::read) ?: emptyList()
+    ) }
     var driveError by remember { mutableStateOf<String?>(null) }
     var syncState by remember { mutableStateOf(
         preferences.getString(ACCOUNT_NAME_KEY, null)?.let(localStateStore::readSync) ?: LocalSyncState()
@@ -391,6 +395,32 @@ private fun CalendarLoginScreen(
                         runCatching { localStateStore.writeEvents(cacheAccount, recentEvents) }
                             .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
                         actionError = null
+                        if (action.event.start != movedEvent.start) {
+                            val record = newMoveRecord(action.event, movedEvent, now)
+                            try {
+                                moves = moveHistoryMutex.withLock {
+                                    val saved = recentMoves(moveHistoryStore.read(cacheAccount), listOf(record), now)
+                                    moveHistoryStore.write(cacheAccount, saved)
+                                    saved
+                                }
+                                try {
+                                    moves = moveHistoryMutex.withLock {
+                                        syncMoveHistory(action.accessToken, moveHistoryStore, cacheAccount)
+                                    }
+                                    if (syncState.error?.startsWith("Move history sync failed:") == true) {
+                                        saveSync(cacheAccount, syncState.copy(error = null))
+                                    }
+                                    if (driveError?.startsWith("Event moved") == true ||
+                                        driveError?.startsWith("Recent moves") == true) driveError = null
+                                } catch (e: Exception) {
+                                    driveError = "Event moved, but recent moves are saved on this phone until Drive sync succeeds: ${e.message}"
+                                    saveSync(cacheAccount, syncState.copy(
+                                        error = "Move history sync failed: ${e.message ?: "Unknown error"}"))
+                                }
+                            } catch (e: Exception) {
+                                actionError = "Event moved, but recent move history could not be saved: ${e.message}"
+                            }
+                        }
                     } catch (e: Exception) {
                         actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
                         commitError = actionError
@@ -421,12 +451,15 @@ private fun CalendarLoginScreen(
                                     syncDismissals(token, dismissalStore, selectedAccount)
                                 }
                                 val remoteNewer = dismissals.any { it.key !in localKeys }
+                                val moveHistoryError = syncState.error?.takeIf {
+                                    it.startsWith("Move history sync failed:")
+                                }
                                 saveSync(selectedAccount, syncState.copy(
                                     dismissalAt = System.currentTimeMillis(), pending = emptySet(),
-                                    error = null, remoteNewer = remoteNewer,
+                                    error = moveHistoryError, remoteNewer = remoteNewer,
                                     conflictResolved = syncState.pending.isNotEmpty() && remoteNewer
                                 ))
-                                driveError = null
+                                if (moveHistoryError == null) driveError = null
                             } catch (e: Exception) {
                                 driveError = "Dismissal of “${action.event.title}” was saved on this phone, but Drive sync failed: ${e.message}"
                                 commitError = driveError
@@ -552,6 +585,7 @@ private fun CalendarLoginScreen(
                 val selectedAccount = accountName ?: primaryCalendarId
                 syncState = localStateStore.readSync(selectedAccount)
                 dismissals = dismissalStore.read(selectedAccount)
+                moves = moveHistoryStore.read(selectedAccount)
                 if (previousAccount != accountName) {
                     recentEvents = localStateStore.readEvents(selectedAccount).withoutDismissals(dismissals)
                 }
@@ -583,6 +617,15 @@ private fun CalendarLoginScreen(
                     } catch (e: Exception) {
                         driveError = "Dismissals are saved on this phone, but Drive sync is unavailable: ${e.message}"
                         saveSync(selectedAccount, syncState.copy(error = e.message ?: "Drive sync failed"))
+                    }
+                    try {
+                        moves = moveHistoryMutex.withLock {
+                            syncMoveHistory(accessToken, moveHistoryStore, selectedAccount)
+                        }
+                    } catch (e: Exception) {
+                        driveError = "Recent moves are saved on this phone, but Drive sync is unavailable: ${e.message}"
+                        saveSync(selectedAccount, syncState.copy(
+                            error = "Move history sync failed: ${e.message ?: "Unknown error"}"))
                     }
                 } catch (e: Exception) {
                     eventsError = e.message ?: "Could not load recent events."
@@ -769,6 +812,7 @@ private fun CalendarLoginScreen(
             NotificationWidget.updateAll(activity)
             recentEvents = emptyList()
             dismissals = emptyList()
+            moves = emptyList()
             currentAccessToken = null
             calendarSearchRequest += 1
             calendarSearchResults = null
@@ -791,6 +835,7 @@ private fun CalendarLoginScreen(
                 accountName = null
                 recentEvents = emptyList()
                 dismissals = emptyList()
+                moves = emptyList()
                 currentAccessToken = null
                 calendarSearchRequest += 1
                 calendarSearchResults = null
@@ -862,6 +907,7 @@ private fun CalendarLoginScreen(
             driveError = driveError,
             syncState = syncState,
             dismissals = dismissals,
+            moves = moves,
             cachedEventTitles = remember(accountName, recentEvents, dismissals) {
                 accountName?.let(localStateStore::readEvents).orEmpty()
                     .associate { "${it.id}/${it.start.toEpochMilli()}" to it.title }
@@ -965,6 +1011,7 @@ private fun CalendarConnectedScreen(
     driveError: String?,
     syncState: LocalSyncState,
     dismissals: List<DismissalRecord>,
+    moves: List<MoveRecord>,
     cachedEventTitles: Map<String, String>,
     resolveDismissalTitle: suspend (DismissalRecord) -> String?,
     syncStatusReady: Boolean,
@@ -998,6 +1045,7 @@ private fun CalendarConnectedScreen(
     var showPresets by remember { mutableStateOf(false) }
     var showSyncDetails by remember { mutableStateOf(false) }
     var showRecentDismissals by remember { mutableStateOf(false) }
+    var showRecentMoves by remember { mutableStateOf(false) }
     var resolvedDismissalTitles by remember(accountName) { mutableStateOf<Map<String, String>>(emptyMap()) }
     val latestDismissals = remember(dismissals) { recentDismissals(dismissals) }
     LaunchedEffect(showRecentDismissals, latestDismissals, cachedEventTitles) {
@@ -1127,6 +1175,10 @@ private fun CalendarConnectedScreen(
                     DropdownMenuItem(
                         text = { Text("Recent dismissals") },
                         onClick = { menuExpanded = false; showRecentDismissals = true }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Events recently moved") },
+                        onClick = { menuExpanded = false; showRecentMoves = true }
                     )
                     DropdownMenuItem(
                         text = { Text("Refresh events") },
@@ -1576,6 +1628,22 @@ private fun CalendarConnectedScreen(
             }
         },
         confirmButton = { TextButton(onClick = { showRecentDismissals = false }) { Text("Close") } }
+    )
+    if (showRecentMoves) AlertDialog(
+        onDismissRequest = { showRecentMoves = false },
+        title = { Text("Events recently moved") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (moves.isEmpty()) Text("No moves recorded yet.")
+                moves.forEach { record ->
+                    Text(record.title)
+                    Text("Moved to ${formatSyncTime(record.toMillis)} · ${formatSyncTime(record.movedAtMillis)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showRecentMoves = false }) { Text("Close") } }
     )
     if (showPresets) AlertDialog(
         onDismissRequest = { showPresets = false },

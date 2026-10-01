@@ -184,7 +184,7 @@ private fun createDismissalMarker(token: String, record: DismissalRecord) {
         metadata.toString(), "application/json; charset=UTF-8")
 }
 
-private fun driveRequest(
+internal fun driveRequest(
     url: String,
     token: String,
     method: String = "GET",

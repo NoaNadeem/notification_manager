@@ -449,6 +449,14 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             } catch (error: Exception) {
                 store.writeSync(selectedAccount, store.readSync(selectedAccount).copy(error = error.message))
             }
+            try {
+                moveHistoryMutex.withLock {
+                    syncMoveHistory(token, MoveHistoryStore(context), selectedAccount)
+                }
+            } catch (error: Exception) {
+                store.writeSync(selectedAccount, store.readSync(selectedAccount).copy(
+                    error = "Move history sync failed: ${error.message ?: "Unknown error"}"))
+            }
             prefs(context).edit().remove("status").apply()
             NotificationWidget.updateAll(context)
             Result.success()
@@ -487,8 +495,11 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                     try {
                         val token = widgetToken(context, action.account, edit = false)
                         syncDismissals(token, store, action.account)
+                        val priorMoveError = stateStore.readSync(action.account).error?.takeIf {
+                            it.startsWith("Move history sync failed:")
+                        }
                         stateStore.writeSync(action.account, stateStore.readSync(action.account).copy(
-                            dismissalAt = System.currentTimeMillis(), pending = emptySet(), error = null))
+                            dismissalAt = System.currentTimeMillis(), pending = emptySet(), error = priorMoveError))
                     } catch (error: Exception) {
                         stateStore.writeSync(action.account, stateStore.readSync(action.account).copy(error = error.message))
                         prefs(context).edit().putString("status", "Dismissed locally; Drive sync pending").apply()
@@ -509,9 +520,32 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                 val events = stateStore.readEvents(action.account).filterNot { eventKey(it) == eventKey(event) }
                     .toMutableList()
                 if (isInDisplayWindow(moved.start, Instant.now(), back, ahead, preset = preset)) events += moved
-                stateStore.writeEvents(action.account, sortCalendarEvents(events))
+                if (event.start != moved.start) {
+                    try {
+                        moveHistoryMutex.withLock {
+                            val history = MoveHistoryStore(context)
+                            val record = newMoveRecord(event, moved)
+                            history.write(action.account, recentMoves(history.read(action.account), listOf(record)))
+                            syncMoveHistory(token, history, action.account)
+                            val current = stateStore.readSync(action.account)
+                            if (current.error?.startsWith("Move history sync failed:") == true) {
+                                stateStore.writeSync(action.account, current.copy(error = null))
+                            }
+                        }
+                    } catch (error: Exception) {
+                        stateStore.writeSync(action.account, stateStore.readSync(action.account).copy(
+                            error = "Move history sync failed: ${error.message ?: "Unknown error"}"))
+                        prefs(context).edit().putString("status", "Event moved; recent moves sync pending").apply()
+                    }
+                }
+                runCatching { stateStore.writeEvents(action.account, sortCalendarEvents(events)) }
+                    .onFailure {
+                        prefs(context).edit().putString("status", "Event moved; refresh app to update widget").apply()
+                    }
             }
-            if (prefs(context).getString("status", null) != "Dismissed locally; Drive sync pending") {
+            if (prefs(context).getString("status", null) != "Dismissed locally; Drive sync pending" &&
+                prefs(context).getString("status", null) != "Event moved; recent moves sync pending" &&
+                prefs(context).getString("status", null) != "Event moved; refresh app to update widget") {
                 prefs(context).edit().remove("status").apply()
             }
         } catch (error: Exception) {

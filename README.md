@@ -6,6 +6,8 @@ The app caches the last loaded event list and dismissal records on the phone for
 
 Pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** is also available in the three-dot menu.
 
+The menu also has **Events recently moved**. It shows the ten latest confirmed moves with their destination and move time. The app stores a small local copy and syncs those records with the Chrome extension through Drive. Older moves made before this feature are not available; the ten-record list is pruned after 30 days. See [move history](docs/move-history.md).
+
 ## Samsung home-screen widget
 
 After installing the app, long-press an empty area of the Samsung home screen, choose **Widgets**, find **Notification Manager**, and drag the widget onto a home-screen page. Resize it to fill most of the page for a scrolling event list. It reads the same local event cache, dismissal keys, review window, and account as the app. The header has Search (opens the app's search), a real-events filter, a Wi-Fi-only Refresh button, and settings (opens the app). Tap an event's title or age to expand the familiar move, Calendar, Dismiss, and edit controls. Calendar opens the app's date picker; direct move and dismiss actions show Undo for about 30 seconds before committing. Recurring events show only edit and dismiss. If Google authorization needs interaction, open the app and reconnect; the widget shows an error instead of changing the event.

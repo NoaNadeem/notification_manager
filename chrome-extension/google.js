@@ -1,9 +1,11 @@
 import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow, isRecurring } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
+import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
 let dismissalQueue = Promise.resolve();
+let moveHistoryQueue = Promise.resolve();
 
 export function primaryEventsUrl(primaryCalendarId) {
   if (!primaryCalendarId || typeof primaryCalendarId !== "string") throw new Error("Primary Calendar ID is required.");
@@ -13,6 +15,12 @@ export function primaryEventsUrl(primaryCalendarId) {
 function enqueueDismissal(work) {
   const result = dismissalQueue.then(work);
   dismissalQueue = result.catch(() => {});
+  return result;
+}
+
+function enqueueMoveHistory(work) {
+  const result = moveHistoryQueue.then(work);
+  moveHistoryQueue = result.catch(() => {});
   return result;
 }
 
@@ -171,4 +179,57 @@ async function createDismissalMarker(record) {
     method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
     body: JSON.stringify(metadata)
   });
+}
+
+export function syncRecentMoves(account) {
+  return enqueueMoveHistory(() => syncRecentMovesNow(account));
+}
+
+export function saveRecentMove(account, record) {
+  return enqueueMoveHistory(async () => {
+    const key = `moves:${account.toLowerCase()}`;
+    const stored = await chrome.storage.local.get(key);
+    await chrome.storage.local.set({ [key]: recentMoves(stored[key] || [], [record]) });
+    return syncRecentMovesNow(account);
+  });
+}
+
+async function syncRecentMovesNow(account) {
+  const key = `moves:${account.toLowerCase()}`;
+  const stored = await chrome.storage.local.get(key);
+  const local = recentMoves(stored[key] || []);
+  const files = [];
+  let pageToken;
+  do {
+    const url = new URL(DRIVE);
+    url.searchParams.set("spaces", "appDataFolder");
+    url.searchParams.set("q", `name contains '${MOVE_MARKER_PREFIX}' and trashed = false`);
+    url.searchParams.set("fields", "nextPageToken,files(id,name,description)");
+    url.searchParams.set("pageSize", "1000");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const listing = await googleRequest(url.href);
+    files.push(...(listing.files || []).filter((file) => file.name?.startsWith(MOVE_MARKER_PREFIX)));
+    pageToken = listing.nextPageToken;
+  } while (pageToken);
+  const remote = files.map(parseMoveMarker);
+  const merged = recentMoves(local, remote);
+  const remoteIds = new Set(remote.map((record) => record.id));
+  for (const record of merged) {
+    if (remoteIds.has(record.id)) continue;
+    await googleRequest(`${DRIVE}?fields=id`, {
+      method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ name: `${MOVE_MARKER_PREFIX}${record.id}.json`, mimeType: "application/json",
+        parents: ["appDataFolder"], description: JSON.stringify({ version: 1, ...record }) })
+    });
+  }
+  await chrome.storage.local.set({ [key]: merged });
+  const retained = new Set(merged.map((record) => record.id));
+  const seen = new Set();
+  for (const [index, file] of files.entries()) {
+    const id = remote[index].id;
+    if (retained.has(id) && !seen.has(id)) { seen.add(id); continue; }
+    try { await googleRequest(`${DRIVE}/${encodeURIComponent(file.id)}`, { method: "DELETE" }); }
+    catch { /* Pruning retries at the next sync. */ }
+  }
+  return merged;
 }

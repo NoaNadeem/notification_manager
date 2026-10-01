@@ -1,0 +1,55 @@
+Notification Manager: review request for Copilot or Claude
+
+Repository: /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager
+Branch: main
+Review the changes since the earlier review that identified concurrent dismissal lost updates, with emphasis on the latest recent-move history and Chrome action-ribbon placement. Read the full handoff at /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/agent-handoff.md and the repository README first. Report confirmed defects separately from speculative risks, with full file paths and line numbers. Please prioritize correctness and user-visible failure modes over cosmetic refactors.
+
+Safety: Do not move, dismiss, delete, recolor, or edit any existing Google Calendar events. Use local fixtures and unit tests. Do not perform live mutation tests or print OAuth tokens, private event content, or Drive dismissal data. A live test, if truly necessary, requires asking the user first and creating a new event clearly named Test Event - 1, Test Event - 2, etc.
+
+Recent work to inspect:
+
+1. Dismissal sync now uses independent immutable Drive appData markers plus a local-first cache and retry. The old shared JSON file is read only. Concurrent clients should preserve the union of dismissals. A future event dismissal should remain dismissed. Recurring series display individual instances, and dismissal applies to one instance; moves of recurring events are blocked both in UI and in Calendar request code.
+2. Sync status distinguishes Calendar refresh, dismissal sync, local pending changes, stale state, and failure. API success determines whether state is actually synced; network transport is only a hint. The old general Recent actions log was removed. The settings menu now has compact Sync, Window, Recent dismissals, and Events recently moved entries.
+3. The Android home-screen widget supports scrolling, app-style event expansion, direct move/dismiss with Undo, and Wi-Fi-only hourly refresh when the last successful Calendar refresh was at least 59 minutes ago. Search and calendar picking open the app.
+4. Recent dismissals shows up to ten event titles. New dismissals store titles in Drive marker metadata. Old titleless entries can resolve from local cache or a read-only Calendar lookup.
+5. New recent-move history saves minimal records locally and syncs independent Drive appData markers. It records only after a confirmed Calendar update, keeps the newest ten records and excludes records older than 30 days, and retries local records after Drive failures. Android app, widget, and Chrome extension can all create records. Older moves cannot be reconstructed. Verify concurrent clients, duplicate retries, pruning, malformed/partial markers, write failures, account isolation, and that a history failure never reports a successful Calendar move as failed.
+6. The Chrome extension action ribbon now overlays the same event row instead of choosing above or below. The scroll area temporarily adds bottom clearance and scrolls if needed, so the last row's tiles remain visible. Verify hover travel from the three-dot button to every tile, click and keyboard behavior, zoom/short windows, title overlap, and whether the scroll or padding causes the ribbon to disappear or jump.
+
+Key Android files:
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/MainActivity.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/NotificationWidget.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/Dismissals.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/MoveHistory.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/LocalState.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/CalendarEvents.kt
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/test/java/com/noanadeem/notificationmanager/MoveHistoryTest.kt
+
+Key Chrome extension files:
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/google.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/move-history.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.css
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.html
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/layout.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/google-move-history.test.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/move-history.test.js
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/layout.test.js
+
+Cross-client behavior and limits:
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/dismissal-sync.md
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/move-history.md
+/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/date-semantics.md
+
+Review questions:
+- Can two devices commit dismissals or move-history records concurrently without a lost update or duplicate record? Does local state eventually converge after failures and refreshes?
+- Do Calendar move, local cache, Drive history, and displayed sync status remain consistent if any step fails? Is there a safe retry path?
+- Do move-history metadata and cleanup meet the intended ten-record/30-day bounds in practice, including paging and simultaneous clients?
+- Does the Chrome ribbon truly remain anchored to the row, with the same tile positions, while all tiles stay reachable near the bottom of the list? Check both pointer and keyboard paths.
+- Are recurring event guards, primary-calendar scope, Undo lifecycle, Android widget behavior, and cross-client date semantics still correct after these changes?
+- Are icon controls labeled, action targets usable, and dialogs scrollable in light/dark themes and small windows?
+
+Verification commands (fixture tests; no live Calendar mutation):
+From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager run ./gradlew testDebugUnitTest assembleDebug
+From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension run npm test
+
+The current local verification passed 53 Chrome tests and the Android unit-test/debug-build tasks. The Chrome ribbon needs a manual visual check after reloading the unpacked extension; unit tests cover its geometry helper, not actual browser pointer movement.

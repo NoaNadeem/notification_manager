@@ -1,7 +1,7 @@
 import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
-import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle } from "./google.js";
+import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
-import { flyoutPlacement } from "./layout.js";
+import { flyoutScrollDelta } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
@@ -26,6 +26,7 @@ const lookaheadDialog = $("#lookahead-dialog");
 const presetsDialog = $("#presets-dialog");
 const syncDialog = $("#sync-dialog");
 const recentDismissalsDialog = $("#recent-dismissals-dialog");
+const recentMovesDialog = $("#recent-moves-dialog");
 const skinsDialog = $("#skins-dialog");
 const skinPresets = {
   Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
@@ -38,6 +39,7 @@ let account;
 let calendarZone;
 let events = [];
 let dismissals = [];
+let moves = [];
 let lookbackDays = 7;
 let lookaheadDays = 0;
 let windowPreset = null;
@@ -104,6 +106,25 @@ async function renderRecentDismissals() {
         if (fetched) title.textContent = fetched;
       } catch { /* Older or deleted events may no longer be readable from Calendar. */ }
     }
+  }
+}
+
+function renderRecentMoves() {
+  const list = $("#recent-moves-list");
+  list.replaceChildren();
+  if (!moves.length) {
+    list.textContent = "No moves recorded yet.";
+    return;
+  }
+  for (const record of moves) {
+    const row = document.createElement("div");
+    row.className = "recent-dismissal";
+    const title = document.createElement("span");
+    title.textContent = record.title;
+    const time = document.createElement("small");
+    time.textContent = `Moved to ${new Date(record.to).toLocaleString()} · ${new Date(record.moved).toLocaleString()}`;
+    row.append(title, time);
+    list.append(row);
   }
 }
 
@@ -228,21 +249,20 @@ function showFlyout(row, flyout) {
   if (openFlyoutRow && openFlyoutRow !== row) hideFlyout(openFlyoutRow);
   openFlyoutRow = row;
   row.classList.add("flyout-open");
-  row.classList.remove("flyout-above");
-  const rowBounds = row.getBoundingClientRect();
-  const listBounds = list.getBoundingClientRect();
   const height = flyout.getBoundingClientRect().height;
-  const placement = flyoutPlacement(rowBounds.top, rowBounds.bottom, height, listBounds.top, listBounds.bottom);
-  if (placement === "above") {
-    row.classList.add("flyout-above");
-  } else if (placement === "scroll") {
-    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }
+  list.style.setProperty("--flyout-clearance", `${height + 18}px`);
+  list.classList.add("flyout-visible");
+  list.scrollTop += flyoutScrollDelta(row.getBoundingClientRect().top, height,
+    list.getBoundingClientRect().bottom);
 }
 
 function hideFlyout(row) {
-  row.classList.remove("flyout-open", "flyout-above");
-  if (openFlyoutRow === row) openFlyoutRow = undefined;
+  row.classList.remove("flyout-open");
+  if (openFlyoutRow === row) {
+    openFlyoutRow = undefined;
+    list.classList.remove("flyout-visible");
+    list.style.removeProperty("--flyout-clearance");
+  }
 }
 
 async function load(interactive = false) {
@@ -294,6 +314,15 @@ async function load(interactive = false) {
       syncState.error = error.message;
       await saveSyncState();
     }
+    try {
+      moves = await syncRecentMoves(account);
+    } catch (error) {
+      const savedMoves = await chrome.storage.local.get(`moves:${account.toLowerCase()}`);
+      moves = savedMoves[`moves:${account.toLowerCase()}`] || [];
+      showError(`Recent moves are saved in this browser, but Drive sync failed: ${error.message}`);
+      syncState.error = `Move history sync failed: ${error.message}`;
+      await saveSyncState();
+    }
     render();
   } catch (error) {
     showError(`Could not load Calendar: ${error.message}`);
@@ -311,6 +340,8 @@ async function load(interactive = false) {
 function render() {
   const previousScroll = list.scrollTop;
   openFlyoutRow = undefined;
+  list.classList.remove("flyout-visible");
+  list.style.removeProperty("--flyout-clearance");
   list.replaceChildren();
   const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
   const visible = events.filter((event) => !dismissed.has(eventKey(event)));
@@ -473,7 +504,13 @@ function renderEvent(event) {
     more.setAttribute("aria-haspopup", "true");
     more.addEventListener("pointerenter", () => showFlyout(row, flyout));
     more.addEventListener("focus", () => showFlyout(row, flyout));
-    row.addEventListener("pointerleave", () => hideFlyout(row));
+    let hideTimer;
+    row.addEventListener("pointerenter", () => clearTimeout(hideTimer));
+    row.addEventListener("pointerleave", () => {
+      hideTimer = setTimeout(() => {
+        if (!row.matches(":hover")) hideFlyout(row);
+      }, 180);
+    });
     row.addEventListener("focusout", (event) => {
       if (!row.contains(event.relatedTarget)) hideFlyout(row);
     });
@@ -550,6 +587,30 @@ async function commitAction(action) {
       }
       try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
       catch (cacheError) { cacheWarning = `Move succeeded, but offline cache was not updated: ${cacheError.message}`; }
+      if (eventStartMs(event, calendarZone) !== start) {
+        try {
+          moves = await saveRecentMove(account, {
+            id: crypto.randomUUID(), eventId: event.id, title: event.summary || "(Untitled event)",
+            from: eventStartMs(event, calendarZone), to: start, moved: Date.now()
+          });
+          if (syncState.error?.startsWith("Move history sync failed:")) {
+            syncState.error = null;
+            try { await saveSyncState(); }
+            catch (statusError) {
+              const warning = `Event moved, but sync status could not be saved: ${statusError.message}`;
+              cacheWarning = cacheWarning ? `${cacheWarning} ${warning}` : warning;
+            }
+          }
+        } catch (historyError) {
+          const storedMoves = await chrome.storage.local.get(`moves:${account.toLowerCase()}`).catch(() => ({}));
+          moves = storedMoves[`moves:${account.toLowerCase()}`] || moves;
+          const historyWarning = `Event moved, but recent move history could not sync: ${historyError.message}`;
+          cacheWarning = cacheWarning ? `${cacheWarning} ${historyWarning}` : historyWarning;
+          syncState.error = `Move history sync failed: ${historyError.message}`;
+          try { await saveSyncState(); }
+          catch { /* The move and its local history remain successful. */ }
+        }
+      }
     } else {
       dismissals = await saveDismissal(account, {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now(),
@@ -557,7 +618,7 @@ async function commitAction(action) {
       });
       syncState.pending = (syncState.pending || []).filter((item) => item !== key);
       syncState.dismissalAt = Date.now();
-      syncState.error = null;
+      if (!syncState.error?.startsWith("Move history sync failed:")) syncState.error = null;
       await saveSyncState();
     }
     showError(cacheWarning);
@@ -643,6 +704,7 @@ async function logout() {
     scheduleHeaderClock();
     events = [];
     dismissals = [];
+    moves = [];
     remoteSearch = undefined;
     remoteSearchRequest++;
     accountLabel.textContent = "Not connected";
@@ -735,6 +797,12 @@ $("#recent-dismissals-open").addEventListener("click", () => {
   });
 });
 $("#recent-dismissals-close").addEventListener("click", () => recentDismissalsDialog.close());
+$("#recent-moves-open").addEventListener("click", () => {
+  closeMenu();
+  renderRecentMoves();
+  recentMovesDialog.showModal();
+});
+$("#recent-moves-close").addEventListener("click", () => recentMovesDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
@@ -854,7 +922,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();
@@ -889,12 +957,14 @@ if (signedOut) {
   if (saved.lastAccount) {
     account = saved.lastAccount;
     const offlineCache = await chrome.storage.local.get([
-      `cachedEvents:${account.toLowerCase()}`, `dismissals:${account.toLowerCase()}`, `syncState:${account.toLowerCase()}`
+      `cachedEvents:${account.toLowerCase()}`, `dismissals:${account.toLowerCase()}`,
+      `moves:${account.toLowerCase()}`, `syncState:${account.toLowerCase()}`
     ]);
     const cached = offlineCache[`cachedEvents:${account.toLowerCase()}`];
     events = cached?.events || [];
     calendarZone = cached?.zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     dismissals = offlineCache[`dismissals:${account.toLowerCase()}`] || [];
+    moves = offlineCache[`moves:${account.toLowerCase()}`] || [];
     syncState = { ...syncState, ...(offlineCache[`syncState:${account.toLowerCase()}`] || {}) };
     accountLabel.textContent = account;
     scheduleHeaderClock();

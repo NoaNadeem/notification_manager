@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flyoutPlacement } from "./layout.js";
+import { flyoutScrollDelta } from "./layout.js";
 
-test("last event opens ribbon above the row", () => {
-  assert.equal(flyoutPlacement(590, 640, 100, 100, 650), "above");
+test("flyout stays at row level and scrolls the last row into view", () => {
+  assert.equal(flyoutScrollDelta(590, 100, 650), 48);
 });
 
-test("middle event keeps ribbon below the row", () => {
-  assert.equal(flyoutPlacement(250, 300, 100, 100, 650), "below");
+test("middle event does not need extra scroll", () => {
+  assert.equal(flyoutScrollDelta(250, 100, 650), 0);
 });
 
-test("short viewport scrolls when neither direction has room", () => {
-  assert.equal(flyoutPlacement(160, 210, 100, 100, 240), "scroll");
+test("short viewport uses a fixed row anchor", () => {
+  assert.equal(flyoutScrollDelta(160, 100, 240), 28);
 });

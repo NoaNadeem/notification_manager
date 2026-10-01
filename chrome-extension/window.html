@@ -30,6 +30,7 @@
       <div id="account-email" class="menu-account"></div>
       <button id="sync-open"><span id="sync-menu-label">Sync issues</span></button>
       <button id="recent-dismissals-open">Recent dismissals</button>
+      <button id="recent-moves-open">Events recently moved</button>
       <button id="refresh">↻ &nbsp; Refresh events</button>
       <button id="presets-open">Window: <span id="preset-label">Current: 7 days back to today</span></button>
       <button id="estimate-storage" hidden>Estimate 1-year storage</button>
@@ -62,6 +63,11 @@
     <h2>Recent dismissals</h2>
     <div id="recent-dismissals-list" aria-live="polite"></div>
     <div class="dialog-actions"><button id="recent-dismissals-close">Close</button></div>
+  </dialog>
+  <dialog id="recent-moves-dialog">
+    <h2>Events recently moved</h2>
+    <div id="recent-moves-list" aria-live="polite"></div>
+    <div class="dialog-actions"><button id="recent-moves-close">Close</button></div>
   </dialog>
   <dialog id="lookback-dialog">
     <h2>Show past events</h2>

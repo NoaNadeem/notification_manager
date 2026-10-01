@@ -728,19 +728,13 @@ $("#logout").addEventListener("click", () => { closeMenu(); void logout(); });
 $("#sync-open").addEventListener("click", () => { closeMenu(); syncDialog.showModal(); });
 $("#sync-close").addEventListener("click", () => syncDialog.close());
 $("#recent-dismissals-open").addEventListener("click", () => {
-  syncDialog.close();
+  closeMenu();
   recentDismissalsDialog.showModal();
   void renderRecentDismissals().catch((error) => {
     $("#recent-dismissals-list").textContent = `Could not load recent dismissals: ${error.message}`;
   });
 });
-$("#recent-dismissals-back").addEventListener("click", () => {
-  recentDismissalsDialog.close();
-  syncDialog.showModal();
-});
-recentDismissalsDialog.addEventListener("close", () => {
-  if (!syncDialog.open) syncDialog.showModal();
-});
+$("#recent-dismissals-close").addEventListener("click", () => recentDismissalsDialog.close());
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {

@@ -1125,6 +1125,10 @@ private fun CalendarConnectedScreen(
                         )
                     }
                     DropdownMenuItem(
+                        text = { Text("Recent dismissals") },
+                        onClick = { menuExpanded = false; showRecentDismissals = true }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Refresh events") },
                         leadingIcon = { Text("↻") },
                         enabled = !eventsLoading && !loading && movingEventId == null,
@@ -1550,15 +1554,12 @@ private fun CalendarConnectedScreen(
                 Text("Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}")
                 Text("Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}")
                 syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = { showSyncDetails = false; showRecentDismissals = true }) {
-                    Text("Recent dismissals")
-                }
             }
         },
         confirmButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
     )
     if (showRecentDismissals) AlertDialog(
-        onDismissRequest = { showRecentDismissals = false; showSyncDetails = true },
+        onDismissRequest = { showRecentDismissals = false },
         title = { Text("Recent dismissals") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -1574,9 +1575,7 @@ private fun CalendarConnectedScreen(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = {
-            showRecentDismissals = false; showSyncDetails = true
-        }) { Text("Back") } }
+        confirmButton = { TextButton(onClick = { showRecentDismissals = false }) { Text("Close") } }
     )
     if (showPresets) AlertDialog(
         onDismissRequest = { showPresets = false },

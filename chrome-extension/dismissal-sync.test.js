@@ -35,3 +35,8 @@ test("dismissal marker description round-trips a record", () => {
   assert.deepEqual(parseDismissalMarker({ id: "fixture", description: JSON.stringify({ version: 2, ...record }) }), record);
   assert.throws(() => parseDismissalMarker({ id: "fixture", description: "{}" }), /Invalid dismissal marker/);
 });
+
+test("dismissal marker preserves optional title from another device", () => {
+  const record = { eventId: "Test Event - 2", start: 1000, dismissed: 2000, title: "Test Event - 2" };
+  assert.deepEqual(parseDismissalMarker({ id: "fixture", description: JSON.stringify({ version: 2, ...record }) }), record);
+});

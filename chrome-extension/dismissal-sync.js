@@ -8,7 +8,8 @@ export function parseDismissalMarker(file) {
       !Number.isFinite(data.start) || !Number.isFinite(data.dismissed)) {
     throw new Error(`Invalid dismissal marker ${file.id || file.name}.`);
   }
-  return { eventId: data.eventId, start: data.start, dismissed: data.dismissed };
+  return { eventId: data.eventId, start: data.start, dismissed: data.dismissed,
+    ...(typeof data.title === "string" && data.title ? { title: data.title } : {}) };
 }
 
 export async function publishMissingDismissals(local, remote, createMarker, nowMs = Date.now()) {

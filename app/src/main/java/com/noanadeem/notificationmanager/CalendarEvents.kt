@@ -247,6 +247,15 @@ internal suspend fun fetchEventWebLink(accessToken: String, event: CalendarEvent
             ?: throw IllegalStateException("Google Calendar did not provide a link for this event.")
     }
 
+internal suspend fun fetchDismissedEventTitle(
+    accessToken: String, calendarId: String, eventId: String
+): String? = withContext(Dispatchers.IO) {
+    val url = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
+        .buildUpon().appendPath(calendarId).appendPath("events").appendPath(eventId)
+        .build().toString()
+    getCalendarJson(url, accessToken).optString("summary").takeIf { it.isNotBlank() }
+}
+
 internal suspend fun moveCalendarEvent(
     accessToken: String,
     calendarEvent: CalendarEvent,

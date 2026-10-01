@@ -146,9 +146,19 @@ export function mergeDismissals(local, remote, nowMs = Date.now()) {
   for (const record of [...local, ...remote]) {
     if (!record.eventId || record.start < cutoff) continue;
     const key = `${record.eventId}/${record.start}`;
-    if (!byKey.has(key) || byKey.get(key).dismissed < record.dismissed) byKey.set(key, record);
+    const current = byKey.get(key);
+    if (!current || current.dismissed < record.dismissed) {
+      byKey.set(key, record.title || !current?.title ? record : { ...record, title: current.title });
+    } else if (!current.title && record.title) {
+      byKey.set(key, { ...current, title: record.title });
+    }
   }
   return [...byKey.values()].sort((a, b) => a.start - b.start || a.eventId.localeCompare(b.eventId));
+}
+
+export function recentDismissals(records) {
+  return [...records].sort((a, b) => b.dismissed - a.dismissed ||
+    dismissalKey(a.eventId, a.start).localeCompare(dismissalKey(b.eventId, b.start))).slice(0, 10);
 }
 
 export function parseDismissals(raw) {

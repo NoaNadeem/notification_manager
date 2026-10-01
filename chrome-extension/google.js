@@ -43,6 +43,11 @@ export async function primaryCalendar(interactive = false, request = googleReque
   return request(`${CALENDAR}/primary`, {}, interactive);
 }
 
+export async function dismissedEventTitle(calendarId, eventId, request = googleRequest) {
+  const event = await request(`${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`);
+  return event.summary || null;
+}
+
 export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null, request = googleRequest) {
   const now = Date.now();
   const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays, preset);

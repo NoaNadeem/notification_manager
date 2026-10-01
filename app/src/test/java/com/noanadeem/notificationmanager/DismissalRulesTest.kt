@@ -86,4 +86,18 @@ class DismissalRulesTest {
         val record = DismissalRecord(first.id, first.start.toEpochMilli(), now.toEpochMilli())
         assertEquals(listOf(next), listOf(first, next).withoutDismissals(listOf(record)))
     }
+
+    @Test
+    fun recentDismissalsUseDismissalTimeAndKeepTitlesAcrossMerge() {
+        val start = now.minusSeconds(60).toEpochMilli()
+        val oldWithTitle = DismissalRecord("same", start, now.minusSeconds(3).toEpochMilli(), "Test Event - 1")
+        val newerWithoutTitle = DismissalRecord("same", start, now.minusSeconds(2).toEpochMilli())
+        val merged = mergeDismissals(listOf(oldWithTitle), listOf(newerWithoutTitle), now)
+        assertEquals("Test Event - 1", merged.single().title)
+        val records = (1..12).map { index ->
+            DismissalRecord("event-$index", start + index, now.plusSeconds(index.toLong()).toEpochMilli(),
+                "Test Event - $index")
+        }
+        assertEquals((12 downTo 3).map { "Test Event - $it" }, recentDismissals(records).map { it.title })
+    }
 }

@@ -98,7 +98,10 @@ dialog { width:min(440px,calc(100% - 40px)); border:1px solid var(--border); bor
 dialog::backdrop { background:#0008; }
 dialog h2 { margin:0 0 12px; font-size:17px; }
 dialog button[data-days],dialog button[data-ahead-days],#preset-choices button,#presets-dialog > button,#sync-dialog > button { display:block; width:100%; padding:8px; margin:3px 0; text-align:left; color:var(--text); background:var(--tile); border:0; border-radius:5px; }
-#presets-dialog,#sync-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
+#presets-dialog,#sync-dialog,#recent-dismissals-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
+#recent-dismissals-list { max-height:60vh; overflow-y:auto; }
+.recent-dismissal { padding:9px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.recent-dismissal small { display:block; margin-top:3px; color:var(--muted); }
 #lookahead-dialog { max-height:calc(100vh - 30px); overflow-y:auto; }
 #sync-detail { overflow-wrap:anywhere; }
 dialog label { display:block; margin-top:12px; }

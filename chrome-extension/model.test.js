@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
+import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, recentDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
 
 test("recurring instances cannot move and dismissal keys remain occurrence specific", () => {
   const first = { id: "series_20260928", recurringEventId: "series", start: { dateTime: "2026-09-28T12:00:00Z" } };
@@ -104,6 +104,20 @@ test("future event dismissal survives local and Drive union", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");
   const future = { eventId: "Test Event - 1", start: now + 4 * 3_600_000, dismissed: now };
   assert.deepEqual(mergeDismissals([future], [], now), [future]);
+});
+
+test("recent dismissals keep a synced title and show the latest ten", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const merged = mergeDismissals(
+    [{ eventId: "same", start: now - 1000, dismissed: now - 2, title: "Test Event - 1" }],
+    [{ eventId: "same", start: now - 1000, dismissed: now - 1 }], now);
+  assert.equal(merged[0].title, "Test Event - 1");
+  const records = Array.from({ length: 12 }, (_, index) => ({
+    eventId: `event-${index}`, start: now - 1000 + index, dismissed: now + index,
+    title: `Test Event - ${index}`
+  }));
+  assert.deepEqual(recentDismissals(records).map((record) => record.title),
+    Array.from({ length: 10 }, (_, index) => `Test Event - ${11 - index}`));
 });
 
 test("location becomes a safe web link or map query", () => {

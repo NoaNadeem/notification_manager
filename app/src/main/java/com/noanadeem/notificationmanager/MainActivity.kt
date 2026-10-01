@@ -402,7 +402,8 @@ private fun CalendarLoginScreen(
                     committingActionIds = committingActionIds + action.event.id
                     val selectedAccount = accountName ?: action.event.calendarId
                     val now = Instant.now()
-                    val record = DismissalRecord(action.event.id, action.event.start.toEpochMilli(), now.toEpochMilli())
+                    val record = DismissalRecord(action.event.id, action.event.start.toEpochMilli(),
+                        now.toEpochMilli(), action.event.title)
                     try {
                         val merged = dismissalMutex.withLock {
                             val saved = mergeDismissals(dismissalStore.read(selectedAccount, now), listOf(record), now)
@@ -860,6 +861,17 @@ private fun CalendarLoginScreen(
             actionError = actionError,
             driveError = driveError,
             syncState = syncState,
+            dismissals = dismissals,
+            cachedEventTitles = remember(accountName, recentEvents, dismissals) {
+                accountName?.let(localStateStore::readEvents).orEmpty()
+                    .associate { "${it.id}/${it.start.toEpochMilli()}" to it.title }
+            },
+            resolveDismissalTitle = { record ->
+                val token = currentAccessToken
+                val account = accountName
+                if (token == null || account == null) null
+                else runCatching { fetchDismissedEventTitle(token, account, record.eventId) }.getOrNull()
+            },
             syncStatusReady = shouldShowSyncStatus(syncState, sessionStartedAt, eventsLoading,
                 eventsError != null || driveError != null),
             storageEstimate = storageEstimate,
@@ -952,6 +964,9 @@ private fun CalendarConnectedScreen(
     actionError: String?,
     driveError: String?,
     syncState: LocalSyncState,
+    dismissals: List<DismissalRecord>,
+    cachedEventTitles: Map<String, String>,
+    resolveDismissalTitle: suspend (DismissalRecord) -> String?,
     syncStatusReady: Boolean,
     storageEstimate: String?,
     darkMode: Boolean,
@@ -982,6 +997,19 @@ private fun CalendarConnectedScreen(
     var showLookaheadPicker by remember { mutableStateOf(false) }
     var showPresets by remember { mutableStateOf(false) }
     var showSyncDetails by remember { mutableStateOf(false) }
+    var showRecentDismissals by remember { mutableStateOf(false) }
+    var resolvedDismissalTitles by remember(accountName) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val latestDismissals = remember(dismissals) { recentDismissals(dismissals) }
+    LaunchedEffect(showRecentDismissals, latestDismissals, cachedEventTitles) {
+        if (!showRecentDismissals) return@LaunchedEffect
+        for (record in latestDismissals) {
+            if (!record.title.isNullOrBlank() || !cachedEventTitles[record.key].isNullOrBlank() ||
+                resolvedDismissalTitles.containsKey(record.key)) continue
+            resolveDismissalTitle(record)?.takeIf(String::isNotBlank)?.let { title ->
+                resolvedDismissalTitles = resolvedDismissalTitles + (record.key to title)
+            }
+        }
+    }
     var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var customLookaheadText by remember { mutableStateOf(lookaheadDays.toString()) }
@@ -1522,9 +1550,33 @@ private fun CalendarConnectedScreen(
                 Text("Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}")
                 Text("Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}")
                 syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showSyncDetails = false; showRecentDismissals = true }) {
+                    Text("Recent dismissals")
+                }
             }
         },
         confirmButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
+    )
+    if (showRecentDismissals) AlertDialog(
+        onDismissRequest = { showRecentDismissals = false; showSyncDetails = true },
+        title = { Text("Recent dismissals") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (latestDismissals.isEmpty()) Text("No dismissals recorded yet.")
+                latestDismissals.forEach { record ->
+                    Text(record.title?.takeIf(String::isNotBlank)
+                        ?: cachedEventTitles[record.key]
+                        ?: resolvedDismissalTitles[record.key]
+                        ?: "Title unavailable for older dismissal")
+                    Text(formatSyncTime(record.dismissedAtMillis),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            showRecentDismissals = false; showSyncDetails = true
+        }) { Text("Back") } }
     )
     if (showPresets) AlertDialog(
         onDismissRequest = { showPresets = false },

@@ -1,5 +1,5 @@
-import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS } from "./model.js";
-import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar } from "./google.js";
+import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
+import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPlacement } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
@@ -25,6 +25,7 @@ const lookbackDialog = $("#lookback-dialog");
 const lookaheadDialog = $("#lookahead-dialog");
 const presetsDialog = $("#presets-dialog");
 const syncDialog = $("#sync-dialog");
+const recentDismissalsDialog = $("#recent-dismissals-dialog");
 const skinsDialog = $("#skins-dialog");
 const skinPresets = {
   Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
@@ -72,6 +73,38 @@ function renderSync() {
   $("#sync-menu-label").textContent = headline === "Synced just now" ? "Synced just now" : "Sync issues";
   $("#sync-open").classList.toggle("has-issues", headline !== "Synced just now");
   $("#sync-detail").textContent = `${headline}\n${syncDetail(syncState)}`;
+}
+
+async function renderRecentDismissals() {
+  const list = $("#recent-dismissals-list");
+  const recent = recentDismissals(dismissals);
+  list.replaceChildren();
+  if (!recent.length) {
+    list.textContent = "No dismissals recorded yet.";
+    return;
+  }
+  const titleByKey = new Map(events.map((event) => [eventKey(event), event.summary || "(Untitled event)"]));
+  const cached = await chrome.storage.local.get(`cachedEvents:${account.toLowerCase()}`).catch(() => ({}));
+  for (const event of cached[`cachedEvents:${account.toLowerCase()}`]?.events || []) {
+    titleByKey.set(eventKey(event), event.summary || "(Untitled event)");
+  }
+  for (const record of recent) {
+    const row = document.createElement("div");
+    row.className = "recent-dismissal";
+    const title = document.createElement("span");
+    title.textContent = record.title || titleByKey.get(dismissalKey(record.eventId, record.start)) ||
+      "Title unavailable for older dismissal";
+    const time = document.createElement("small");
+    time.textContent = new Date(record.dismissed).toLocaleString();
+    row.append(title, time);
+    list.append(row);
+    if (!record.title && !titleByKey.has(dismissalKey(record.eventId, record.start))) {
+      try {
+        const fetched = await dismissedEventTitle(account, record.eventId);
+        if (fetched) title.textContent = fetched;
+      } catch { /* Older or deleted events may no longer be readable from Calendar. */ }
+    }
+  }
 }
 
 function renderWindowLabel() {
@@ -519,7 +552,8 @@ async function commitAction(action) {
       catch (cacheError) { cacheWarning = `Move succeeded, but offline cache was not updated: ${cacheError.message}`; }
     } else {
       dismissals = await saveDismissal(account, {
-        eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now()
+        eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now(),
+        title: event.summary || "(Untitled event)"
       });
       syncState.pending = (syncState.pending || []).filter((item) => item !== key);
       syncState.dismissalAt = Date.now();
@@ -693,6 +727,20 @@ $("#real-events-toggle").addEventListener("click", () => {
 $("#logout").addEventListener("click", () => { closeMenu(); void logout(); });
 $("#sync-open").addEventListener("click", () => { closeMenu(); syncDialog.showModal(); });
 $("#sync-close").addEventListener("click", () => syncDialog.close());
+$("#recent-dismissals-open").addEventListener("click", () => {
+  syncDialog.close();
+  recentDismissalsDialog.showModal();
+  void renderRecentDismissals().catch((error) => {
+    $("#recent-dismissals-list").textContent = `Could not load recent dismissals: ${error.message}`;
+  });
+});
+$("#recent-dismissals-back").addEventListener("click", () => {
+  recentDismissalsDialog.close();
+  syncDialog.showModal();
+});
+recentDismissalsDialog.addEventListener("close", () => {
+  if (!syncDialog.open) syncDialog.showModal();
+});
 $("#presets-open").addEventListener("click", () => { closeMenu(); presetsDialog.showModal(); });
 $("#presets-cancel").addEventListener("click", () => presetsDialog.close());
 for (const [id, preset] of Object.entries(WINDOW_PRESETS)) {
@@ -812,7 +860,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();

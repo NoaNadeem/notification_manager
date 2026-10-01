@@ -22,7 +22,8 @@ internal val dismissalSyncMutex = Mutex()
 internal data class DismissalRecord(
     val eventId: String,
     val eventStartMillis: Long,
-    val dismissedAtMillis: Long
+    val dismissedAtMillis: Long,
+    val title: String? = null
 ) {
     val key: String get() = "$eventId/$eventStartMillis"
 }
@@ -36,7 +37,11 @@ internal fun mergeDismissals(
     return (first + second).asSequence()
         .filter { it.eventId.isNotBlank() && it.eventStartMillis >= cutoff }
         .groupBy { it.key }
-        .values.map { records -> records.maxBy { it.dismissedAtMillis } }
+        .values.map { records ->
+            val newest = records.maxBy { it.dismissedAtMillis }
+            newest.copy(title = newest.title?.takeIf(String::isNotBlank)
+                ?: records.firstNotNullOfOrNull { it.title?.takeIf(String::isNotBlank) })
+        }
         .sortedWith(compareBy(DismissalRecord::eventStartMillis, DismissalRecord::eventId))
 }
 
@@ -44,6 +49,10 @@ internal fun List<CalendarEvent>.withoutDismissals(records: List<DismissalRecord
     val keys = records.mapTo(HashSet()) { it.key }
     return filterNot { "${it.id}/${it.start.toEpochMilli()}" in keys }
 }
+
+internal fun recentDismissals(records: List<DismissalRecord>): List<DismissalRecord> = records
+    .sortedWith(compareByDescending(DismissalRecord::dismissedAtMillis).thenBy(DismissalRecord::key))
+    .take(10)
 
 internal suspend fun publishMissingDismissals(
     local: List<DismissalRecord>,
@@ -128,7 +137,8 @@ private fun parseDismissalMarker(file: JSONObject): DismissalRecord {
     require(data.getInt("version") == 2) { "Unsupported dismissal marker version." }
     val eventId = data.getString("eventId")
     require(eventId.isNotBlank()) { "Dismissal marker is missing an event ID." }
-    return DismissalRecord(eventId, data.getLong("start"), data.getLong("dismissed"))
+    return DismissalRecord(eventId, data.getLong("start"), data.getLong("dismissed"),
+        data.optString("title").takeIf { it.isNotBlank() })
 }
 
 private fun parseDismissals(raw: String): List<DismissalRecord> {
@@ -137,7 +147,8 @@ private fun parseDismissals(raw: String): List<DismissalRecord> {
     val rows = objectValue.getJSONArray("records")
     return (0 until rows.length()).map { index ->
         val row = rows.getJSONObject(index)
-        DismissalRecord(row.getString("eventId"), row.getLong("start"), row.getLong("dismissed"))
+        DismissalRecord(row.getString("eventId"), row.getLong("start"), row.getLong("dismissed"),
+            row.optString("title").takeIf { it.isNotBlank() })
     }
 }
 
@@ -146,7 +157,8 @@ private fun serializeDismissals(records: List<DismissalRecord>): String {
     records.forEach { record ->
         rows.put(JSONObject().put("eventId", record.eventId)
             .put("start", record.eventStartMillis)
-            .put("dismissed", record.dismissedAtMillis))
+            .put("dismissed", record.dismissedAtMillis)
+            .put("title", record.title ?: ""))
     }
     return JSONObject().put("version", 1).put("records", rows).toString()
 }
@@ -166,7 +178,8 @@ private fun createDismissalMarker(token: String, record: DismissalRecord) {
         .put("mimeType", "application/json")
         .put("parents", JSONArray().put("appDataFolder"))
         .put("description", JSONObject().put("version", 2).put("eventId", record.eventId)
-            .put("start", record.eventStartMillis).put("dismissed", record.dismissedAtMillis).toString())
+            .put("start", record.eventStartMillis).put("dismissed", record.dismissedAtMillis)
+            .put("title", record.title ?: "").toString())
     driveRequest("https://www.googleapis.com/drive/v3/files?fields=id", token, "POST",
         metadata.toString(), "application/json; charset=UTF-8")
 }

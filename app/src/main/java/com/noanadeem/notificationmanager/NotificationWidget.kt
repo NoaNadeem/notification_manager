@@ -476,7 +476,8 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
             if (event == null) throw IllegalStateException("Event changed; refresh the app before retrying")
             if (action.command == "dismiss") {
                 val store = DismissalStore(context)
-                val record = DismissalRecord(event.id, event.start.toEpochMilli(), System.currentTimeMillis())
+                val record = DismissalRecord(event.id, event.start.toEpochMilli(),
+                    System.currentTimeMillis(), event.title)
                 val stateStore = LocalStateStore(context)
                 dismissalSyncMutex.withLock {
                     val merged = mergeDismissals(store.read(action.account), listOf(record), Instant.now())

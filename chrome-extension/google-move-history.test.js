@@ -5,9 +5,12 @@ import { saveRecentMove, syncRecentMoves } from "./google.js";
 test("successful move history publishes one marker, reloads it, and limits Drive listing to move names", async () => {
   const previousChrome = globalThis.chrome;
   const previousFetch = globalThis.fetch;
+  const previousWarn = console.warn;
   const values = new Map();
   const files = [];
   const listQueries = [];
+  const warnings = [];
+  console.warn = (...message) => warnings.push(message);
   globalThis.chrome = {
     identity: { getAuthToken: async () => ({ token: "fixture-token" }) },
     storage: { local: {
@@ -50,8 +53,13 @@ test("successful move history publishes one marker, reloads it, and limits Drive
     assert.deepEqual(new Set(files.map((file) => JSON.parse(file.description).id)),
       new Set(Array.from({ length: 10 }, (_, index) => `fixture-${index + 3}`)));
     assert.ok(listQueries.every((query) => query.includes("name contains 'notification-manager-move-v1-'")));
+    files.push({ id: "broken", name: "notification-manager-move-v1-broken.json", description: "" });
+    assert.deepEqual(await syncRecentMoves("owner@example.com"), latest);
+    assert.equal(warnings.length, 1);
+    assert.equal(files.length, 11); // An invalid marker cannot be safely pruned automatically.
   } finally {
     globalThis.chrome = previousChrome;
     globalThis.fetch = previousFetch;
+    console.warn = previousWarn;
   }
 });

@@ -85,14 +85,20 @@ internal suspend fun syncMoveHistory(
         pageToken = page.optString("nextPageToken").takeIf(String::isNotBlank)
     } while (pageToken != null)
 
-    val remote = files.map { file -> parseMove(JSONObject(file.getString("description"))) }
+    val validFiles = files.mapNotNull { file ->
+        runCatching { file to parseMove(JSONObject(file.getString("description"))) }
+            .onFailure { Log.w("NotificationManagerMoves", "Skipping invalid move marker", it) }
+            .getOrNull()
+    }
+    val remote = validFiles.map { it.second }
     val merged = recentMoves(local, remote, now)
     val remoteIds = remote.mapTo(HashSet()) { it.id }
     for (record in merged) if (record.id !in remoteIds) createMoveMarker(token, record)
     store.write(account, merged)
     val retainedIds = merged.mapTo(HashSet()) { it.id }
     val seenIds = HashSet<String>()
-    for ((index, file) in files.withIndex()) {
+    for ((index, pair) in validFiles.withIndex()) {
+        val file = pair.first
         val record = remote[index]
         if (record.id !in retainedIds || !seenIds.add(record.id)) {
             runCatching {

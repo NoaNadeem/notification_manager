@@ -211,7 +211,16 @@ async function syncRecentMovesNow(account) {
     files.push(...(listing.files || []).filter((file) => file.name?.startsWith(MOVE_MARKER_PREFIX)));
     pageToken = listing.nextPageToken;
   } while (pageToken);
-  const remote = files.map(parseMoveMarker);
+  const validFiles = [];
+  const remote = [];
+  for (const file of files) {
+    try {
+      remote.push(parseMoveMarker(file));
+      validFiles.push(file);
+    } catch (error) {
+      console.warn("Skipping invalid move marker", error);
+    }
+  }
   const merged = recentMoves(local, remote);
   const remoteIds = new Set(remote.map((record) => record.id));
   for (const record of merged) {
@@ -225,7 +234,7 @@ async function syncRecentMovesNow(account) {
   await chrome.storage.local.set({ [key]: merged });
   const retained = new Set(merged.map((record) => record.id));
   const seen = new Set();
-  for (const [index, file] of files.entries()) {
+  for (const [index, file] of validFiles.entries()) {
     const id = remote[index].id;
     if (retained.has(id) && !seen.has(id)) { seen.add(id); continue; }
     try { await googleRequest(`${DRIVE}/${encodeURIComponent(file.id)}`, { method: "DELETE" }); }

@@ -265,13 +265,17 @@ function showFlyout(row, flyout, more) {
 
 function hideFlyout(row) {
   if (openFlyoutRow !== row) return;
-  row.classList.remove("flyout-open");
-  openMoreButton?.setAttribute("aria-expanded", "false");
-  openFlyout?.classList.remove("active");
-  if (openFlyout && row.isConnected) row.append(openFlyout);
+  const flyout = openFlyout;
+  const more = openMoreButton;
+  // Reparenting a focused tile fires focusout synchronously. Clear state first so
+  // its handler cannot re-enter this cleanup while the DOM move is in progress.
+  openFlyoutRow = undefined;
   openFlyout = undefined;
   openMoreButton = undefined;
-  openFlyoutRow = undefined;
+  row.classList.remove("flyout-open");
+  more?.setAttribute("aria-expanded", "false");
+  flyout?.classList.remove("active");
+  if (flyout && row.isConnected && flyout.parentNode !== row) row.append(flyout);
 }
 
 async function load(interactive = false) {
@@ -328,8 +332,10 @@ async function load(interactive = false) {
     } catch (error) {
       const savedMoves = await chrome.storage.local.get(`moves:${account.toLowerCase()}`);
       moves = savedMoves[`moves:${account.toLowerCase()}`] || [];
-      showError(`Recent moves are saved in this browser, but Drive sync failed: ${error.message}`);
-      syncState.error = `Move history sync failed: ${error.message}`;
+      const moveWarning = `Recent moves are saved in this browser, but Drive sync failed: ${error.message}`;
+      showError([notice.textContent, moveWarning].filter(Boolean).join("\n"));
+      syncState.error = [syncState.error, `Move history sync failed: ${error.message}`]
+        .filter(Boolean).join("; ");
       await saveSyncState();
     }
     render();
@@ -948,7 +954,10 @@ document.addEventListener("pointerdown", (pointer) => {
   }
 });
 document.addEventListener("keydown", (key) => {
-  if (key.key === "Escape" && openFlyoutRow) hideFlyout(openFlyoutRow);
+  if (key.key === "Escape" && openFlyoutRow) {
+    openMoreButton?.focus();
+    hideFlyout(openFlyoutRow);
+  }
 });
 list.addEventListener("scroll", () => { if (openFlyoutRow) hideFlyout(openFlyoutRow); });
 window.addEventListener("blur", () => { void undo.commit(); });

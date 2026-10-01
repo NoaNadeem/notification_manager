@@ -623,9 +623,11 @@ private fun CalendarLoginScreen(
                             syncMoveHistory(accessToken, moveHistoryStore, selectedAccount)
                         }
                     } catch (e: Exception) {
-                        driveError = "Recent moves are saved on this phone, but Drive sync is unavailable: ${e.message}"
+                        val moveWarning = "Recent moves are saved on this phone, but Drive sync is unavailable: ${e.message}"
+                        driveError = listOfNotNull(driveError, moveWarning).joinToString("\n")
                         saveSync(selectedAccount, syncState.copy(
-                            error = "Move history sync failed: ${e.message ?: "Unknown error"}"))
+                            error = listOfNotNull(syncState.error,
+                                "Move history sync failed: ${e.message ?: "Unknown error"}").joinToString("; ")))
                     }
                 } catch (e: Exception) {
                     eventsError = e.message ?: "Could not load recent events."

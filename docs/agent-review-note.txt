@@ -13,7 +13,7 @@ Recent work to inspect:
 3. The Android home-screen widget supports scrolling, app-style event expansion, direct move/dismiss with Undo, and Wi-Fi-only hourly refresh when the last successful Calendar refresh was at least 59 minutes ago. Search and calendar picking open the app.
 4. Recent dismissals shows up to ten event titles. New dismissals store titles in Drive marker metadata. Old titleless entries can resolve from local cache or a read-only Calendar lookup.
 5. New recent-move history saves minimal records locally and syncs independent Drive appData markers. It records only after a confirmed Calendar update, keeps the newest ten records and excludes records older than 30 days, and retries local records after Drive failures. Android app, widget, and Chrome extension can all create records. Older moves cannot be reconstructed. Verify concurrent clients, duplicate retries, pruning, malformed/partial markers, write failures, account isolation, and that a history failure never reports a successful Calendar move as failed.
-6. The Chrome extension action ribbon now overlays the same event row instead of choosing above or below. The scroll area temporarily adds bottom clearance and scrolls if needed, so the last row's tiles remain visible. Verify hover travel from the three-dot button to every tile, click and keyboard behavior, zoom/short windows, title overlap, and whether the scroll or padding causes the ribbon to disappear or jump.
+6. The Chrome extension action ribbon now opens directly above its own event instead of choosing above or below or covering the title. The first event's ribbon may cover the header. Verify hover travel from the three-dot button to every tile, click and keyboard behavior, zoom/short windows, and whether list scrolling or pointer movement causes the ribbon to disappear or jump.
 
 Key Android files:
 /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/MainActivity.kt
@@ -44,7 +44,7 @@ Review questions:
 - Can two devices commit dismissals or move-history records concurrently without a lost update or duplicate record? Does local state eventually converge after failures and refreshes?
 - Do Calendar move, local cache, Drive history, and displayed sync status remain consistent if any step fails? Is there a safe retry path?
 - Do move-history metadata and cleanup meet the intended ten-record/30-day bounds in practice, including paging and simultaneous clients?
-- Does the Chrome ribbon truly remain anchored to the row, with the same tile positions, while all tiles stay reachable near the bottom of the list? Check both pointer and keyboard paths.
+- Does the Chrome ribbon truly remain anchored above its event, with stable tile positions and a readable title? Check both pointer and keyboard paths, including the first and last event.
 - Are recurring event guards, primary-calendar scope, Undo lifecycle, Android widget behavior, and cross-client date semantics still correct after these changes?
 - Are icon controls labeled, action targets usable, and dialogs scrollable in light/dark themes and small windows?
 
@@ -52,4 +52,4 @@ Verification commands (fixture tests; no live Calendar mutation):
 From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager run ./gradlew testDebugUnitTest assembleDebug
 From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension run npm test
 
-The current local verification passed 53 Chrome tests and the Android unit-test/debug-build tasks. The Chrome ribbon needs a manual visual check after reloading the unpacked extension; unit tests cover its geometry helper, not actual browser pointer movement.
+The Android unit-test/debug-build tasks passed before this extension-only ribbon change, and all 53 Chrome tests passed afterward. The Chrome ribbon needs a manual visual check after reloading the unpacked extension; unit tests cover its geometry helper, not actual browser pointer movement.

@@ -1,7 +1,7 @@
 import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
-import { flyoutScrollDelta } from "./layout.js";
+import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
@@ -54,6 +54,8 @@ let suppressNextClick = false;
 let wheelResetTimer;
 let dateTarget;
 let openFlyoutRow;
+let openFlyout;
+let openMoreButton;
 let searchActive = false;
 let realEventsOnly = false;
 let remoteSearch;
@@ -245,24 +247,31 @@ function closeMenu() {
   menuToggle.setAttribute("aria-expanded", "false");
 }
 
-function showFlyout(row, flyout) {
-  if (openFlyoutRow && openFlyoutRow !== row) hideFlyout(openFlyoutRow);
+function showFlyout(row, flyout, more) {
+  if (openFlyoutRow === row) return;
+  if (openFlyoutRow) hideFlyout(openFlyoutRow);
   openFlyoutRow = row;
+  openFlyout = flyout;
+  openMoreButton = more;
   row.classList.add("flyout-open");
-  const height = flyout.getBoundingClientRect().height;
-  list.style.setProperty("--flyout-clearance", `${height + 18}px`);
-  list.classList.add("flyout-visible");
-  list.scrollTop += flyoutScrollDelta(row.getBoundingClientRect().top, height,
-    list.getBoundingClientRect().bottom);
+  more.setAttribute("aria-expanded", "true");
+  document.body.append(flyout);
+  flyout.classList.add("active");
+  const bounds = row.getBoundingClientRect();
+  flyout.style.left = `${bounds.left + 10}px`;
+  flyout.style.width = `${bounds.width - 18}px`;
+  flyout.style.top = `${flyoutAboveRowTop(bounds.top, flyout.getBoundingClientRect().height)}px`;
 }
 
 function hideFlyout(row) {
+  if (openFlyoutRow !== row) return;
   row.classList.remove("flyout-open");
-  if (openFlyoutRow === row) {
-    openFlyoutRow = undefined;
-    list.classList.remove("flyout-visible");
-    list.style.removeProperty("--flyout-clearance");
-  }
+  openMoreButton?.setAttribute("aria-expanded", "false");
+  openFlyout?.classList.remove("active");
+  if (openFlyout && row.isConnected) row.append(openFlyout);
+  openFlyout = undefined;
+  openMoreButton = undefined;
+  openFlyoutRow = undefined;
 }
 
 async function load(interactive = false) {
@@ -339,9 +348,7 @@ async function load(interactive = false) {
 
 function render() {
   const previousScroll = list.scrollTop;
-  openFlyoutRow = undefined;
-  list.classList.remove("flyout-visible");
-  list.style.removeProperty("--flyout-clearance");
+  if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
   const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
   const visible = events.filter((event) => !dismissed.has(eventKey(event)));
@@ -492,6 +499,7 @@ function renderEvent(event) {
   }
   const actions = document.createElement("div");
   actions.className = "actions";
+  let more;
   if (action) {
     actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo"));
   } else if (!busy) {
@@ -500,19 +508,20 @@ function renderEvent(event) {
       actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     } else {
     actions.append(moveTile(event, "1D", { days: 1 }, "tile primary"));
-    const more = button("⋯", "More move and dismiss options", () => showFlyout(row, flyout), "tile more");
+    more = button("⋯", "More move and dismiss options", () => showFlyout(row, flyout, more), "tile more");
     more.setAttribute("aria-haspopup", "true");
-    more.addEventListener("pointerenter", () => showFlyout(row, flyout));
-    more.addEventListener("focus", () => showFlyout(row, flyout));
-    let hideTimer;
-    row.addEventListener("pointerenter", () => clearTimeout(hideTimer));
-    row.addEventListener("pointerleave", () => {
-      hideTimer = setTimeout(() => {
-        if (!row.matches(":hover")) hideFlyout(row);
-      }, 180);
+    more.setAttribute("aria-expanded", "false");
+    more.addEventListener("pointerenter", () => showFlyout(row, flyout, more));
+    more.addEventListener("focus", () => showFlyout(row, flyout, more));
+    more.addEventListener("keydown", (key) => {
+      if (key.key === "Tab" && !key.shiftKey || key.key === "ArrowDown") {
+        key.preventDefault();
+        showFlyout(row, flyout, more);
+        flyout.querySelector("button:not(:disabled)")?.focus();
+      }
     });
     row.addEventListener("focusout", (event) => {
-      if (!row.contains(event.relatedTarget)) hideFlyout(row);
+      if (!row.contains(event.relatedTarget) && !flyout.contains(event.relatedTarget)) hideFlyout(row);
     });
     actions.append(more);
     }
@@ -551,6 +560,15 @@ function renderEvent(event) {
   }
   bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   flyout.append(topRow, bottomRow);
+  flyout.addEventListener("focusout", (event) => {
+    if (!flyout.contains(event.relatedTarget) && !row.contains(event.relatedTarget)) hideFlyout(row);
+  });
+  flyout.addEventListener("keydown", (key) => {
+    if (key.key === "Tab" && key.shiftKey && document.activeElement === flyout.querySelector("button:not(:disabled)")) {
+      key.preventDefault();
+      more.focus();
+    }
+  });
   row.append(flyout);
   return row;
 }
@@ -917,6 +935,22 @@ datePicker.addEventListener("change", () => {
 });
 calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
 $("#connect").addEventListener("click", () => void load(true));
+document.addEventListener("pointermove", (pointer) => {
+  if (!openFlyoutRow || !openFlyout || !openMoreButton) return;
+  if (!flyoutPointerInReach(pointer.clientX, pointer.clientY,
+    openMoreButton.getBoundingClientRect(), openFlyout.getBoundingClientRect())) {
+    hideFlyout(openFlyoutRow);
+  }
+});
+document.addEventListener("pointerdown", (pointer) => {
+  if (openFlyoutRow && !openFlyout?.contains(pointer.target) && !openMoreButton?.contains(pointer.target)) {
+    hideFlyout(openFlyoutRow);
+  }
+});
+document.addEventListener("keydown", (key) => {
+  if (key.key === "Escape" && openFlyoutRow) hideFlyout(openFlyoutRow);
+});
+list.addEventListener("scroll", () => { if (openFlyoutRow) hideFlyout(openFlyoutRow); });
 window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {

@@ -195,7 +195,6 @@ internal class NotificationWidget : AppWidgetProvider() {
             return
         }
         if (command == "real") {
-            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
             prefs(context).edit().putBoolean("real_$widgetId",
                 !prefs(context).getBoolean("real_$widgetId", false)).apply()
             updateAll(context)
@@ -206,11 +205,13 @@ internal class NotificationWidget : AppWidgetProvider() {
         val start = intent.getLongExtra(EXTRA_EVENT_START, Long.MIN_VALUE)
         heldWidgetRow(context, selectedAccount)?.let { held ->
             if (held.event.id == eventId && held.event.start.toEpochMilli() == start) return
-            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
         }
         val event = visibleEvents(context, selectedAccount).find {
             it.id == eventId && it.start.toEpochMilli() == start
         } ?: return
+        if (command !in setOf("more", "location")) {
+            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
+        }
         val key = pendingKey(event)
         when (command) {
             "more" -> {

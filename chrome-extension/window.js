@@ -263,7 +263,7 @@ function moveTile(event, label, option, className = "tile") {
 }
 
 function openEventLink(event, kind = "view") {
-  clearHeldFor(event);
+  if (kind === "edit") clearHeldFor(event);
   const action = calendarEventAction(event, kind);
   if (!action) {
     showError("Google Calendar did not provide a valid event link.");
@@ -504,7 +504,6 @@ function renderEvent(event) {
     title.href = calendarEventAction(event)?.url || "#";
     title.addEventListener("click", (click) => {
       click.preventDefault();
-      clearHeldFor(event);
       openEventLink(event);
     });
   }
@@ -530,7 +529,6 @@ function renderEvent(event) {
     location.href = locationHref(event.location);
     location.addEventListener("click", (click) => {
       click.preventDefault();
-      clearHeldFor(event);
       void undo.commit().then(() => openInBrowser(chrome, location.href))
         .catch((error) => showError(`Could not open location: ${error.message}`));
     });
@@ -589,6 +587,7 @@ function renderEvent(event) {
     }
   }
   topRow.append(button("📅", "Choose a date", () => {
+    clearHeldFor(event);
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";

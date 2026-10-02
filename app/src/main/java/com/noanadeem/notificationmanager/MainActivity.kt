@@ -520,7 +520,6 @@ private fun CalendarLoginScreen(
 
     fun openLocation(location: String) {
         undoState.pendingAction?.let(::commitAction)
-        heldActionRow = null
         try {
             val text = location.trim()
             val url = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE)
@@ -954,6 +953,9 @@ private fun CalendarLoginScreen(
             onUndo = { undoState = UndoState.Idle },
             onOtherAction = {
                 undoState.pendingAction?.let(::commitAction)
+            },
+            onActionTile = {
+                undoState.pendingAction?.let(::commitAction)
                 heldActionRow = null
             },
             lookbackDays = lookbackDays,
@@ -1053,6 +1055,7 @@ private fun CalendarConnectedScreen(
     completedActionDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
+    onActionTile: () -> Unit,
     lookbackDays: Int,
     lookaheadDays: Int,
     windowPreset: WindowPreset?,
@@ -1468,7 +1471,7 @@ private fun CalendarConnectedScreen(
                                             enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
-                                                onOtherAction()
+                                                onActionTile()
                                                 datePickerEvent = event
                                             }
                                         )

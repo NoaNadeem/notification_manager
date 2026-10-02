@@ -11,6 +11,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -65,6 +66,7 @@ internal data class CalendarEvent(
 internal sealed interface MoveTarget {
     data class After(val duration: Duration) : MoveTarget
     data class OnDate(val date: LocalDate) : MoveTarget
+    data class OnDateTime(val date: LocalDate, val time: LocalTime) : MoveTarget
 }
 
 internal enum class WindowPreset(val label: String, val backDays: Int, val aheadDays: Int) {
@@ -355,6 +357,7 @@ internal fun shiftTimedTimes(
         }
         is MoveTarget.OnDate -> target.date.atTime(now.atZone(phoneZone).toLocalTime())
             .atZone(phoneZone).toInstant()
+        is MoveTarget.OnDateTime -> target.date.atTime(target.time).atZone(phoneZone).toInstant()
     }
     return movedStart to movedStart.plus(duration)
 }
@@ -371,6 +374,7 @@ internal fun shiftAllDayDates(
     require(durationDays > 0) { "This all-day event has an invalid end date." }
     val movedStart = when (target) {
         is MoveTarget.OnDate -> target.date
+        is MoveTarget.OnDateTime -> throw IllegalArgumentException("All-day events cannot be moved to a time.")
         is MoveTarget.After -> {
             require(target.duration >= Duration.ZERO &&
                 target.duration == Duration.ofDays(target.duration.toDays()))

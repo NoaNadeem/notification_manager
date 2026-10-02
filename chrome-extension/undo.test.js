@@ -98,6 +98,7 @@ test("action descriptions match Android wording", () => {
   assert.equal(actionDescription({ type: "move", option: { days: 0 } }), "Moved to today");
   assert.equal(actionDescription({ type: "move", option: { days: 3 } }), "Moved 3 days later");
   assert.equal(actionDescription({ type: "move", option: { hours: 1 } }), "Moved 1 hour later");
+  assert.equal(actionDescription({ type: "move", option: { date: "2026-10-05", time: "09:00" } }), "Moved to Oct 5, 9:00 AM");
 });
 
 test("rapid actions serialize their commits", async () => {

@@ -18,6 +18,7 @@ const count = $("#count");
 const pullIndicator = $("#pull-indicator");
 const connectPanel = $("#connect-panel");
 const datePicker = $("#date-picker");
+const timePicker = $("#time-picker");
 const calendarDialog = $("#calendar-dialog");
 const menu = $("#menu");
 const menuToggle = $("#menu-toggle");
@@ -591,6 +592,8 @@ function renderEvent(event) {
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";
+    timePicker.value = "";
+    timePicker.closest("label").hidden = !!event.start.date;
     calendarDialog.showModal();
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
@@ -978,8 +981,9 @@ datePicker.addEventListener("change", () => {
   if (!datePicker.value || !dateTarget) return;
   const event = dateTarget;
   const date = datePicker.value;
+  const time = event.start.date ? "" : timePicker.value;
   calendarDialog.close();
-  void stageAction(event, "move", { date });
+  void stageAction(event, "move", time ? { date, time } : { date });
 });
 calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
 $("#connect").addEventListener("click", () => void load(true));

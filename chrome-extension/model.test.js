@@ -77,6 +77,19 @@ test("timed moves use current time, preserve duration, and do not mutate input",
   assert.equal(original.start.dateTime, "2026-09-21T10:00:00Z");
 });
 
+test("optional time changes a picked date while date-only keeps the current clock", () => {
+  const original = { start: { dateTime: "2026-09-21T15:00:00Z" }, end: { dateTime: "2026-09-21T15:30:00Z" } };
+  const now = new Date(2026, 9, 2, 14, 15, 0);
+  const withTime = shiftEvent(original, { date: "2026-10-05", time: "09:00" }, now);
+  const dateOnly = shiftEvent(original, { date: "2026-10-05" }, now);
+  assert.equal(withTime.start.dateTime, new Date(2026, 9, 5, 9, 0).toISOString());
+  assert.equal(withTime.end.dateTime, new Date(2026, 9, 5, 9, 30).toISOString());
+  assert.equal(dateOnly.start.dateTime, new Date(2026, 9, 5, 14, 15).toISOString());
+  assert.throws(() => shiftEvent(original, { date: "2026-10-05", time: "25:00" }, now), /valid date and time/);
+  assert.throws(() => shiftEvent({ start: { date: "2026-09-21" }, end: { date: "2026-09-22" } },
+    { date: "2026-10-05", time: "09:00" }, now), /All-day events/);
+});
+
 test("all-day moves preserve day span and 0D targets today", () => {
   const original = { start: { date: "2026-09-20" }, end: { date: "2026-09-22" } };
   const moved = shiftEvent(original, { days: 0 }, new Date("2026-09-28T12:00:00"));

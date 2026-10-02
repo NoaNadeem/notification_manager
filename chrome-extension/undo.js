@@ -73,7 +73,11 @@ export function actionDescription(action) {
   if (action.type === "dismiss") return "Dismissed";
   if (action.option.date) {
     const date = new Date(`${action.option.date}T12:00:00`);
-    return `Moved to ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date)}`;
+    const dateLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
+    if (!action.option.time) return `Moved to ${dateLabel}`;
+    const time = new Date(`${action.option.date}T${action.option.time}:00`);
+    const timeLabel = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(time);
+    return `Moved to ${dateLabel}, ${timeLabel}`;
   }
   if (action.option.days === 0) return "Moved to today";
   if (action.option.hours) return `Moved ${action.option.hours} ${action.option.hours === 1 ? "hour" : "hours"} later`;

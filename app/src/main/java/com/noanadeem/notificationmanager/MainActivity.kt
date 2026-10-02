@@ -1,6 +1,7 @@
 package com.noanadeem.notificationmanager
 
 import android.app.Activity
+import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
 import android.accounts.Account
 import android.content.Context
@@ -107,6 +108,7 @@ import java.net.URL
 import java.time.Instant
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -172,6 +174,7 @@ private fun UndoableAction.description(): String = when (this) {
     is UndoableAction.Dismiss -> "Dismissed"
     is UndoableAction.Move -> when (val destination = target) {
         is MoveTarget.OnDate -> "Moved to ${destination.date.format(DateTimeFormatter.ofPattern("MMM d"))}"
+        is MoveTarget.OnDateTime -> "Moved to ${destination.date.format(DateTimeFormatter.ofPattern("MMM d"))}, ${destination.time.format(DateTimeFormatter.ofPattern("h:mm a"))}"
         is MoveTarget.After -> {
             val duration = destination.duration
             if (duration == Duration.ZERO) "Moved to today"
@@ -1069,6 +1072,7 @@ private fun CalendarConnectedScreen(
     onDarkModeChange: (Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
     var expandedEventId by remember { mutableStateOf<String?>(null) }
     var showLookbackPicker by remember { mutableStateOf(false) }
@@ -1785,27 +1789,38 @@ private fun CalendarConnectedScreen(
 
     datePickerEvent?.let { event ->
         val datePickerState = rememberDatePickerState()
+        var selectedTime by remember(event) { mutableStateOf<LocalTime?>(null) }
+        val initialTime = event.start.atZone(ZoneId.systemDefault()).toLocalTime()
+        LaunchedEffect(datePickerState.selectedDateMillis) {
+            val selectedMillis = datePickerState.selectedDateMillis ?: return@LaunchedEffect
+            val selectedDate = Instant.ofEpochMilli(selectedMillis)
+                .atZone(ZoneOffset.UTC).toLocalDate()
+            datePickerEvent = null
+            onMove(event, selectedTime?.let { MoveTarget.OnDateTime(selectedDate, it) }
+                ?: MoveTarget.OnDate(selectedDate))
+        }
         DatePickerDialog(
             onDismissRequest = { datePickerEvent = null },
             confirmButton = {
-                TextButton(
-                    enabled = datePickerState.selectedDateMillis != null,
-                    onClick = {
-                        val selectedMillis = datePickerState.selectedDateMillis
-                        if (selectedMillis != null) {
-                            val selectedDate = Instant.ofEpochMilli(selectedMillis)
-                                .atZone(ZoneOffset.UTC).toLocalDate()
-                            datePickerEvent = null
-                            onMove(event, MoveTarget.OnDate(selectedDate))
-                        }
-                    }
-                ) { Text("Move") }
+                if (event.allDayDate == null) TextButton(onClick = {
+                    val shown = selectedTime ?: initialTime
+                    TimePickerDialog(context, { _, hour, minute ->
+                        selectedTime = LocalTime.of(hour, minute)
+                    }, shown.hour, shown.minute, false).show()
+                }) {
+                    Text(selectedTime?.format(DateTimeFormatter.ofPattern("h:mm a")) ?: "Set time (optional)")
+                }
             },
             dismissButton = {
                 TextButton(onClick = { datePickerEvent = null }) { Text("Cancel") }
             }
         ) {
-            DatePicker(state = datePickerState)
+            Column {
+                Text("Set a time first if needed. Choosing a date moves immediately.",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall)
+                DatePicker(state = datePickerState)
+            }
         }
     }
 }
@@ -1880,6 +1895,7 @@ internal fun CalendarEvent.moveDestinationTooltip(
     else when (target) {
         is MoveTarget.After -> now.plus(target.duration).atZone(phoneZone)
         is MoveTarget.OnDate -> target.date.atTime(now.atZone(phoneZone).toLocalTime()).atZone(phoneZone)
+        is MoveTarget.OnDateTime -> target.date.atTime(target.time).atZone(phoneZone)
     }
     val dateLabel = destination.format(DateTimeFormatter.ofPattern("EEE MMM d"))
     if (date != null || target is MoveTarget.After && target.duration.toHours() >= 24) {

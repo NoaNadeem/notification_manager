@@ -107,8 +107,12 @@ export function zonedMidnightMs(date, zone) {
 
 export function shiftEvent(event, option, now = new Date()) {
   if (isRecurring(event)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
+  if (option.time && (!option.date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(option.time))) {
+    throw new Error("Choose a valid date and time before moving this event.");
+  }
   const updated = structuredClone(event);
   if (event.start?.date) {
+    if (option.time) throw new Error("All-day events cannot be moved to a time.");
     const originalStart = event.start.date;
     const span = Math.round((Date.parse(`${event.end.date}T00:00:00Z`) - Date.parse(`${originalStart}T00:00:00Z`)) / DAY_MS);
     if (span < 1) throw new Error("This all-day event has an invalid end date.");
@@ -122,8 +126,10 @@ export function shiftEvent(event, option, now = new Date()) {
     if (!Number.isFinite(duration) || duration < 0) throw new Error("This event has an invalid end time.");
     let targetMs;
     if (option.date) {
-      const clock = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      const clock = option.time ? `${option.time}:00`
+        : `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
       targetMs = new Date(`${option.date}T${clock}`).getTime();
+      if (!Number.isFinite(targetMs)) throw new Error("Choose a valid date and time before moving this event.");
     } else {
       targetMs = now.getTime() + (option.hours || 0) * 3_600_000 + (option.days || 0) * DAY_MS;
     }

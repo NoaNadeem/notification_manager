@@ -3,6 +3,7 @@ package com.noanadeem.notificationmanager
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import org.junit.Assert.assertEquals
@@ -237,6 +238,24 @@ class CalendarEventRulesTest {
         )
         assertEquals(pickedDate, movedStart.atZone(phoneZone).toLocalDate())
         assertEquals(now.atZone(phoneZone).toLocalTime(), movedStart.atZone(phoneZone).toLocalTime())
+    }
+
+    @Test
+    fun pickedDateAndOptionalTimePreserveEventDuration() {
+        val phoneZone = ZoneId.of("America/Los_Angeles")
+        val originalStart = Instant.parse("2026-09-28T22:00:00Z")
+        val (movedStart, movedEnd) = shiftTimedTimes(
+            originalStart, originalStart.plusSeconds(3_600), now, phoneZone,
+            MoveTarget.OnDateTime(LocalDate.parse("2026-10-05"), LocalTime.of(9, 0))
+        )
+        assertEquals(LocalTime.of(9, 0), movedStart.atZone(phoneZone).toLocalTime())
+        assertEquals(LocalDate.parse("2026-10-05"), movedStart.atZone(phoneZone).toLocalDate())
+        assertEquals(Duration.ofHours(1), Duration.between(movedStart, movedEnd))
+        assertThrows(IllegalArgumentException::class.java) {
+            shiftAllDayDates(LocalDate.parse("2026-09-28"), LocalDate.parse("2026-09-29"),
+                now, phoneZone, phoneZone,
+                MoveTarget.OnDateTime(LocalDate.parse("2026-10-05"), LocalTime.of(9, 0)))
+        }
     }
 
     @Test

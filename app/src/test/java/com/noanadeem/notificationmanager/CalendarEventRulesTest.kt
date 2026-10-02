@@ -44,7 +44,25 @@ class CalendarEventRulesTest {
         assertTrue(isInDisplayWindow(tomorrow.minusSeconds(1), now, 7, 0, pacific))
         assertFalse(isInDisplayWindow(tomorrow, now, 7, 0, pacific))
         assertTrue(isInDisplayWindow(tomorrow, now, 7, 1, pacific))
-        assertEquals("In 1 hr", CalendarEvent("primary", "future", "Future", now.plusSeconds(3600), null, pacific).ageDescription(now))
+        assertEquals("At 12:00 pm", CalendarEvent("primary", "future", "Future", now.plusSeconds(3600), null, pacific)
+            .ageDescription(now, pacific))
+    }
+
+    @Test
+    fun futureEventsUseLocalTimeOrShortDateAndAllDayBoundary() {
+        val pacific = ZoneId.of("America/Los_Angeles")
+        val friday = LocalDate.parse("2026-10-02").atTime(9, 0).atZone(pacific).toInstant()
+        val laterToday = LocalDate.parse("2026-10-02").atTime(18, 15).atZone(pacific).toInstant()
+        val saturday = LocalDate.parse("2026-10-03")
+        val timed = CalendarEvent("primary", "later", "Later", laterToday, null, pacific)
+        val allDay = CalendarEvent("primary", "all-day", "All day", saturday.atStartOfDay(pacific).toInstant(),
+            saturday, pacific)
+        assertTrue(timed.isFutureForDisplay(friday, pacific))
+        assertEquals("At 6:15 pm", timed.ageDescription(friday, pacific))
+        assertEquals("Sat Oct 3rd", allDay.ageDescription(friday, pacific))
+        assertEquals("Sat Oct 3rd", CalendarEvent("primary", "tomorrow", "Tomorrow",
+            saturday.atTime(9, 0).atZone(pacific).toInstant(), null, pacific).ageDescription(friday, pacific))
+        assertFalse(allDay.copy(allDayDate = LocalDate.parse("2026-10-02")).isFutureForDisplay(friday, pacific))
     }
 
     @Test
@@ -229,15 +247,16 @@ class CalendarEventRulesTest {
     }
 
     @Test
-    fun pickedDateUsesPhonesCurrentClockTime() {
+    fun pickedDateKeepsEventsOriginalClockTime() {
         val phoneZone = ZoneId.of("America/Los_Angeles")
         val pickedDate = LocalDate.parse("2026-10-05")
+        val originalStart = now.minus(2, ChronoUnit.DAYS).plusSeconds(3_600)
         val (movedStart, _) = shiftTimedTimes(
-            now.minus(2, ChronoUnit.DAYS), now.minus(2, ChronoUnit.DAYS).plusSeconds(3_600),
+            originalStart, originalStart.plusSeconds(3_600),
             now, phoneZone, MoveTarget.OnDate(pickedDate)
         )
         assertEquals(pickedDate, movedStart.atZone(phoneZone).toLocalDate())
-        assertEquals(now.atZone(phoneZone).toLocalTime(), movedStart.atZone(phoneZone).toLocalTime())
+        assertEquals(originalStart.atZone(phoneZone).toLocalTime(), movedStart.atZone(phoneZone).toLocalTime())
     }
 
     @Test

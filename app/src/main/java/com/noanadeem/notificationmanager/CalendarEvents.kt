@@ -16,6 +16,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -35,23 +36,26 @@ internal data class CalendarEvent(
     val hasOtherAttendees: Boolean = false,
     val isRecurring: Boolean = false
 ) {
+    fun isFutureForDisplay(now: Instant = Instant.now(), phoneZone: ZoneId = ZoneId.systemDefault()): Boolean =
+        allDayDate?.isAfter(now.atZone(phoneZone).toLocalDate()) ?: start.isAfter(now)
+
     fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
         !start.isAfter(now.minus(Duration.ofDays(2)))
 
     fun isEmphasized(): Boolean = allDayDate != null || hasOtherAttendees ||
         (end != null && Duration.between(start, end) >= Duration.ofHours(1))
 
-    fun ageDescription(now: Instant = Instant.now()): String {
-        if (start.isAfter(now)) {
-            val seconds = Duration.between(now, start).seconds
-            return if (seconds < 86_400) {
-                val hours = ((seconds + 3_599) / 3_600).coerceAtLeast(1)
-                "In $hours ${if (hours == 1L) "hr" else "hrs"}"
-            } else {
-                val days = (seconds + 86_399) / 86_400
-                "In $days ${if (days == 1L) "day" else "days"}"
+    fun ageDescription(now: Instant = Instant.now(), phoneZone: ZoneId = ZoneId.systemDefault()): String {
+        val today = now.atZone(phoneZone).toLocalDate()
+        if (isFutureForDisplay(now, phoneZone)) {
+            val date = allDayDate ?: start.atZone(phoneZone).toLocalDate()
+            if (allDayDate == null && date == today) {
+                val clock = start.atZone(phoneZone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+                return "At ${clock.lowercase(Locale.US)}"
             }
+            return futureDateLabel(date)
         }
+        if (allDayDate == today && start.isAfter(now)) return "Today"
         val elapsedSeconds = Duration.between(start, now).seconds.coerceAtLeast(0)
         return if (elapsedSeconds < 86_400) {
             val hours = ((elapsedSeconds + 3_599) / 3_600).coerceAtLeast(1)
@@ -61,6 +65,17 @@ internal data class CalendarEvent(
             "$days ${if (days == 1L) "day" else "days"} ago"
         }
     }
+}
+
+private fun futureDateLabel(date: LocalDate): String {
+    val day = date.dayOfMonth
+    val suffix = if (day % 100 in 11..13) "th" else when (day % 10) {
+        1 -> "st"
+        2 -> "nd"
+        3 -> "rd"
+        else -> "th"
+    }
+    return date.format(DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)) + suffix
 }
 
 internal sealed interface MoveTarget {
@@ -355,7 +370,7 @@ internal fun shiftTimedTimes(
             require(target.duration > Duration.ZERO)
             now.plus(target.duration)
         }
-        is MoveTarget.OnDate -> target.date.atTime(now.atZone(phoneZone).toLocalTime())
+        is MoveTarget.OnDate -> target.date.atTime(start.atZone(phoneZone).toLocalTime())
             .atZone(phoneZone).toInstant()
         is MoveTarget.OnDateTime -> target.date.atTime(target.time).atZone(phoneZone).toInstant()
     }

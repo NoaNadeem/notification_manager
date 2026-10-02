@@ -366,6 +366,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
 
     private class Factory(private val context: Context, private val widgetId: Int) : RemoteViewsFactory {
         private var events = emptyList<CalendarEvent>()
+        private var laterIndex = -1
 
         override fun onCreate() = Unit
         override fun onDestroy() = Unit
@@ -375,15 +376,21 @@ internal class NotificationWidgetService : RemoteViewsService() {
             if (prefs(context).getBoolean("real_$widgetId", false)) {
                 events = events.filter(CalendarEvent::isEmphasized)
             }
+            val now = Instant.now()
+            laterIndex = events.indexOfFirst { it.isFutureForDisplay(now) }
         }
-        override fun getCount() = events.size
-        override fun getViewTypeCount() = 2
+        override fun getCount() = events.size + if (laterIndex >= 0) 1 else 0
+        override fun getViewTypeCount() = 3
         override fun hasStableIds() = true
-        override fun getItemId(position: Int) = eventKey(events[position]).hashCode().toLong()
+        override fun getItemId(position: Int): Long = if (position == laterIndex) Long.MIN_VALUE
+            else eventKey(events[if (laterIndex >= 0 && position > laterIndex) position - 1 else position])
+                .hashCode().toLong()
         override fun getLoadingView(): RemoteViews? = null
 
         override fun getViewAt(position: Int): RemoteViews? {
-            val event = events.getOrNull(position) ?: return null
+            if (position == laterIndex) return RemoteViews(context.packageName, R.layout.notification_widget_later)
+            val eventPosition = if (laterIndex >= 0 && position > laterIndex) position - 1 else position
+            val event = events.getOrNull(eventPosition) ?: return null
             val key = eventKey(event)
             val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(event), null))
             val held = account(context)?.let { heldWidgetRow(context, it) }

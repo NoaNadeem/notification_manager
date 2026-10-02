@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
@@ -1123,6 +1124,7 @@ private fun CalendarConnectedScreen(
         val matching = if (searchActive) filterLoadedEvents(events, searchQuery) else events
         if (realEventsOnly) matching.filter(CalendarEvent::isEmphasized) else matching
     }
+    val firstFutureIndex = filteredEvents.indexOfFirst { it.isFutureForDisplay() }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
     }
@@ -1326,7 +1328,17 @@ private fun CalendarConnectedScreen(
                 if (filteredEvents.isEmpty() && realEventsOnly && !searchActive && !eventsLoading) item {
                     Text("No real events in this range.", modifier = Modifier.padding(vertical = 16.dp))
                 }
-                items(filteredEvents, key = { "${it.calendarId}/${it.id}" }) { event ->
+                itemsIndexed(filteredEvents, key = { _, event -> "${event.calendarId}/${event.id}" }) { index, event ->
+                    if (index == firstFutureIndex) Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f))
+                        Text("Later", modifier = Modifier.padding(horizontal = 12.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider(modifier = Modifier.weight(1f))
+                    }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
                     val completedUndo = completedEventId == event.id
@@ -1801,25 +1813,25 @@ private fun CalendarConnectedScreen(
         }
         DatePickerDialog(
             onDismissRequest = { datePickerEvent = null },
-            confirmButton = {
-                if (event.allDayDate == null) TextButton(onClick = {
-                    val shown = selectedTime ?: initialTime
-                    TimePickerDialog(context, { _, hour, minute ->
-                        selectedTime = LocalTime.of(hour, minute)
-                    }, shown.hour, shown.minute, false).show()
-                }) {
-                    Text(selectedTime?.format(DateTimeFormatter.ofPattern("h:mm a")) ?: "Set time (optional)")
-                }
-            },
+            confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { datePickerEvent = null }) { Text("Cancel") }
             }
         ) {
             Column {
-                Text("Set a time first if needed. Choosing a date moves immediately.",
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall)
-                DatePicker(state = datePickerState)
+                if (event.allDayDate == null) IconButton(
+                    modifier = Modifier.align(Alignment.End).padding(end = 24.dp)
+                        .semantics { contentDescription = "Choose move time, ${(selectedTime ?: initialTime).format(DateTimeFormatter.ofPattern("h:mm a"))}" },
+                    onClick = {
+                        val shown = selectedTime ?: initialTime
+                        TimePickerDialog(context, { _, hour, minute ->
+                            selectedTime = LocalTime.of(hour, minute)
+                        }, shown.hour, shown.minute, false).show()
+                    }
+                ) {
+                    Icon(painterResource(R.drawable.move_clock_icon), contentDescription = null)
+                }
+                DatePicker(state = datePickerState, title = null, headline = null)
             }
         }
     }
@@ -1894,7 +1906,7 @@ internal fun CalendarEvent.moveDestinationTooltip(
     val destination = if (date != null) date.atStartOfDay(phoneZone)
     else when (target) {
         is MoveTarget.After -> now.plus(target.duration).atZone(phoneZone)
-        is MoveTarget.OnDate -> target.date.atTime(now.atZone(phoneZone).toLocalTime()).atZone(phoneZone)
+        is MoveTarget.OnDate -> target.date.atTime(start.atZone(phoneZone).toLocalTime()).atZone(phoneZone)
         is MoveTarget.OnDateTime -> target.date.atTime(target.time).atZone(phoneZone)
     }
     val dateLabel = destination.format(DateTimeFormatter.ofPattern("EEE MMM d"))

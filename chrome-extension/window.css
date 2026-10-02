@@ -38,7 +38,10 @@ main.pulling { user-select:none; cursor:grabbing; }
 .event.busy { opacity: .6; pointer-events: none; }
 footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #32363d; padding: 10px 20px; }
 select { background: #343941; border: 0; border-radius: 5px; color: #f4f4f4; padding: 4px; }
-#calendar-dialog input { width:auto; min-width:150px; }
+#calendar-dialog .calendar-input-row { display:flex; align-items:center; justify-content:center; gap:8px; }
+#calendar-dialog .calendar-input-row input { width:auto; min-width:120px; margin:0; }
+#calendar-dialog #time-toggle { display:grid; place-items:center; width:40px; height:40px; padding:6px; flex:none; border:1px solid var(--border); border-radius:6px; color:var(--text); background:var(--tile); cursor:pointer; }
+#calendar-dialog #time-toggle svg { width:27px; height:27px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 
 /* Desktop parity: menu, search, theme, and an action ribbon above its event. */
 :root { --bg:#17191d; --panel:#22262c; --panel-strong:#30343b; --border:#32363d; --text:#f2f3f5; --muted:#a8adb7; --tile:#3a4049; --tile-main:#4a515b; --tile-hover:#555d68; --link:#9cb8e9; --error:#ffaaa6; --danger:#594343; }
@@ -70,6 +73,8 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .notice:not(:empty),.info:not(:empty) { padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--border); }
 .connect-panel button,.search-calendar { background:#637aa4; color:white; border:0; border-radius:6px; padding:9px 12px; }
 .event { border-color:var(--border); }
+.later-divider { display:flex; align-items:center; gap:12px; margin:13px 20px 6px; color:var(--muted); font-size:12px; font-weight:600; }
+.later-divider::before,.later-divider::after { content:""; flex:1; border-top:1px solid var(--border); }
 .empty { color:var(--muted); }
 .event:hover,.event:focus-within { background:var(--panel); }
 .title-line { display:flex; align-items:flex-start; min-width:0; }

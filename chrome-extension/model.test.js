@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventStartMs, shiftEvent, mergeDismissals, recentDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
+import { ageLabel, eventAgeLabel, isFutureEvent, eventStartMs, shiftEvent, mergeDismissals, recentDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
 
 test("recurring instances cannot move and dismissal keys remain occurrence specific", () => {
   const first = { id: "series_20260928", recurringEventId: "series", start: { dateTime: "2026-09-28T12:00:00Z" } };
@@ -18,7 +18,20 @@ test("zero lookahead includes the rest of today in browser local time", () => {
   assert.ok(new Date(2026, 8, 28, 23, 59).getTime() < bounds.lastExclusive);
   assert.ok(new Date(2026, 8, 29, 0, 0).getTime() >= bounds.lastExclusive);
   assert.equal(displayWindow(now, 7, 3).lastExclusive, new Date(2026, 9, 2).getTime());
-  assert.equal(ageLabel(now + 3_600_000, now), "In 1 hr");
+  assert.equal(ageLabel(now + 3_600_000, now), "At 11:30 am");
+});
+
+test("future events use local clock or short date, including all-day events", () => {
+  const zone = "America/Los_Angeles";
+  const now = Date.parse("2026-10-02T16:00:00Z");
+  const later = { start: { dateTime: "2026-10-03T01:15:00Z" } };
+  const tomorrow = { start: { dateTime: "2026-10-03T16:00:00Z" } };
+  const allDay = { start: { date: "2026-10-03" } };
+  assert.equal(isFutureEvent(later, now, zone), true);
+  assert.equal(eventAgeLabel(later, now, zone), "At 6:15 pm");
+  assert.equal(eventAgeLabel(tomorrow, now, zone), "Sat Oct 3rd");
+  assert.equal(eventAgeLabel(allDay, now, zone), "Sat Oct 3rd");
+  assert.equal(isFutureEvent({ start: { date: "2026-10-02" } }, now, zone), false);
 });
 
 test("review presets use local calendar-day boundaries, including Monday", () => {
@@ -77,14 +90,16 @@ test("timed moves use current time, preserve duration, and do not mutate input",
   assert.equal(original.start.dateTime, "2026-09-21T10:00:00Z");
 });
 
-test("optional time changes a picked date while date-only keeps the current clock", () => {
+test("optional time changes a picked date while date-only keeps the event clock", () => {
   const original = { start: { dateTime: "2026-09-21T15:00:00Z" }, end: { dateTime: "2026-09-21T15:30:00Z" } };
   const now = new Date(2026, 9, 2, 14, 15, 0);
   const withTime = shiftEvent(original, { date: "2026-10-05", time: "09:00" }, now);
   const dateOnly = shiftEvent(original, { date: "2026-10-05" }, now);
   assert.equal(withTime.start.dateTime, new Date(2026, 9, 5, 9, 0).toISOString());
   assert.equal(withTime.end.dateTime, new Date(2026, 9, 5, 9, 30).toISOString());
-  assert.equal(dateOnly.start.dateTime, new Date(2026, 9, 5, 14, 15).toISOString());
+  const originalClock = new Date(original.start.dateTime);
+  assert.equal(dateOnly.start.dateTime, new Date(2026, 9, 5,
+    originalClock.getHours(), originalClock.getMinutes(), originalClock.getSeconds()).toISOString());
   assert.throws(() => shiftEvent(original, { date: "2026-10-05", time: "25:00" }, now), /valid date and time/);
   assert.throws(() => shiftEvent({ start: { date: "2026-09-21" }, end: { date: "2026-09-22" } },
     { date: "2026-10-05", time: "09:00" }, now), /All-day events/);

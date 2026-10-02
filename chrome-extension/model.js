@@ -1,15 +1,47 @@
 export const DISMISSAL_FILE = "notification-manager-dismissals-v1.json";
 const DAY_MS = 86_400_000;
 
-export function ageLabel(startMs, nowMs = Date.now()) {
-  if (startMs > nowMs) {
-    const remaining = startMs - nowMs;
-    if (remaining < DAY_MS) {
-      const hours = Math.max(1, Math.ceil(remaining / 3_600_000));
-      return `In ${hours} ${hours === 1 ? "hr" : "hrs"}`;
+function localDateKey(ms, zone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date(ms)).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function futureDateLabel(ms, zone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: zone, weekday: "short", month: "short", day: "numeric"
+  }).formatToParts(new Date(ms)).map((part) => [part.type, part.value]));
+  const day = Number(parts.day);
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th"
+    : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] || "th");
+  return `${parts.weekday} ${parts.month} ${day}${suffix}`;
+}
+
+export function isFutureEvent(event, nowMs = Date.now(), zone) {
+  if (event.start?.date) return event.start.date > localDateKey(nowMs, zone);
+  return eventStartMs(event, zone) > nowMs;
+}
+
+export function eventAgeLabel(event, nowMs = Date.now(), zone) {
+  if (event.start?.date) {
+    if (isFutureEvent(event, nowMs, zone)) {
+      return futureDateLabel(Date.parse(`${event.start.date}T12:00:00Z`), "UTC");
     }
-    const days = Math.ceil(remaining / DAY_MS);
-    return `In ${days} ${days === 1 ? "day" : "days"}`;
+    if (event.start.date === localDateKey(nowMs, zone)) return "Today";
+  }
+  return ageLabel(eventStartMs(event, zone), nowMs, zone);
+}
+
+export function ageLabel(startMs, nowMs = Date.now(), zone) {
+  if (startMs > nowMs) {
+    if (localDateKey(startMs, zone) === localDateKey(nowMs, zone)) {
+      const clock = new Intl.DateTimeFormat("en-US", {
+        timeZone: zone, hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(startMs)).toLowerCase();
+      return `At ${clock}`;
+    }
+    return futureDateLabel(startMs, zone);
   }
   const elapsed = Math.max(0, nowMs - startMs);
   if (elapsed < DAY_MS) {
@@ -126,8 +158,9 @@ export function shiftEvent(event, option, now = new Date()) {
     if (!Number.isFinite(duration) || duration < 0) throw new Error("This event has an invalid end time.");
     let targetMs;
     if (option.date) {
+      const originalClock = new Date(originalStart);
       const clock = option.time ? `${option.time}:00`
-        : `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+        : `${String(originalClock.getHours()).padStart(2, "0")}:${String(originalClock.getMinutes()).padStart(2, "0")}:${String(originalClock.getSeconds()).padStart(2, "0")}`;
       targetMs = new Date(`${option.date}T${clock}`).getTime();
       if (!Number.isFinite(targetMs)) throw new Error("Choose a valid date and time before moving this event.");
     } else {

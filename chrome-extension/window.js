@@ -1,4 +1,4 @@
-import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
@@ -19,6 +19,7 @@ const pullIndicator = $("#pull-indicator");
 const connectPanel = $("#connect-panel");
 const datePicker = $("#date-picker");
 const timePicker = $("#time-picker");
+const timeToggle = $("#time-toggle");
 const calendarDialog = $("#calendar-dialog");
 const menu = $("#menu");
 const menuToggle = $("#menu-toggle");
@@ -399,7 +400,18 @@ function render() {
       : "No events in the selected lookback and lookahead range.";
     list.append(empty);
   } else {
-    for (const event of filtered) list.append(renderEvent(event));
+    const firstFutureIndex = filtered.findIndex((event) => isFutureEvent(event));
+    filtered.forEach((event, index) => {
+      if (index === firstFutureIndex) {
+        const divider = document.createElement("div");
+        divider.className = "later-divider";
+        divider.setAttribute("role", "separator");
+        divider.setAttribute("aria-label", "Later events");
+        divider.textContent = "Later";
+        list.append(divider);
+      }
+      list.append(renderEvent(event));
+    });
   }
   if (searchActive) renderSearchFooter();
   list.scrollTop = previousScroll;
@@ -511,7 +523,7 @@ function renderEvent(event) {
   const age = document.createElement("div");
   age.className = "age";
   age.textContent = action || held ? actionDescription(action || held)
-    : busy ? "Committing action…" : ageLabel(eventStartMs(event, calendarZone));
+    : busy ? "Committing action…" : eventAgeLabel(event, Date.now(), calendarZone);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
   if (isTwoDaysOld(event, calendarZone)) {
@@ -592,8 +604,11 @@ function renderEvent(event) {
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";
-    timePicker.value = "";
-    timePicker.closest("label").hidden = !!event.start.date;
+    const eventTime = new Date(event.start.dateTime || 0);
+    timePicker.value = event.start.date ? "" : `${String(eventTime.getHours()).padStart(2, "0")}:${String(eventTime.getMinutes()).padStart(2, "0")}`;
+    timePicker.hidden = true;
+    timeToggle.hidden = !!event.start.date;
+    timeToggle.setAttribute("aria-label", `Choose move time${event.start.date ? "" : `, initially ${eventTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}`);
     calendarDialog.showModal();
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
@@ -977,11 +992,16 @@ $("#lookback-apply").addEventListener("click", () => void changeLookback(Number(
 $("#lookback-cancel").addEventListener("click", () => lookbackDialog.close());
 $("#lookahead-apply").addEventListener("click", () => void changeLookahead(Number($("#custom-lookahead").value)));
 $("#lookahead-cancel").addEventListener("click", () => lookaheadDialog.close());
+timeToggle.addEventListener("click", () => {
+  timePicker.hidden = false;
+  try { timePicker.showPicker(); }
+  catch { timePicker.focus(); }
+});
 datePicker.addEventListener("change", () => {
   if (!datePicker.value || !dateTarget) return;
   const event = dateTarget;
   const date = datePicker.value;
-  const time = event.start.date ? "" : timePicker.value;
+  const time = timePicker.hidden ? "" : timePicker.value;
   calendarDialog.close();
   void stageAction(event, "move", time ? { date, time } : { date });
 });

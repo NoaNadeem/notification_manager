@@ -94,10 +94,13 @@
     <div class="dialog-actions"><button id="skins-cancel">Cancel</button><button id="skins-apply">Apply</button></div>
   </dialog>
   <dialog id="calendar-dialog">
-    <h2>Move event to date</h2>
-    <p>Set a time first if needed. Choosing a date moves immediately.</p>
-    <label>Time (optional) <input id="time-picker" type="time" aria-label="Move event to time"></label>
-    <label>New date <input id="date-picker" type="date" aria-label="Move event to date"></label>
+    <div class="calendar-input-row">
+      <button id="time-toggle" type="button" aria-label="Choose move time" title="Choose move time">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></svg>
+      </button>
+      <input id="time-picker" type="time" aria-label="Move event to time" hidden>
+      <input id="date-picker" type="date" aria-label="Move event to date">
+    </div>
   </dialog>
   <script type="module" src="window.js"></script>
 </body>

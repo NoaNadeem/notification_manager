@@ -32,9 +32,9 @@
                 android:textSize="11sp"
                 android:maxLines="1" />
         </LinearLayout>
-        <TextView android:id="@+id/widget_search" style="@style/WidgetHeaderButton" android:text="⌕" android:contentDescription="Search in app" />
-        <TextView android:id="@+id/widget_real_events" style="@style/WidgetHeaderButton" android:text="▤" android:contentDescription="Filter real events" />
-        <TextView android:id="@+id/widget_refresh" style="@style/WidgetHeaderButton" android:text="↻" android:contentDescription="Refresh on Wi-Fi" />
+        <ImageView android:id="@+id/widget_search" style="@style/WidgetHeaderIcon" android:src="@drawable/widget_search_icon" android:contentDescription="Search in app" />
+        <ImageView android:id="@+id/widget_real_events" style="@style/WidgetHeaderIcon" android:src="@drawable/widget_page_icon" android:contentDescription="Filter real events" />
+        <ImageView android:id="@+id/widget_refresh" style="@style/WidgetHeaderIcon" android:src="@drawable/widget_refresh_icon" android:contentDescription="Refresh on Wi-Fi" />
         <TextView android:id="@+id/widget_menu" style="@style/WidgetHeaderButton" android:text="⋮" android:contentDescription="Open settings in app" />
     </LinearLayout>
     <ListView

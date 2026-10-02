@@ -21,4 +21,17 @@ class UndoStateTest {
         assertEquals(UndoState.Failed(action, "Drive unavailable"),
             committing.finishCommit(action, "Drive unavailable"))
     }
+
+    @Test
+    fun committedRowKeepsItsOriginalPositionUntilDisplayHoldClears() {
+        fun event(id: String) = CalendarEvent("primary", id, "Test Event - $id",
+            Instant.parse("2026-09-28T12:00:00Z"), null, ZoneId.of("UTC"))
+        val first = event("1")
+        val held = event("2")
+        val last = event("3")
+        assertEquals(listOf(first, held, last), displayEventsWithHeldAction(listOf(first, last), held, 1))
+        assertEquals(listOf(first, held, last), displayEventsWithHeldAction(
+            listOf(first, held.copy(start = held.start.plusSeconds(86_400)), last), held, 1))
+        assertEquals(listOf(first, last), displayEventsWithHeldAction(listOf(first, last), null, 1))
+    }
 }

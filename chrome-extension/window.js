@@ -2,6 +2,7 @@ import { ageLabel, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmp
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
+import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
@@ -56,6 +57,8 @@ let dateTarget;
 let openFlyoutRow;
 let openFlyout;
 let openMoreButton;
+let heldAction;
+let heldIndex = 0;
 let searchActive = false;
 let realEventsOnly = false;
 let remoteSearch;
@@ -67,7 +70,33 @@ let storageEstimateMessage;
 let storageEstimateNode;
 const committing = new Set();
 
-const undo = new UndoController(commitAction, () => render());
+const undo = new UndoController(commitAction, () => {
+  if (undo.state.kind === "Committing") holdAction(undo.state.action);
+  if (undo.state.kind === "Pending" && heldAction?.event !== undo.state.action.event) heldAction = undefined;
+  render();
+});
+
+function currentVisibleEvents() {
+  const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
+  const visible = events.filter((event) => !dismissed.has(eventKey(event)));
+  const searched = searchActive && searchQueryInput.value.trim()
+    ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
+    : visible;
+  return realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched;
+}
+
+function holdAction(action) {
+  if (heldAction?.event === action.event) return;
+  heldIndex = Math.max(0, currentVisibleEvents().findIndex((event) => event === action.event));
+  heldAction = action;
+}
+
+function clearHeldFor(event) {
+  if (heldAction && heldAction.event !== event) {
+    heldAction = undefined;
+    render();
+  }
+}
 
 function renderSync() {
   const headline = syncHeadline(syncState);
@@ -234,6 +263,7 @@ function moveTile(event, label, option, className = "tile") {
 }
 
 function openEventLink(event, kind = "view") {
+  clearHeldFor(event);
   const action = calendarEventAction(event, kind);
   if (!action) {
     showError("Google Calendar did not provide a valid event link.");
@@ -280,6 +310,7 @@ function hideFlyout(row) {
 
 async function load(interactive = false) {
   if (loading || (signedOut && !interactive)) return;
+  heldAction = undefined;
   loading = true;
   renderSync();
   showError("");
@@ -356,12 +387,7 @@ function render() {
   const previousScroll = list.scrollTop;
   if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
-  const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
-  const visible = events.filter((event) => !dismissed.has(eventKey(event)));
-  const searched = searchActive && searchQueryInput.value.trim()
-    ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
-    : visible;
-  const filtered = realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched;
+  const filtered = withHeldEvent(currentVisibleEvents(), heldAction?.event, heldIndex);
   count.textContent = `${filtered.length} event${filtered.length === 1 ? "" : "s"}`;
   if (!filtered.length) {
     const empty = document.createElement("p");
@@ -462,24 +488,30 @@ function renderEvent(event) {
   row.className = "event";
   if (isEmphasized(event, account)) row.classList.add("emphasized");
   const action = undo.current?.event === event ? undo.current : null;
+  const held = heldAction?.event === event ? heldAction : null;
   const busy = committing.has(eventKey(event));
-  if (action) row.classList.add("pending");
-  if (busy) row.classList.add("busy");
+  if (action || held) row.classList.add("pending");
+  if (busy && !held) row.classList.add("busy");
   const top = document.createElement("div");
   top.className = "event-top";
   const details = document.createElement("div");
   details.className = "details";
-  const title = document.createElement(action || busy ? "span" : "a");
+  const title = document.createElement(action || held || busy ? "span" : "a");
   title.className = "title";
   title.textContent = event.summary || "(Untitled event)";
   title.title = title.textContent;
-  if (!action && !busy) {
+  if (!action && !held && !busy) {
     title.href = calendarEventAction(event)?.url || "#";
-    title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event); });
+    title.addEventListener("click", (click) => {
+      click.preventDefault();
+      clearHeldFor(event);
+      openEventLink(event);
+    });
   }
   const age = document.createElement("div");
   age.className = "age";
-  age.textContent = action ? actionDescription(action) : busy ? "Committing action…" : ageLabel(eventStartMs(event, calendarZone));
+  age.textContent = action || held ? actionDescription(action || held)
+    : busy ? "Committing action…" : ageLabel(eventStartMs(event, calendarZone));
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
   if (isTwoDaysOld(event, calendarZone)) {
@@ -490,7 +522,7 @@ function renderEvent(event) {
   }
   titleLine.append(title);
   details.append(titleLine, age);
-  if (!action && !busy && event.location) {
+  if (!action && !held && !busy && event.location) {
     const location = document.createElement("a");
     location.className = "location";
     location.textContent = event.location;
@@ -498,6 +530,7 @@ function renderEvent(event) {
     location.href = locationHref(event.location);
     location.addEventListener("click", (click) => {
       click.preventDefault();
+      clearHeldFor(event);
       void undo.commit().then(() => openInBrowser(chrome, location.href))
         .catch((error) => showError(`Could not open location: ${error.message}`));
     });
@@ -506,8 +539,11 @@ function renderEvent(event) {
   const actions = document.createElement("div");
   actions.className = "actions";
   let more;
-  if (action) {
-    actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo"));
+  if (action || held) {
+    const undoTile = button("Undo", held ? `Action committed for ${event.summary || "event"}; Undo unavailable`
+      : `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo");
+    undoTile.disabled = !!held;
+    actions.append(undoTile);
   } else if (!busy) {
     if (isRecurring(event)) {
       actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
@@ -534,7 +570,7 @@ function renderEvent(event) {
   }
   top.append(details, actions);
   row.append(top);
-  if (action || busy || isRecurring(event)) return row;
+  if (action || held || busy || isRecurring(event)) return row;
   const flyout = document.createElement("div");
   flyout.className = "flyout";
   const topRow = document.createElement("div");
@@ -580,6 +616,7 @@ function renderEvent(event) {
 }
 
 async function stageAction(event, type, option) {
+  clearHeldFor(event);
   showError("");
   if (type === "move" && isRecurring(event)) {
     showError("Recurring events can only be dismissed or edited in Google Calendar.");
@@ -597,11 +634,13 @@ async function commitAction(action) {
   const key = eventKey(event);
   let cacheWarning = "";
   let failed = false;
+  let applied = false;
   committing.add(key);
   render();
   try {
     if (action.type === "move") {
       const moved = await moveEvent(account, event.id, action.option);
+      applied = true;
       events = events.filter((item) => item !== event);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
@@ -640,6 +679,7 @@ async function commitAction(action) {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now(),
         title: event.summary || "(Untitled event)"
       });
+      applied = true;
       syncState.pending = (syncState.pending || []).filter((item) => item !== key);
       syncState.dismissalAt = Date.now();
       if (!syncState.error?.startsWith("Move history sync failed:")) syncState.error = null;
@@ -652,6 +692,7 @@ async function commitAction(action) {
       const stored = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
       dismissals = stored[`dismissals:${account.toLowerCase()}`] || dismissals;
       const savedLocally = dismissals.some((record) => dismissalKey(record.eventId, record.start) === key);
+      if (savedLocally) applied = true;
       if (savedLocally) {
         syncState.pending = [...new Set([...(syncState.pending || []), key])];
         syncState.error = error.message;
@@ -665,6 +706,7 @@ async function commitAction(action) {
     }
   } finally {
     committing.delete(key);
+    if (!applied && heldAction === action) heldAction = undefined;
     render();
   }
   return !failed;
@@ -724,6 +766,7 @@ async function logout() {
     await chrome.identity.clearAllCachedAuthTokens();
     await chrome.storage.local.set({ signedOut: true });
     signedOut = true;
+    heldAction = undefined;
     account = undefined;
     scheduleHeaderClock();
     events = [];

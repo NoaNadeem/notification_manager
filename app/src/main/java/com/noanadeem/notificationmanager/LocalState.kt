@@ -28,6 +28,26 @@ internal fun shouldShowSyncStatus(
 ): Boolean = !refreshing && (state.calendarAt >= sessionStartedAt || state.dismissalAt >= sessionStartedAt ||
     hasCurrentError || state.pending.isNotEmpty())
 
+internal fun calendarEventFromLocalJson(row: JSONObject): CalendarEvent = CalendarEvent(
+    calendarId = row.getString("calendarId"), id = row.getString("id"),
+    title = row.getString("title"), start = Instant.ofEpochMilli(row.getLong("start")),
+    allDayDate = row.optString("allDayDate").takeIf { it.isNotBlank() }?.let(LocalDate::parse),
+    calendarZone = ZoneId.of(row.getString("zone")),
+    htmlLink = row.optString("htmlLink").takeIf { it.isNotBlank() },
+    location = row.optString("location").takeIf { it.isNotBlank() },
+    end = row.optLong("end").takeIf { it != 0L }?.let(Instant::ofEpochMilli),
+    hasOtherAttendees = row.optBoolean("otherAttendees"),
+    isRecurring = row.optBoolean("recurring")
+)
+
+internal fun calendarEventToLocalJson(event: CalendarEvent): JSONObject = JSONObject()
+    .put("calendarId", event.calendarId).put("id", event.id)
+    .put("title", event.title).put("start", event.start.toEpochMilli())
+    .put("allDayDate", event.allDayDate?.toString() ?: "")
+    .put("zone", event.calendarZone.id).put("htmlLink", event.htmlLink ?: "")
+    .put("location", event.location ?: "").put("end", event.end?.toEpochMilli() ?: 0L)
+    .put("otherAttendees", event.hasOtherAttendees).put("recurring", event.isRecurring)
+
 internal class LocalStateStore(private val context: Context) {
     private val preferences = context.getSharedPreferences("notification_manager_local_state", Context.MODE_PRIVATE)
     private fun key(account: String) = account.lowercase().hashCode().toUInt().toString(16)
@@ -81,33 +101,13 @@ internal class LocalStateStore(private val context: Context) {
         val raw = preferences.getString("events_${key(account)}", null) ?: return emptyList()
         return runCatching {
             val rows = JSONArray(raw)
-            (0 until rows.length()).map { index ->
-                val row = rows.getJSONObject(index)
-                CalendarEvent(
-                    calendarId = row.getString("calendarId"), id = row.getString("id"),
-                    title = row.getString("title"), start = Instant.ofEpochMilli(row.getLong("start")),
-                    allDayDate = row.optString("allDayDate").takeIf { it.isNotBlank() }?.let(LocalDate::parse),
-                    calendarZone = ZoneId.of(row.getString("zone")),
-                    htmlLink = row.optString("htmlLink").takeIf { it.isNotBlank() },
-                    location = row.optString("location").takeIf { it.isNotBlank() },
-                    end = row.optLong("end").takeIf { it != 0L }?.let(Instant::ofEpochMilli),
-                    hasOtherAttendees = row.optBoolean("otherAttendees"),
-                    isRecurring = row.optBoolean("recurring")
-                )
-            }
+            (0 until rows.length()).map { index -> calendarEventFromLocalJson(rows.getJSONObject(index)) }
         }.getOrDefault(emptyList())
     }
 
     fun writeEvents(account: String, events: List<CalendarEvent>) {
         val rows = JSONArray()
-        events.forEach { event ->
-            rows.put(JSONObject().put("calendarId", event.calendarId).put("id", event.id)
-                .put("title", event.title).put("start", event.start.toEpochMilli())
-                .put("allDayDate", event.allDayDate?.toString() ?: "")
-                .put("zone", event.calendarZone.id).put("htmlLink", event.htmlLink ?: "")
-                .put("location", event.location ?: "").put("end", event.end?.toEpochMilli() ?: 0L)
-                .put("otherAttendees", event.hasOtherAttendees).put("recurring", event.isRecurring))
-        }
+        events.forEach { event -> rows.put(calendarEventToLocalJson(event)) }
         check(preferences.edit().putString("events_${key(account)}", rows.toString()).commit()) {
             "Could not save offline Calendar cache."
         }

@@ -813,6 +813,7 @@ $("#refresh").addEventListener("click", () => {
   closeMenu();
   void refreshEvents();
 });
+$("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 const canPullRefresh = () => list.scrollTop <= 0 && !loading && !refreshBusy && !!account && !signedOut;
 const pullGesture = new PullRefreshGesture(showPullProgress, () => { void refreshEvents(); });
 list.addEventListener("pointerdown", (event) => {

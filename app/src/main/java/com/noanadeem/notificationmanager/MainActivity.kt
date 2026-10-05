@@ -1178,6 +1178,17 @@ private fun CalendarConnectedScreen(
                 }
                 Spacer(modifier = Modifier.weight(1f))
             }
+            IconButton(
+                modifier = Modifier.size(40.dp),
+                enabled = !eventsLoading && !loading && movingEventId == null,
+                onClick = { onOtherAction(); onRefresh() }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.widget_refresh_icon),
+                    contentDescription = "Refresh events",
+                    modifier = Modifier.size(21.dp)
+                )
+            }
             Column {
                 IconButton(modifier = Modifier.size(40.dp).semantics { contentDescription = "Notification Manager menu" }, onClick = {
                     onOtherAction()

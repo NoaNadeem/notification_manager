@@ -29,7 +29,7 @@ Click the magnifying-glass button beside the title to filter the loaded list. To
 4. Click the Notification Manager toolbar button once to open its window, then click **Connect Google Calendar** and approve the requested Calendar and Drive access. The account shown in the settings menu should match the Android app's account.
 5. Quit Chrome completely with **Chrome → Quit Google Chrome**, then reopen it. The manager should open in its own window. Closing all regular browser windows and opening Chrome again should also open or focus the manager.
 
-After any extension code change, click the extension's **Reload** button on `chrome://extensions`, then close and reopen its manager window. The event list refreshes on each manager-window open, when the window regains focus, on a pull-down gesture, or from the menu; it does not yet use push or background polling.
+After an extension code change, click **Reload** on `chrome://extensions`. The manager window reloads its updated page automatically; if Chrome has discarded the old tab, the extension replaces its dedicated window. A move or dismissal still in its 30-second Undo period may be canceled by an extension reload. The event list refreshes on each manager-window open, when the window regains focus, on a pull-down gesture, or from the menu; it does not use push or background polling.
 
 The Google Cloud OAuth client and interactive Google sign-in are required before Calendar data can be displayed. This repo never contains an access token or client secret. Calendar move and dismissal actions make live changes after you click their tiles and let the Undo period expire, take another action, or leave the window. Test with newly created events, never with existing personal events.
 

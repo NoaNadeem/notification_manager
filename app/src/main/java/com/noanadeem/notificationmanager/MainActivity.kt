@@ -1470,6 +1470,16 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
+                                        MoveTile(
+                                            label = "📅",
+                                            description = "Choose a calendar date",
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            modifier = Modifier.size(44.dp),
+                                            onClick = {
+                                                onActionTile()
+                                                datePickerEvent = event
+                                            }
+                                        )
                                         val hourChoices = if (event.allDayDate == null) {
                                             listOf(
                                                 "1H" to MoveTarget.After(Duration.ofHours(1)),
@@ -1492,16 +1502,6 @@ private fun CalendarConnectedScreen(
                                         }
                                         repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.size(44.dp)) }
                                         MoveTile(
-                                            label = "📅",
-                                            description = "Choose a calendar date",
-                                            enabled = movingEventId == null && event.id !in committingActionIds,
-                                            modifier = Modifier.size(44.dp),
-                                            onClick = {
-                                                onActionTile()
-                                                datePickerEvent = event
-                                            }
-                                        )
-                                        MoveTile(
                                             label = "✓",
                                             description = "Dismiss event in this app",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
@@ -1516,6 +1516,13 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
+                                        MoveTile(
+                                            label = "✎",
+                                            description = "Open event in Google Calendar to edit",
+                                            enabled = true,
+                                            modifier = Modifier.size(44.dp),
+                                            onClick = { onOpenEvent(event) }
+                                        )
                                         for ((label, days) in listOf("2D" to 2L, "3D" to 3L, "4D" to 4L, "7D" to 7L)) {
                                             MoveTile(
                                                 label = label,
@@ -1526,13 +1533,6 @@ private fun CalendarConnectedScreen(
                                                 onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
                                             )
                                         }
-                                        MoveTile(
-                                            label = "✎",
-                                            description = "Open event in Google Calendar to edit",
-                                            enabled = true,
-                                            modifier = Modifier.size(44.dp),
-                                            onClick = { onOpenEvent(event) }
-                                        )
                                     }
                                     if (movingEventId == event.id || event.id in committingActionIds) {
                                         Text("Saving action…", modifier = Modifier.padding(top = 8.dp))

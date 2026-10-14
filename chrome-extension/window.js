@@ -586,18 +586,6 @@ function renderEvent(event) {
   const topRow = document.createElement("div");
   const bottomRow = document.createElement("div");
   topRow.className = bottomRow.className = "tile-row";
-  if (event.start.date) {
-    topRow.append(moveTile(event, "0D", { days: 0 }));
-    for (let i = 0; i < 2; i++) {
-      const spacer = button("", "Unavailable for all-day events", () => {});
-      spacer.disabled = true;
-      topRow.append(spacer);
-    }
-  } else {
-    for (const hours of [1, 4, 8]) {
-      topRow.append(moveTile(event, `${hours}H`, { hours }));
-    }
-  }
   topRow.append(button("📅", "Choose a date", () => {
     clearHeldFor(event);
     void undo.commit();
@@ -612,11 +600,23 @@ function renderEvent(event) {
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
   }));
+  if (event.start.date) {
+    topRow.append(moveTile(event, "0D", { days: 0 }));
+    for (let i = 0; i < 2; i++) {
+      const spacer = button("", "Unavailable for all-day events", () => {});
+      spacer.disabled = true;
+      topRow.append(spacer);
+    }
+  } else {
+    for (const hours of [1, 4, 8]) {
+      topRow.append(moveTile(event, `${hours}H`, { hours }));
+    }
+  }
   topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
+  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   for (const days of [2, 3, 4, 7]) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
   }
-  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   flyout.append(topRow, bottomRow);
   flyout.addEventListener("focusout", (event) => {
     if (!flyout.contains(event.relatedTarget) && !row.contains(event.relatedTarget)) hideFlyout(row);

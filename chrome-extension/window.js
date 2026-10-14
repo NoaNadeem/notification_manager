@@ -1,4 +1,4 @@
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
@@ -640,7 +640,10 @@ async function stageAction(event, type, option) {
     return;
   }
   try {
-    await undo.stage({ event, type, option });
+    const stagedAtMs = Date.now();
+    const destinationStart = type === "move"
+      ? shiftEvent(event, option, new Date(stagedAtMs)).start : undefined;
+    await undo.stage({ event, type, option, stagedAtMs, destinationStart });
   } catch (error) {
     showError(`Could not prepare action for “${event.summary || "(Untitled event)"}”: ${error.message}`);
   }
@@ -656,7 +659,7 @@ async function commitAction(action) {
   render();
   try {
     if (action.type === "move") {
-      const moved = await moveEvent(account, event.id, action.option);
+      const moved = await moveEvent(account, event.id, action.option, new Date(action.stagedAtMs));
       applied = true;
       events = events.filter((item) => item !== event);
       const start = eventStartMs(moved, calendarZone);

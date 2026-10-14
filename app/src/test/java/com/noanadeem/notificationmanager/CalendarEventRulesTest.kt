@@ -96,6 +96,35 @@ class CalendarEventRulesTest {
     }
 
     @Test
+    fun calendarSearchShowsNewestDateFirstAndAllDayFirstWithinDate() {
+        val zone = ZoneId.of("UTC")
+        val old = CalendarEvent("primary", "old", "Old", Instant.parse("2025-01-01T09:00:00Z"), null, zone)
+        val morning = old.copy(id = "morning", start = Instant.parse("2026-11-03T09:00:00Z"))
+        val afternoon = old.copy(id = "afternoon", start = Instant.parse("2026-11-03T15:00:00Z"))
+        val allDay = old.copy(id = "all-day", start = Instant.parse("2026-11-03T00:00:00Z"),
+            allDayDate = LocalDate.parse("2026-11-03"))
+        assertEquals(listOf("all-day", "afternoon", "morning", "old"),
+            sortCalendarSearchEvents(listOf(old, morning, allDay, afternoon), zone).map { it.id })
+    }
+
+    @Test
+    fun moveUndoMessageUsesTappedTimeAndActualDestinationDate() {
+        val zone = ZoneId.of("UTC")
+        val event = CalendarEvent("primary", "event", "Event", Instant.parse("2026-10-01T12:00:00Z"), null, zone)
+        val stagedAt = Instant.parse("2026-11-01T12:00:00Z")
+        assertEquals("Moved 2 days later, to Tuesday 3rd Nov 2026",
+            moveUndoDescription(event, MoveTarget.After(Duration.ofDays(2)), stagedAt, zone))
+        assertEquals("Moved 1 hour later, to Tuesday 3rd Nov 2026",
+            moveUndoDescription(event, MoveTarget.After(Duration.ofHours(1)),
+                Instant.parse("2026-11-02T23:30:00Z"), zone))
+        assertEquals("Moved to Monday 5th Oct 2026, 9:00 AM",
+            moveUndoDescription(event, MoveTarget.OnDateTime(LocalDate.parse("2026-10-05"), LocalTime.of(9, 0)), stagedAt, zone))
+        val allDay = event.copy(allDayDate = LocalDate.parse("2026-10-01"))
+        assertEquals("Moved to today, Sunday 1st Nov 2026",
+            moveUndoDescription(allDay, MoveTarget.After(Duration.ZERO), stagedAt, zone))
+    }
+
+    @Test
     fun pencilUsesCalendarEditLinkWhenEventIdIsPresent() {
         assertEquals("https://calendar.google.com/calendar/u/0/r/eventedit/YWJjIG1lQGV4YW1wbGUuY29t",
             calendarEditLink("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"))

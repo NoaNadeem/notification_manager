@@ -142,6 +142,7 @@ internal sealed interface UndoableAction {
         override val event: CalendarEvent,
         val target: MoveTarget,
         val accessToken: String,
+        val stagedAt: Instant = Instant.now(),
         override val createdAtNanos: Long = System.nanoTime()
     ) : UndoableAction
 
@@ -173,21 +174,7 @@ private data class HeldActionRow(val action: UndoableAction, val index: Int)
 
 private fun UndoableAction.description(): String = when (this) {
     is UndoableAction.Dismiss -> "Dismissed"
-    is UndoableAction.Move -> when (val destination = target) {
-        is MoveTarget.OnDate -> "Moved to ${destination.date.format(DateTimeFormatter.ofPattern("MMM d"))}"
-        is MoveTarget.OnDateTime -> "Moved to ${destination.date.format(DateTimeFormatter.ofPattern("MMM d"))}, ${destination.time.format(DateTimeFormatter.ofPattern("h:mm a"))}"
-        is MoveTarget.After -> {
-            val duration = destination.duration
-            if (duration == Duration.ZERO) "Moved to today"
-            else if (duration.toHours() < 24) {
-                val hours = duration.toHours()
-                "Moved $hours ${if (hours == 1L) "hour" else "hours"} later"
-            } else {
-                val days = duration.toDays()
-                "Moved $days ${if (days == 1L) "day" else "days"} later"
-            }
-        }
-    }
+    is UndoableAction.Move -> moveUndoDescription(event, target, stagedAt)
 }
 
 private const val UNDO_WINDOW_MILLIS = 30_000L
@@ -393,7 +380,8 @@ private fun CalendarLoginScreen(
                 is UndoableAction.Move -> {
                     committingActionIds = committingActionIds + action.event.id
                     try {
-                        val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target)
+                        val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target,
+                            action.stagedAt)
                         applied = true
                         val now = Instant.now()
                         recentEvents = recentEvents.mapNotNull {

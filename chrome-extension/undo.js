@@ -71,15 +71,26 @@ export class UndoController {
 
 export function actionDescription(action) {
   if (action.type === "dismiss") return "Dismissed";
+  const start = action.destinationStart;
+  const date = start?.date ? new Date(`${start.date}T12:00:00`)
+    : start?.dateTime ? new Date(start.dateTime)
+    : action.option.date ? new Date(`${action.option.date}T12:00:00`)
+    : new Date((action.stagedAtMs ?? Date.now()) + (action.option.hours || 0) * 3_600_000 +
+      (action.option.days || 0) * 86_400_000);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    weekday: "long", day: "numeric", month: "short", year: "numeric"
+  }).formatToParts(date).map((part) => [part.type, part.value]));
+  const day = Number(parts.day);
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th"
+    : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] || "th");
+  const dateLabel = `${parts.weekday} ${day}${suffix} ${parts.month} ${parts.year}`;
   if (action.option.date) {
-    const date = new Date(`${action.option.date}T12:00:00`);
-    const dateLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
     if (!action.option.time) return `Moved to ${dateLabel}`;
     const time = new Date(`${action.option.date}T${action.option.time}:00`);
     const timeLabel = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(time);
     return `Moved to ${dateLabel}, ${timeLabel}`;
   }
-  if (action.option.days === 0) return "Moved to today";
-  if (action.option.hours) return `Moved ${action.option.hours} ${action.option.hours === 1 ? "hour" : "hours"} later`;
-  return `Moved ${action.option.days} ${action.option.days === 1 ? "day" : "days"} later`;
+  if (action.option.days === 0) return `Moved to today, ${dateLabel}`;
+  if (action.option.hours) return `Moved ${action.option.hours} ${action.option.hours === 1 ? "hour" : "hours"} later, to ${dateLabel}`;
+  return `Moved ${action.option.days} ${action.option.days === 1 ? "day" : "days"} later, to ${dateLabel}`;
 }

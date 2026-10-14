@@ -1,4 +1,4 @@
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareEvents, displayWindow, isRecurring } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
@@ -96,16 +96,16 @@ export async function searchPrimaryCalendar(calendarId, query, request = googleR
     all.push(...(result.items || []).filter((event) => event.status !== "cancelled").slice(0, 100 - all.length));
     pageToken = result.nextPageToken;
   } while (pageToken && all.length < 100 && pages < 10);
-  all.sort((a, b) => compareEvents(a, b, Intl.DateTimeFormat().resolvedOptions().timeZone));
+  all.sort((a, b) => compareSearchEvents(a, b, Intl.DateTimeFormat().resolvedOptions().timeZone));
   return { events: all, hasMore: !!pageToken };
 }
 
-export async function moveEvent(calendarId, eventId, option) {
+export async function moveEvent(calendarId, eventId, option, now = new Date()) {
   const url = `${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   const current = await googleRequest(url);
   if (current.status === "cancelled") throw new Error("This event was deleted in Google Calendar.");
   if (isRecurring(current)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
-  const moved = shiftEvent(current, option);
+  const moved = shiftEvent(current, option, now);
   const update = new URL(url);
   update.searchParams.set("sendUpdates", "none");
   update.searchParams.set("conferenceDataVersion", "1");

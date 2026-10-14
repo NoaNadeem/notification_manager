@@ -95,10 +95,14 @@ test("another action commits the first and timer commits the second", async () =
 
 test("action descriptions match Android wording", () => {
   assert.equal(actionDescription({ type: "dismiss" }), "Dismissed");
-  assert.equal(actionDescription({ type: "move", option: { days: 0 } }), "Moved to today");
-  assert.equal(actionDescription({ type: "move", option: { days: 3 } }), "Moved 3 days later");
-  assert.equal(actionDescription({ type: "move", option: { hours: 1 } }), "Moved 1 hour later");
-  assert.equal(actionDescription({ type: "move", option: { date: "2026-10-05", time: "09:00" } }), "Moved to Oct 5, 9:00 AM");
+  assert.equal(actionDescription({ type: "move", option: { days: 0 }, destinationStart: { date: "2026-11-01" } }),
+    "Moved to today, Sunday 1st Nov 2026");
+  assert.equal(actionDescription({ type: "move", option: { days: 2 }, destinationStart: { date: "2026-11-03" } }),
+    "Moved 2 days later, to Tuesday 3rd Nov 2026");
+  assert.equal(actionDescription({ type: "move", option: { hours: 1 }, destinationStart: { date: "2026-11-03" } }),
+    "Moved 1 hour later, to Tuesday 3rd Nov 2026");
+  assert.equal(actionDescription({ type: "move", option: { date: "2026-10-05", time: "09:00" } }),
+    "Moved to Monday 5th Oct 2026, 9:00 AM");
 });
 
 test("rapid actions serialize their commits", async () => {

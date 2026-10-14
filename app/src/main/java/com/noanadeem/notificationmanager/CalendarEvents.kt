@@ -15,6 +15,7 @@ import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -174,7 +175,7 @@ internal suspend fun searchPrimaryCalendar(
         events += pageEvents.take(100 - events.size)
         pageToken = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (pageToken != null && events.size < 100 && pagesRead < 10)
-    CalendarSearchResults(sortCalendarEvents(events), pageToken != null || truncatedPage)
+    CalendarSearchResults(sortCalendarSearchEvents(events), pageToken != null || truncatedPage)
 }
 
 internal fun sortCalendarEvents(
@@ -184,6 +185,54 @@ internal fun sortCalendarEvents(
         .thenByDescending { it.allDayDate != null }
         .thenBy { it.start }
 )
+
+internal fun sortCalendarSearchEvents(
+    events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
+): List<CalendarEvent> = events.sortedWith(
+    compareByDescending<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+        .thenByDescending { it.allDayDate != null }
+        .thenByDescending { it.start }
+)
+
+internal fun moveUndoDescription(
+    event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
+    phoneZone: ZoneId = ZoneId.systemDefault()
+): String {
+    val date = if (event.allDayDate != null) {
+        shiftAllDayDates(event.allDayDate, event.allDayDate.plusDays(1), stagedAt,
+            phoneZone, event.calendarZone, target).first
+    } else when (target) {
+        is MoveTarget.After -> stagedAt.plus(target.duration).atZone(phoneZone).toLocalDate()
+        is MoveTarget.OnDate -> target.date
+        is MoveTarget.OnDateTime -> target.date
+    }
+    val day = date.dayOfMonth
+    val suffix = if (day % 100 in 11..13) "th" else when (day % 10) {
+        1 -> "st"
+        2 -> "nd"
+        3 -> "rd"
+        else -> "th"
+    }
+    val dateLabel = "${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)} " +
+        "$day$suffix ${date.month.getDisplayName(TextStyle.SHORT, Locale.US)} ${date.year}"
+    return when (target) {
+        is MoveTarget.OnDate -> "Moved to $dateLabel"
+        is MoveTarget.OnDateTime -> "Moved to $dateLabel, " +
+            target.time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+        is MoveTarget.After -> {
+            val duration = target.duration
+            if (duration == Duration.ZERO) return "Moved to today, $dateLabel"
+            val action = if (duration.toHours() < 24) {
+                    val hours = duration.toHours()
+                    "Moved $hours ${if (hours == 1L) "hour" else "hours"} later"
+                } else {
+                    val days = duration.toDays()
+                    "Moved $days ${if (days == 1L) "day" else "days"} later"
+                }
+            "$action, to $dateLabel"
+        }
+    }
+}
 
 internal fun calendarEditLink(htmlLink: String): String? {
     val uri = runCatching { URI(htmlLink) }.getOrNull() ?: return null

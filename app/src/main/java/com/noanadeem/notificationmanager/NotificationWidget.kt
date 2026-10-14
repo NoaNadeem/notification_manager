@@ -104,18 +104,19 @@ private fun workName(key: String) = "notification-widget-action-$key"
 
 private data class PendingWidgetAction(
     val id: String, val eventId: String, val start: Long, val command: String,
-    val account: String, val description: String
+    val account: String, val description: String, val stagedAtMillis: Long
 ) {
     fun json(): String = JSONObject().put("id", id).put("eventId", eventId)
         .put("start", start).put("command", command).put("account", account)
-        .put("description", description).toString()
+        .put("description", description).put("stagedAtMillis", stagedAtMillis).toString()
 
     companion object {
         fun read(raw: String?): PendingWidgetAction? = runCatching {
             val json = JSONObject(raw ?: return null)
             PendingWidgetAction(json.getString("id"), json.getString("eventId"),
                 json.getLong("start"), json.getString("command"),
-                json.getString("account"), json.getString("description"))
+                json.getString("account"), json.getString("description"),
+                json.optLong("stagedAtMillis", System.currentTimeMillis()))
         }.getOrNull()
     }
 }
@@ -263,12 +264,15 @@ internal class NotificationWidget : AppWidgetProvider() {
             else -> {
                 if (command !in setOf("dismiss", "1D", "2D", "3D", "4D", "7D", "0D", "1H", "4H", "8H")) return
                 if (event.isRecurring && command != "dismiss") return
-                val description = if (command == "dismiss") "Dismissed" else when (command) {
-                    "0D" -> "Moved to today"
-                    else -> "Moved ${command.dropLast(1)} ${if (command.endsWith("H")) "hour" else "day"}${if (command.dropLast(1) == "1") "" else "s"} later"
+                val stagedAt = Instant.now()
+                val description = if (command == "dismiss") "Dismissed" else {
+                    val target = if (command.endsWith("H")) MoveTarget.After(
+                        Duration.ofHours(command.dropLast(1).toLong()))
+                    else MoveTarget.After(Duration.ofDays(command.dropLast(1).toLong()))
+                    moveUndoDescription(event, target, stagedAt)
                 }
                 val action = PendingWidgetAction(UUID.randomUUID().toString(), event.id,
-                    event.start.toEpochMilli(), command, selectedAccount, description)
+                    event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli())
                 prefs(context).edit().putString(key, action.json()).apply()
                 val work = OneTimeWorkRequestBuilder<WidgetActionWorker>()
                     .setInputData(workDataOf(EXTRA_PENDING_KEY to key, EXTRA_ACTION_ID to action.id))
@@ -574,7 +578,7 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                 val target = if (action.command == "0D") MoveTarget.After(Duration.ZERO)
                     else if (action.command.endsWith("H")) MoveTarget.After(Duration.ofHours(action.command.dropLast(1).toLong()))
                     else MoveTarget.After(Duration.ofDays(action.command.dropLast(1).toLong()))
-                val moved = moveCalendarEvent(token, event, target)
+                val moved = moveCalendarEvent(token, event, target, Instant.ofEpochMilli(action.stagedAtMillis))
                 applied = true
                 val stateStore = LocalStateStore(context)
                 val settings = context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)

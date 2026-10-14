@@ -43,3 +43,15 @@ test("authenticated user with shared calendars reads and searches only the prima
   assert.equal(calls.length, 3);
   assert.ok(calls.every((url) => !url.includes("shared%40example.com") && !url.includes("calendarList")));
 });
+
+test("full Calendar search shows newest dates first and all-day first within a date", async () => {
+  const events = [
+    { id: "old", start: { dateTime: "2025-01-01T09:00:00Z" } },
+    { id: "morning", start: { dateTime: "2026-11-03T09:00:00Z" } },
+    { id: "all-day", start: { date: "2026-11-03" } },
+    { id: "afternoon", start: { dateTime: "2026-11-03T15:00:00Z" } }
+  ];
+  const { events: results } = await searchPrimaryCalendar("owner@example.com", "meeting",
+    async () => ({ items: events }));
+  assert.deepEqual(results.map((event) => event.id), ["all-day", "afternoon", "morning", "old"]);
+});

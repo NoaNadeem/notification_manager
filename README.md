@@ -6,6 +6,8 @@ The app caches the last loaded event list and dismissal records on the phone for
 
 The Calendar picker opens directly to the date grid. Its clock icon opens an optional time picker, initially set to the event’s start time. Selecting a date immediately stages the move with Undo; without using the clock, the event keeps its original time of day. All-day events have no clock icon.
 
+The 30-second Undo row shows the move interval and full destination date. Its destination is calculated from the tap time, including when the timer crosses midnight. Full Calendar search results display newest dates first; the regular review list remains oldest first.
+
 Tap the header refresh icon or pull down from the top of the event list to refresh Calendar events and Drive dismissals. **Refresh events** also remains in the three-dot menu.
 
 The menu also has **Events recently moved**. It shows the ten latest confirmed moves with their destination and move time. The app stores a small local copy and syncs those records with the Chrome extension through Drive. Older moves made before this feature are not available; the ten-record list is pruned after 30 days. See [move history](docs/move-history.md).

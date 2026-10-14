@@ -18,10 +18,16 @@ internal data class LocalSyncState(
     fun headline(now: Long = System.currentTimeMillis()): String = when {
         pending.isNotEmpty() -> "Local changes waiting to sync"
         error != null || calendarAt == 0L || dismissalAt == 0L ||
-            now - calendarAt > 3_600_000 || now - dismissalAt > 3_600_000 -> "Sync needs attention"
+            now - calendarAt >= AUTO_REFRESH_INTERVAL_MILLIS ||
+            now - dismissalAt >= AUTO_REFRESH_INTERVAL_MILLIS -> "Sync needs attention"
         else -> "Synced just now"
     }
 }
+
+internal const val AUTO_REFRESH_INTERVAL_MILLIS = 12 * 60 * 60 * 1000L
+
+internal fun calendarAutoRefreshDue(calendarAt: Long, now: Long = System.currentTimeMillis()): Boolean =
+    calendarAt <= 0L || now - calendarAt >= AUTO_REFRESH_INTERVAL_MILLIS
 
 internal fun shouldShowSyncStatus(
     state: LocalSyncState, sessionStartedAt: Long, refreshing: Boolean, hasCurrentError: Boolean

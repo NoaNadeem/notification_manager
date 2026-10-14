@@ -58,7 +58,7 @@ let wheelResetTimer;
 let dateTarget;
 let openFlyoutRow;
 let openFlyout;
-let openMoreButton;
+let openFlyoutTrigger;
 let heldAction;
 let heldIndex = 0;
 let searchActive = false;
@@ -279,14 +279,14 @@ function closeMenu() {
   menuToggle.setAttribute("aria-expanded", "false");
 }
 
-function showFlyout(row, flyout, more) {
+function showFlyout(row, flyout, trigger) {
   if (openFlyoutRow === row) return;
   if (openFlyoutRow) hideFlyout(openFlyoutRow);
   openFlyoutRow = row;
   openFlyout = flyout;
-  openMoreButton = more;
+  openFlyoutTrigger = trigger;
   row.classList.add("flyout-open");
-  more.setAttribute("aria-expanded", "true");
+  trigger.setAttribute("aria-expanded", "true");
   document.body.append(flyout);
   flyout.classList.add("active");
   const bounds = row.getBoundingClientRect();
@@ -298,14 +298,14 @@ function showFlyout(row, flyout, more) {
 function hideFlyout(row) {
   if (openFlyoutRow !== row) return;
   const flyout = openFlyout;
-  const more = openMoreButton;
+  const trigger = openFlyoutTrigger;
   // Reparenting a focused tile fires focusout synchronously. Clear state first so
   // its handler cannot re-enter this cleanup while the DOM move is in progress.
   openFlyoutRow = undefined;
   openFlyout = undefined;
-  openMoreButton = undefined;
+  openFlyoutTrigger = undefined;
   row.classList.remove("flyout-open");
-  more?.setAttribute("aria-expanded", "false");
+  trigger?.setAttribute("aria-expanded", "false");
   flyout?.classList.remove("active");
   if (flyout && row.isConnected && flyout.parentNode !== row) row.append(flyout);
 }
@@ -549,7 +549,7 @@ function renderEvent(event) {
   }
   const actions = document.createElement("div");
   actions.className = "actions";
-  let more;
+  let flyoutTrigger;
   if (action || held) {
     const undoTile = button("Undo", held ? `Action committed for ${event.summary || "event"}; Undo unavailable`
       : `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo");
@@ -560,23 +560,22 @@ function renderEvent(event) {
       actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
       actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     } else {
-    actions.append(moveTile(event, "1D", { days: 1 }, "tile primary"));
-    more = button("⋯", "More move and dismiss options", () => showFlyout(row, flyout, more), "tile more");
-    more.setAttribute("aria-haspopup", "true");
-    more.setAttribute("aria-expanded", "false");
-    more.addEventListener("pointerenter", () => showFlyout(row, flyout, more));
-    more.addEventListener("focus", () => showFlyout(row, flyout, more));
-    more.addEventListener("keydown", (key) => {
+    flyoutTrigger = moveTile(event, "1D", { days: 1 }, "tile primary");
+    flyoutTrigger.setAttribute("aria-haspopup", "true");
+    flyoutTrigger.setAttribute("aria-expanded", "false");
+    flyoutTrigger.addEventListener("pointerenter", () => showFlyout(row, flyout, flyoutTrigger));
+    flyoutTrigger.addEventListener("focus", () => showFlyout(row, flyout, flyoutTrigger));
+    flyoutTrigger.addEventListener("keydown", (key) => {
       if (key.key === "Tab" && !key.shiftKey || key.key === "ArrowDown") {
         key.preventDefault();
-        showFlyout(row, flyout, more);
+        showFlyout(row, flyout, flyoutTrigger);
         flyout.querySelector("button:not(:disabled)")?.focus();
       }
     });
     row.addEventListener("focusout", (event) => {
       if (!row.contains(event.relatedTarget) && !flyout.contains(event.relatedTarget)) hideFlyout(row);
     });
-    actions.append(more);
+    actions.append(flyoutTrigger);
     }
   }
   top.append(details, actions);
@@ -625,7 +624,7 @@ function renderEvent(event) {
   flyout.addEventListener("keydown", (key) => {
     if (key.key === "Tab" && key.shiftKey && document.activeElement === flyout.querySelector("button:not(:disabled)")) {
       key.preventDefault();
-      more.focus();
+      flyoutTrigger.focus();
     }
   });
   row.append(flyout);
@@ -1012,20 +1011,20 @@ datePicker.addEventListener("change", () => {
 calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
 $("#connect").addEventListener("click", () => void load(true));
 document.addEventListener("pointermove", (pointer) => {
-  if (!openFlyoutRow || !openFlyout || !openMoreButton) return;
+  if (!openFlyoutRow || !openFlyout || !openFlyoutTrigger) return;
   if (!flyoutPointerInReach(pointer.clientX, pointer.clientY,
-    openMoreButton.getBoundingClientRect(), openFlyout.getBoundingClientRect())) {
+    openFlyoutTrigger.getBoundingClientRect(), openFlyout.getBoundingClientRect())) {
     hideFlyout(openFlyoutRow);
   }
 });
 document.addEventListener("pointerdown", (pointer) => {
-  if (openFlyoutRow && !openFlyout?.contains(pointer.target) && !openMoreButton?.contains(pointer.target)) {
+  if (openFlyoutRow && !openFlyout?.contains(pointer.target) && !openFlyoutTrigger?.contains(pointer.target)) {
     hideFlyout(openFlyoutRow);
   }
 });
 document.addEventListener("keydown", (key) => {
   if (key.key === "Escape" && openFlyoutRow) {
-    openMoreButton?.focus();
+    openFlyoutTrigger?.focus();
     hideFlyout(openFlyoutRow);
   }
 });

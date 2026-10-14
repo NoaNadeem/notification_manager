@@ -309,7 +309,9 @@ private fun CalendarLoginScreen(
     var heldActionRow by remember { mutableStateOf<HeldActionRow?>(null) }
     var movingEventId by remember { mutableStateOf<String?>(null) }
     var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var dismissals by remember { mutableStateOf<List<DismissalRecord>>(emptyList()) }
+    var dismissals by remember { mutableStateOf(
+        preferences.getString(ACCOUNT_NAME_KEY, null)?.let(dismissalStore::read) ?: emptyList()
+    ) }
     var moves by remember { mutableStateOf(
         preferences.getString(ACCOUNT_NAME_KEY, null)?.let(moveHistoryStore::read) ?: emptyList()
     ) }
@@ -536,7 +538,7 @@ private fun CalendarLoginScreen(
         commitAction(action)
     }
 
-    fun useAuthorizationResult(result: AuthorizationResult, interactive: Boolean) {
+    fun useAuthorizationResult(result: AuthorizationResult, interactive: Boolean, forceRefresh: Boolean = true) {
         val move = pendingMove
         val refreshing = !interactive && screen == ConnectionScreen.Connected
         val accessToken = result.accessToken
@@ -594,15 +596,19 @@ private fun CalendarLoginScreen(
                 }
                 screen = ConnectionScreen.Connected
                 errorMessage = null
-                eventsLoading = true
+                val fetchCalendar = forceRefresh || calendarAutoRefreshDue(syncState.calendarAt)
+                eventsLoading = fetchCalendar
                 eventsError = null
                 driveError = null
                 try {
-                    val fetched = fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
-                        preset = windowPreset)
-                    runCatching { localStateStore.writeEvents(selectedAccount, fetched) }
-                        .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
-                    saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null))
+                    val fetched = if (fetchCalendar) {
+                        fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
+                            preset = windowPreset).also { loaded ->
+                            runCatching { localStateStore.writeEvents(selectedAccount, loaded) }
+                                .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
+                            saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null))
+                        }
+                    } else localStateStore.readEvents(selectedAccount)
                     recentEvents = fetched.withoutDismissals(dismissals)
                     try {
                         val localKeys = dismissals.mapTo(HashSet()) { it.key }
@@ -684,7 +690,7 @@ private fun CalendarLoginScreen(
         }
     }
 
-    fun authorizeCalendar(interactive: Boolean) {
+    fun authorizeCalendar(interactive: Boolean, forceRefresh: Boolean = true) {
         heldActionRow = null
         NotificationWidget.clearCompletedRow(activity)
         loading = interactive
@@ -724,7 +730,7 @@ private fun CalendarLoginScreen(
                         }
                     }
                 } else {
-                    useAuthorizationResult(result, interactive)
+                    useAuthorizationResult(result, interactive, forceRefresh)
                 }
             }
             .addOnFailureListener { e ->
@@ -863,12 +869,14 @@ private fun CalendarLoginScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (preferences.getBoolean(AUTO_CONNECT_KEY, true)) authorizeCalendar(interactive = false)
+        if (preferences.getBoolean(AUTO_CONNECT_KEY, true)) {
+            authorizeCalendar(interactive = false, forceRefresh = false)
+        }
     }
     LaunchedEffect(onlineRecovery) {
         if (onlineRecovery > 0 && screen == ConnectionScreen.Connected && !eventsLoading &&
             (syncState.pending.isNotEmpty() || syncState.error != null)) {
-            authorizeCalendar(interactive = false)
+            authorizeCalendar(interactive = false, forceRefresh = false)
         }
     }
 
@@ -876,9 +884,14 @@ private fun CalendarLoginScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
-                    if (screen == ConnectionScreen.Connected &&
+                    if (screen == ConnectionScreen.Connected && currentAccessToken != null &&
                         !eventsLoading && movingEventId == null) {
-                        authorizeCalendar(interactive = false)
+                        // The Wi-Fi widget worker may have refreshed the shared cache while the app was away.
+                        val latestSync = accountName?.let(localStateStore::readSync) ?: syncState
+                        if (latestSync.calendarAt > syncState.calendarAt) syncState = latestSync
+                        if (calendarAutoRefreshDue(latestSync.calendarAt)) {
+                            authorizeCalendar(interactive = false, forceRefresh = false)
+                        }
                     }
                 }
                 Lifecycle.Event.ON_STOP -> undoState.pendingAction?.let(::commitAction)
@@ -1268,9 +1281,6 @@ private fun CalendarConnectedScreen(
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-        }
         errorMessage?.let { message ->
             SelectableLinkedText(message, modifier = Modifier.padding(top = 16.dp))
         }
@@ -1308,7 +1318,7 @@ private fun CalendarConnectedScreen(
         }
         when {
             eventsLoading && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                item { CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp)) }
+                item { Text("Loading events…", modifier = Modifier.padding(top = 16.dp)) }
             }
             events.isEmpty() && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 item {
@@ -1323,7 +1333,6 @@ private fun CalendarConnectedScreen(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                if (eventsLoading) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) }
                 if (filteredEvents.isEmpty() && realEventsOnly && !searchActive && !eventsLoading) item {
                     Text("No real events in this range.", modifier = Modifier.padding(vertical = 16.dp))
                 }
@@ -1332,11 +1341,13 @@ private fun CalendarConnectedScreen(
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+                        HorizontalDivider(modifier = Modifier.weight(1f),
+                            color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary))
                         Text("Later", modifier = Modifier.padding(horizontal = 12.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        HorizontalDivider(modifier = Modifier.weight(1f))
+                            color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary))
+                        HorizontalDivider(modifier = Modifier.weight(1f),
+                            color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary))
                     }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id

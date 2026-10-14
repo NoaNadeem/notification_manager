@@ -9,8 +9,17 @@ class LocalSyncStateTest {
         val now = 1_000_000_000L
         val fresh = LocalSyncState(calendarAt = now, dismissalAt = now)
         assertEquals("Synced just now", fresh.headline(now))
-        assertEquals("Sync needs attention", fresh.headline(now + 3_600_001))
+        assertEquals("Synced just now", fresh.headline(now + AUTO_REFRESH_INTERVAL_MILLIS - 1))
+        assertEquals("Sync needs attention", fresh.headline(now + AUTO_REFRESH_INTERVAL_MILLIS))
         assertEquals("Local changes waiting to sync", fresh.copy(pending = setOf("event/1")).headline(now))
+    }
+
+    @Test
+    fun automaticCalendarRefreshUsesTwelveHourBoundary() {
+        val now = 1_000_000_000L
+        assertEquals(true, calendarAutoRefreshDue(0, now))
+        assertEquals(false, calendarAutoRefreshDue(now - AUTO_REFRESH_INTERVAL_MILLIS + 1, now))
+        assertEquals(true, calendarAutoRefreshDue(now - AUTO_REFRESH_INTERVAL_MILLIS, now))
     }
 
     @Test

@@ -28,7 +28,6 @@ main.pulling { user-select:none; cursor:grabbing; }
 .actions { display: flex; gap: 5px; flex-shrink: 0; }
 .tile { min-width: 37px; height: 31px; padding: 0 7px; border: 0; border-radius: 6px; color: #f0f1f2; background: #3a4049; font-size: 12px; font-weight: 700; }
 .tile.primary { background: #4a515b; }
-.tile.more { font-size: 19px; line-height: 1; }
 .flyout { display: none; padding: 8px; border-radius: 7px; background: #30343b; }
 .flyout.active { display: block; }
 .tile-row { display: flex; gap: 6px; margin: 3px 0; }
@@ -73,8 +72,8 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .notice:not(:empty),.info:not(:empty) { padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--border); }
 .connect-panel button,.search-calendar { background:#637aa4; color:white; border:0; border-radius:6px; padding:9px 12px; }
 .event { border-color:var(--border); }
-.later-divider { display:flex; align-items:center; gap:12px; margin:13px 20px 6px; color:var(--muted); font-size:12px; font-weight:600; }
-.later-divider::before,.later-divider::after { content:""; flex:1; border-top:1px solid var(--border); }
+.later-divider { display:flex; align-items:center; gap:12px; margin:13px 20px 6px; color:var(--dot-color); font-size:12px; font-weight:600; }
+.later-divider::before,.later-divider::after { content:""; flex:1; border-top:1px solid var(--dot-color); }
 .empty { color:var(--muted); }
 .event:hover,.event:focus-within { background:var(--panel); }
 .title-line { display:flex; align-items:flex-start; min-width:0; }
@@ -88,7 +87,7 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .tile.danger { background:var(--danger); }
 .tile.undo { min-width:52px; height:40px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
-.event.pending .location,.event.pending .more { display:none; }
+.event.pending .location { display:none; }
 .flyout { position:fixed; z-index:30; background:var(--panel-strong); box-shadow:0 6px 15px #0003; }
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }

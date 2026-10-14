@@ -16,3 +16,4 @@
 local.properties
 /.idea/
 /gradle/gradle-daemon-jvm.properties
+mcp-server.log

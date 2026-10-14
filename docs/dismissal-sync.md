@@ -10,16 +10,16 @@ The settings menu has a separate Recent dismissals popover, sorted by dismissal 
 
 The maximum lookback setting is 365 days. Cleanup is not scheduled: the clients prune local records when they open, refresh, or save a dismissal. A successful Drive sync deletes immutable records whose event start is more than 365 days old. The legacy single file remains read-only for migration and is not pruned. If neither client opens, or Drive remains unavailable, cleanup waits for a later successful sync. Storage therefore grows with dismissals within the last year during normal use, plus the fixed legacy file. If Drive is unavailable, the local copy continues to work and the app displays a sync warning. Reopening/refreshing retries sync.
 
-On September 28, 2026, a read-only scan of `noamaan@gmail.com` found 1,278 events in the past 365 days. The former single-file JSON format would have been 145,047 bytes (141.6 KiB) if every event were dismissed. The new format uses one Drive file per dismissal, so actual Drive usage and listing overhead are higher. This is an upper-bound count based on event occurrences, including events that may not have reminders. No events were changed for this measurement. The app's three-dot menu has **Estimate 1-year storage** to calculate current record payload bytes; the message notes that Drive file metadata is additional.
+The new format uses one Drive file per dismissal, so Drive metadata and listing overhead are additional to the record payload. The storage estimator code remains available for future use, but its menu entry is currently hidden.
 
 ## One-time Google Cloud setup
 
 If Drive returns HTTP 403 because the Drive API is disabled, enable it in Cloud project **411250810503**:
 
-1. Sign into Google Cloud Console with an account that can manage project 411250810503. Open the [Google Drive API page for that project](https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=411250810503). Check that the project selector shows 411250810503, then click **Enable**. Enabling the API is a project setting, not a setting in `noamaan@gmail.com`'s personal Drive.
+1. Sign into Google Cloud Console with an account that can manage project 411250810503. Open the [Google Drive API page for that project](https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=411250810503). Check that the project selector shows 411250810503, then click **Enable**. Enabling the API is a project setting, not a setting in an individual user's personal Drive.
 2. If Google prompts for consent when the app reconnects, allow its Google Drive application-data permission. The app requests only `https://www.googleapis.com/auth/drive.appdata`, not full Drive access.
 3. On the phone, open Notification Manager and choose **⋮ → Refresh**. Google says a newly enabled API can take a few minutes to propagate. If the warning remains, wait a few minutes and refresh again.
-4. Only if Google says the app or user is not authorized, open **Google Auth platform → Audience** in the same Cloud project and verify `noamaan@gmail.com` is a test user; in **Data Access**, add `drive.appdata` if it is absent.
+4. Only if Google says the app or user is not authorized, open **Google Auth platform → Audience** in the same Cloud project and verify the intended account is a test user; in **Data Access**, add `drive.appdata` if it is absent.
 
 No `google-services.json`, Firebase, or full Drive access is needed for dismissal sync. The app requests only the Drive application-data scope.
 

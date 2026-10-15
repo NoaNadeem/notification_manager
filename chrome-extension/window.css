@@ -84,7 +84,7 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .location { color:var(--link); }
 .tile { background:var(--tile); color:var(--text); }
 .tile.primary { background:var(--tile-main); }
-.tile.danger { background:var(--danger); }
+.tile.danger { background:var(--dismiss-bg); }
 .tile.undo { min-width:52px; height:40px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
 .event.pending .location { display:none; }
@@ -119,6 +119,6 @@ dialog input { width:95px; margin-left:8px; padding:5px; color:var(--text); back
 header,footer { background:var(--panel-custom,var(--panel)); }
 .title,.search-result a { color:var(--title-custom,var(--text)); }
 .tile,.tile.primary,.icon-button { background:var(--tile-custom,var(--tile)); }
-.tile.danger { background:var(--danger); }
+.tile.danger { background:var(--dismiss-bg); }
 .tile:hover,.icon-button:hover { background:var(--tile-hover); }
 #skins-dialog select { display:block; width:100%; margin:8px 0 0; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:8px; }

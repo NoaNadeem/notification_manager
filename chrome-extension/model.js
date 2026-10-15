@@ -91,7 +91,7 @@ export function eventStartMs(event, calendarTimeZone) {
 }
 
 export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
-  return eventStartMs(event, zone) <= nowMs - 2 * DAY_MS;
+  return eventStartMs(event, zone) < nowMs - DAY_MS;
 }
 
 export function isEmphasized(event, account) {

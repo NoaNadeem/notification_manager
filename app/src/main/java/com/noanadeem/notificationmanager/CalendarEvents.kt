@@ -41,7 +41,7 @@ internal data class CalendarEvent(
         allDayDate?.isAfter(now.atZone(phoneZone).toLocalDate()) ?: start.isAfter(now)
 
     fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
-        !start.isAfter(now.minus(Duration.ofDays(2)))
+        start.isBefore(now.minus(Duration.ofDays(1)))
 
     fun isEmphasized(): Boolean = allDayDate != null || hasOtherAttendees ||
         (end != null && Duration.between(start, end) >= Duration.ofHours(1))

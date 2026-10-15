@@ -207,6 +207,7 @@ class MainActivity : ComponentActivity() {
                             onSkinChange = { updated ->
                                 skin = updated
                                 saveSkin(preferences, updated)
+                                NotificationWidget.updateAll(this@MainActivity)
                             },
                             onDarkModeChange = { enabled ->
                                 darkMode = enabled
@@ -1460,6 +1461,7 @@ private fun CalendarConnectedScreen(
                                             description = "Dismiss only this occurrence in this app",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
+                                            isDismiss = true,
                                             onClick = {
                                                 expandedEventId = null
                                                 onDismiss(event)
@@ -1470,16 +1472,6 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        MoveTile(
-                                            label = "📅",
-                                            description = "Choose a calendar date",
-                                            enabled = movingEventId == null && event.id !in committingActionIds,
-                                            modifier = Modifier.size(44.dp),
-                                            onClick = {
-                                                onActionTile()
-                                                datePickerEvent = event
-                                            }
-                                        )
                                         val hourChoices = if (event.allDayDate == null) {
                                             listOf(
                                                 "1H" to MoveTarget.After(Duration.ofHours(1)),
@@ -1502,10 +1494,21 @@ private fun CalendarConnectedScreen(
                                         }
                                         repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.size(44.dp)) }
                                         MoveTile(
+                                            label = "📅",
+                                            description = "Choose a calendar date",
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            modifier = Modifier.size(44.dp),
+                                            onClick = {
+                                                onActionTile()
+                                                datePickerEvent = event
+                                            }
+                                        )
+                                        MoveTile(
                                             label = "✓",
                                             description = "Dismiss event in this app",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
+                                            isDismiss = true,
                                             onClick = {
                                                 expandedEventId = null
                                                 onDismiss(event)
@@ -1516,13 +1519,6 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        MoveTile(
-                                            label = "✎",
-                                            description = "Open event in Google Calendar to edit",
-                                            enabled = true,
-                                            modifier = Modifier.size(44.dp),
-                                            onClick = { onOpenEvent(event) }
-                                        )
                                         for ((label, days) in listOf("2D" to 2L, "3D" to 3L, "4D" to 4L, "7D" to 7L)) {
                                             MoveTile(
                                                 label = label,
@@ -1531,6 +1527,13 @@ private fun CalendarConnectedScreen(
                                                 enabled = movingEventId == null && event.id !in committingActionIds,
                                                 modifier = Modifier.size(44.dp),
                                                 onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
+                                            )
+                                            if (days == 4L) MoveTile(
+                                                label = "✎",
+                                                description = "Open event in Google Calendar to edit",
+                                                enabled = true,
+                                                modifier = Modifier.size(44.dp),
+                                                onClick = { onOpenEvent(event) }
                                             )
                                         }
                                     }
@@ -1959,13 +1962,15 @@ private fun MoveTile(
     modifier: Modifier = Modifier,
     description: String = label,
     tooltip: (() -> String)? = null,
+    isDismiss: Boolean = false,
     onClick: () -> Unit
 ) {
     @Composable fun TileSurface(tileModifier: Modifier) = Surface(
         modifier = tileModifier
             .semantics { contentDescription = description }
             .clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
-        color = LocalSkin.current.color("tile", LocalSkinDark.current, MaterialTheme.colorScheme.surfaceContainerHighest),
+        color = LocalSkin.current.color(if (isDismiss) "dismiss" else "tile", LocalSkinDark.current,
+            MaterialTheme.colorScheme.surfaceContainerHighest),
         shape = RoundedCornerShape(4.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

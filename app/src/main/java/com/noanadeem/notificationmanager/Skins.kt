@@ -8,16 +8,37 @@ internal val skinNames = listOf("Green", "Blue", "Purple", "Rose")
 internal data class Skin(val name: String = "Green") {
     fun color(field: String, dark: Boolean, fallback: Color): Color {
         val pair = when (name) {
-            "Blue" -> "#64C9FF" to (if (dark) "#19394D" else "#D6F0FF")
-            "Purple" -> "#C29BFF" to (if (dark) "#35264A" else "#ECDEFF")
-            "Rose" -> "#FF8DC5" to (if (dark) "#4A2639" else "#FFE0EE")
-            else -> "#A7FF57" to (if (dark) "#1D422E" else "#DDF5E4")
+            "Blue" -> (if (dark) "#79AEC9" else "#346982") to (if (dark) "#19394D" else "#D6F0FF")
+            "Purple" -> (if (dark) "#AC90CD" else "#735391") to (if (dark) "#35264A" else "#ECDEFF")
+            "Rose" -> (if (dark) "#CF8DAB" else "#9C5275") to (if (dark) "#4A2639" else "#FFE0EE")
+            else -> (if (dark) "#79B590" else "#397A51") to (if (dark) "#1D422E" else "#DDF5E4")
         }
         return when (field) {
             "dot" -> Color(android.graphics.Color.parseColor(pair.first))
-            "emphasized" -> Color(android.graphics.Color.parseColor(pair.second))
+            "emphasized", "dismiss" -> Color(android.graphics.Color.parseColor(pair.second))
             else -> fallback
         }
+    }
+
+    fun widgetAccent(): Int = android.graphics.Color.parseColor(when (name) {
+        "Blue" -> "#79AEC9"
+        "Purple" -> "#AC90CD"
+        "Rose" -> "#CF8DAB"
+        else -> "#79B590"
+    })
+
+    fun widgetBackground(): Int = when (name) {
+        "Blue" -> R.drawable.widget_blue
+        "Purple" -> R.drawable.widget_purple
+        "Rose" -> R.drawable.widget_rose
+        else -> R.drawable.widget_green
+    }
+
+    fun widgetDismissBackground(): Int = when (name) {
+        "Blue" -> R.drawable.widget_tile_blue
+        "Purple" -> R.drawable.widget_tile_purple
+        "Rose" -> R.drawable.widget_tile_rose
+        else -> R.drawable.widget_tile_green
     }
 }
 

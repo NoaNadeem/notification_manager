@@ -392,7 +392,10 @@ internal class NotificationWidgetService : RemoteViewsService() {
         override fun getLoadingView(): RemoteViews? = null
 
         override fun getViewAt(position: Int): RemoteViews? {
-            if (position == laterIndex) return RemoteViews(context.packageName, R.layout.notification_widget_later)
+            if (position == laterIndex) return RemoteViews(context.packageName, R.layout.notification_widget_later).apply {
+                setTextColor(R.id.widget_later, readSkin(context.getSharedPreferences("calendar_connection",
+                    Context.MODE_PRIVATE)).widgetAccent())
+            }
             val eventPosition = if (laterIndex >= 0 && position > laterIndex) position - 1 else position
             val event = events.getOrNull(eventPosition) ?: return null
             val key = eventKey(event)
@@ -404,11 +407,16 @@ internal class NotificationWidgetService : RemoteViewsService() {
             val views = RemoteViews(context.packageName,
                 if (event.isEmphasized()) R.layout.notification_widget_event_green
                 else R.layout.notification_widget_event)
+            val skin = readSkin(context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE))
+            if (event.isEmphasized()) views.setInt(R.id.widget_event_root, "setBackgroundResource",
+                skin.widgetBackground())
             views.setTextViewText(R.id.widget_event_title, event.title)
             views.setTextColor(R.id.widget_event_title, if (locked) 0xFFBFC7C9.toInt() else 0xFFFFFFFF.toInt())
             views.setTextViewText(R.id.widget_event_age, held?.description ?: pending?.description ?: event.ageDescription())
             views.setViewVisibility(R.id.widget_event_dot,
-                if (event.start.isBefore(Instant.now().minus(Duration.ofDays(2)))) View.VISIBLE else View.GONE)
+                if (event.isTwoDaysOld()) View.VISIBLE else View.GONE)
+            views.setTextColor(R.id.widget_event_dot, skin.widgetAccent())
+            views.setInt(R.id.widget_tile_dismiss, "setBackgroundResource", skin.widgetDismissBackground())
             views.setViewVisibility(R.id.widget_event_one_day, if (locked) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.widget_event_one_day, if (event.isRecurring) "✎" else "1D")
             views.setViewVisibility(R.id.widget_event_undo, if (locked) View.VISIBLE else View.GONE)
@@ -429,12 +437,13 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 click(views, R.id.widget_event_location, event, "location")
             } else if (held == null) click(views, R.id.widget_event_undo, event, "undo")
             if (expanded) {
-                val firstRow = if (event.allDayDate != null) listOf("0D", "2D", "4D")
+                val firstRow = if (event.allDayDate != null) listOf("0D", "", "")
                     else listOf("1H", "4H", "8H")
                 listOf(R.id.widget_tile_a, R.id.widget_tile_b, R.id.widget_tile_c).forEachIndexed { index, id ->
                     views.setTextViewText(id, firstRow[index])
-                    if (!event.isRecurring) click(views, id, event, firstRow[index])
-                    views.setViewVisibility(id, if (event.isRecurring) View.GONE else View.VISIBLE)
+                    if (!event.isRecurring && firstRow[index].isNotEmpty()) click(views, id, event, firstRow[index])
+                    views.setViewVisibility(id, if (event.isRecurring) View.GONE
+                        else if (firstRow[index].isEmpty()) View.INVISIBLE else View.VISIBLE)
                 }
                 click(views, R.id.widget_tile_calendar, event, "cal")
                 views.setViewVisibility(R.id.widget_tile_calendar, if (event.isRecurring) View.GONE else View.VISIBLE)

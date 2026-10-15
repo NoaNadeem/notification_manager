@@ -32,10 +32,10 @@ const recentDismissalsDialog = $("#recent-dismissals-dialog");
 const recentMovesDialog = $("#recent-moves-dialog");
 const skinsDialog = $("#skins-dialog");
 const skinPresets = {
-  Green: ["#A7FF57", "#1D422E", "#DDF5E4"],
-  Blue: ["#64C9FF", "#19394D", "#D6F0FF"],
-  Purple: ["#C29BFF", "#35264A", "#ECDEFF"],
-  Rose: ["#FF8DC5", "#4A2639", "#FFE0EE"]
+  Green: ["#79B590", "#397A51", "#1D422E", "#DDF5E4"],
+  Blue: ["#79AEC9", "#346982", "#19394D", "#D6F0FF"],
+  Purple: ["#AC90CD", "#735391", "#35264A", "#ECDEFF"],
+  Rose: ["#CF8DAB", "#9C5275", "#4A2639", "#FFE0EE"]
 };
 
 let account;
@@ -227,8 +227,9 @@ function updateHeaderClock() {
 function applySkin() {
   const root = document.documentElement;
   const preset = skinPresets[skinName] || skinPresets.Green;
-  root.style.setProperty("--dot-color", preset[0]);
-  root.style.setProperty("--emphasized-bg", preset[darkMode ? 1 : 2]);
+  root.style.setProperty("--dot-color", preset[darkMode ? 0 : 1]);
+  root.style.setProperty("--emphasized-bg", preset[darkMode ? 2 : 3]);
+  root.style.setProperty("--dismiss-bg", preset[darkMode ? 2 : 3]);
 }
 
 function scheduleHeaderClock() {
@@ -586,7 +587,7 @@ function renderEvent(event) {
   const topRow = document.createElement("div");
   const bottomRow = document.createElement("div");
   topRow.className = bottomRow.className = "tile-row";
-  topRow.append(button("📅", "Choose a date", () => {
+  const calendarTile = button("📅", "Choose a date", () => {
     clearHeldFor(event);
     void undo.commit();
     dateTarget = event;
@@ -599,7 +600,7 @@ function renderEvent(event) {
     calendarDialog.showModal();
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
-  }));
+  });
   if (event.start.date) {
     topRow.append(moveTile(event, "0D", { days: 0 }));
     for (let i = 0; i < 2; i++) {
@@ -612,10 +613,11 @@ function renderEvent(event) {
       topRow.append(moveTile(event, `${hours}H`, { hours }));
     }
   }
+  topRow.append(calendarTile);
   topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
-  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   for (const days of [2, 3, 4, 7]) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
+    if (days === 4) bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   }
   flyout.append(topRow, bottomRow);
   flyout.addEventListener("focusout", (event) => {

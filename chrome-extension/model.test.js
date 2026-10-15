@@ -55,11 +55,12 @@ test("lookahead follows calendar days across daylight saving changes", () => {
   }
 });
 
-test("old dot uses 48 hours; long, shared, and all-day events get highlighted", () => {
+test("old dot follows the rounded 2 days ago label; long, shared, and all-day events get highlighted", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");
   const event = { start: { dateTime: "2026-09-26T12:00:00Z" }, end: { dateTime: "2026-09-26T12:15:00Z" }, attendees: [{ email: "me@example.com", self: true }] };
   assert.equal(isTwoDaysOld(event, "UTC", now), true);
-  assert.equal(isTwoDaysOld(event, "UTC", now - 1), false);
+  assert.equal(isTwoDaysOld(event, "UTC", now - 24 * 60 * 60 * 1000), false);
+  assert.equal(isTwoDaysOld(event, "UTC", now - 24 * 60 * 60 * 1000 + 1), true);
   assert.equal(isEmphasized(event, "me@example.com"), false);
   assert.equal(isEmphasized({ ...event, end: { dateTime: "2026-09-26T13:00:00Z" } }, "me@example.com"), true);
   assert.equal(isEmphasized({ ...event, attendees: [...event.attendees, { email: "friend@example.com" }] }, "me@example.com"), true);

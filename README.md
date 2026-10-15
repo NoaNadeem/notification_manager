@@ -22,7 +22,7 @@ While a widget is placed, WorkManager schedules a check approximately every hour
 
 The pencil opens the event in the Google Calendar Android app when it is installed. From the event details, tap Google Calendar's Edit control. If the app cannot handle the event link, the pencil falls back to the browser editor.
 
-The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README. In the extension, hovering over the 1D tile opens the other actions, while clicking 1D moves the event one day. The Later divider uses the selected skin's accent color in both clients.
+The Chrome desktop companion lives in [chrome-extension](chrome-extension/README.md). It opens a dedicated manager window when Chrome starts; its one-time Google OAuth and unpacked-install steps are in that README. In the extension, hovering over the 1D tile opens the other actions, while clicking 1D moves the event one day. The Later divider, dots beside events labeled at least “2 days ago,” highlighted event rows, and Dismiss tiles use the selected skin in the app, widget, and extension. Calendar is fourth in the top action row; Edit is fourth in the bottom row.
 
 ## Install development updates over Wi-Fi
 

@@ -10,6 +10,19 @@ export function shouldShowSyncStatus(attempted, loading, signedOut, account) {
   return attempted && !loading && !signedOut && !!account;
 }
 
+// Sync-status persistence is diagnostic. A storage failure must not turn a
+// successful Calendar refresh or Drive dismissal into a failed action.
+export async function persistSyncState(storage, account, state) {
+  if (!account) return null;
+  const { history, ...saved } = state;
+  try {
+    await storage.set({ [`syncState:${account.toLowerCase()}`]: saved });
+    return null;
+  } catch (error) {
+    return error?.message || String(error);
+  }
+}
+
 export function syncDetail(state) {
   const date = (ms) => ms ? new Date(ms).toLocaleString() : "Never";
   return `Calendar refreshed: ${date(state.calendarAt)}\nDismissals synced: ${date(state.dismissalAt)}\n` +

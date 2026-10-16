@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { syncHeadline, syncDetail, shouldShowSyncStatus } from "./sync-state.js";
+import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
 test("successful, pending, stale, and failed synchronization remain distinguishable", () => {
   const now = 1_000_000_000;
@@ -17,4 +17,19 @@ test("startup status waits for a completed refresh", () => {
   assert.equal(shouldShowSyncStatus(true, true, false, "owner@example.com"), false);
   assert.equal(shouldShowSyncStatus(true, false, false, "owner@example.com"), true);
   assert.equal(shouldShowSyncStatus(true, false, true, "owner@example.com"), false);
+});
+
+test("sync-status storage failure remains diagnostic and a later write clears it", async () => {
+  const saved = [];
+  let fail = true;
+  const storage = { async set(value) {
+    if (fail) throw new Error("Storage temporarily unavailable");
+    saved.push(value);
+  } };
+  const state = { calendarAt: 42, pending: [], history: ["legacy"] };
+  assert.equal(await persistSyncState(storage, "Me@Example.com", state), "Storage temporarily unavailable");
+  fail = false;
+  assert.equal(await persistSyncState(storage, "Me@Example.com", state), null);
+  assert.deepEqual(saved, [{ "syncState:me@example.com": { calendarAt: 42, pending: [] } }]);
+  assert.deepEqual(state.history, ["legacy"]);
 });

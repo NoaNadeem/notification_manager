@@ -16,6 +16,8 @@ The Undo row shows the move interval and full destination date calculated when t
 
 **Events recently moved** in the settings menu lists the latest ten confirmed moves, including destination and move time. The small move records are saved locally and shared with Android through Drive. Older moves from before this feature cannot be reconstructed. Successful sync keeps ten records and prunes entries older than 30 days; a Drive error leaves the confirmed Calendar move intact and retries its local history record later.
 
+If Chrome cannot save the small sync-status record, Sync details reports the browser-storage error. That diagnostic write does not interrupt a successful Calendar refresh or Drive action; the next status update retries it.
+
 Click the magnifying-glass button beside the title to filter the loaded list. To refresh, click the header refresh icon, drag the event list down about 100 pixels from its top with a mouse/pointer, or scroll upward past the top with a wheel/trackpad. Release after “Release to refresh” appears. **Search Calendar** looks across past and future events in the primary calendar and shows read-only results. The top-right menu has a Refresh fallback, Disconnect, one Window row that opens presets and custom lookback (1–365 days)/lookahead (0–36500 days), dark mode, and Skins. Dark mode is the default. Disconnect clears the extension's cached Google authorization and stops automatic reconnect until **Connect Google Calendar** is clicked; switching to a different account requires another Chrome profile because `chrome.identity.getAuthToken` normally uses the profile's primary Google account.
 
 ## One-time Google setup

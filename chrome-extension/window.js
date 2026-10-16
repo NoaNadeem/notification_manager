@@ -6,7 +6,7 @@ import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
-import { syncHeadline, syncDetail, shouldShowSyncStatus } from "./sync-state.js";
+import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -47,6 +47,7 @@ let lookbackDays = 7;
 let lookaheadDays = 0;
 let windowPreset = null;
 let syncState = { calendarAt: null, dismissalAt: null, pending: [], error: null, remoteNewer: false, conflictResolved: false };
+let statusStorageError = null;
 let darkMode = true;
 let skinName = "Green";
 let signedOut = false;
@@ -101,13 +102,15 @@ function clearHeldFor(event) {
 }
 
 function renderSync() {
-  const headline = syncHeadline(syncState);
+  const status = { ...syncState, error: [syncState.error, statusStorageError &&
+    `Could not save sync status in this browser: ${statusStorageError}`].filter(Boolean).join("; ") || null };
+  const headline = syncHeadline(status);
   const ready = shouldShowSyncStatus(syncAttempted, loading, signedOut, account);
   $("#sync-warning").textContent = ready && headline !== "Synced just now" ? ` · ${headline}` : "";
   $("#sync-open").hidden = !ready;
   $("#sync-menu-label").textContent = headline === "Synced just now" ? "Synced just now" : "Sync issues";
   $("#sync-open").classList.toggle("has-issues", headline !== "Synced just now");
-  $("#sync-detail").textContent = `${headline}\n${syncDetail(syncState)}`;
+  $("#sync-detail").textContent = `${headline}\n${syncDetail(status)}`;
 }
 
 async function renderRecentDismissals() {
@@ -170,7 +173,7 @@ function renderWindowLabel() {
 
 async function saveSyncState() {
   delete syncState.history;
-  if (account) await chrome.storage.local.set({ [`syncState:${account.toLowerCase()}`]: syncState });
+  statusStorageError = await persistSyncState(chrome.storage.local, account, syncState);
   renderSync();
 }
 const openEventOnce = createOpenGuard(async (url) => {

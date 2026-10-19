@@ -1,4 +1,4 @@
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
@@ -80,8 +80,7 @@ const undo = new UndoController(commitAction, () => {
 });
 
 function currentVisibleEvents() {
-  const dismissed = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
-  const visible = events.filter((event) => !dismissed.has(eventKey(event)));
+  const visible = withoutDismissals(events, dismissals, calendarZone);
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;

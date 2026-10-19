@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageLabel, eventAgeLabel, isFutureEvent, eventStartMs, shiftEvent, mergeDismissals, recentDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow } from "./model.js";
+import { ageLabel, eventAgeLabel, isFutureEvent, eventStartMs, shiftEvent, mergeDismissals, recentDismissals, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, withoutDismissals } from "./model.js";
 
 test("recurring instances cannot move and dismissal keys remain occurrence specific", () => {
   const first = { id: "series_20260928", recurringEventId: "series", start: { dateTime: "2026-09-28T12:00:00Z" } };
@@ -133,6 +133,15 @@ test("future event dismissal survives local and Drive union", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");
   const future = { eventId: "Test Event - 1", start: now + 4 * 3_600_000, dismissed: now };
   assert.deepEqual(mergeDismissals([future], [], now), [future]);
+});
+
+test("dismissed October event reappears after an external move to December", () => {
+  const october = { id: "same-id", start: { dateTime: "2026-10-16T15:00:00Z" } };
+  const december = { ...october, start: { dateTime: "2026-12-25T15:00:00Z" } };
+  const dismissal = { eventId: october.id, start: Date.parse(october.start.dateTime),
+    dismissed: Date.parse("2026-10-16T16:00:00Z") };
+  assert.deepEqual(withoutDismissals([october], [dismissal], "UTC"), []);
+  assert.deepEqual(withoutDismissals([december], [dismissal], "UTC"), [december]);
 });
 
 test("recent dismissals keep a synced title and show the latest ten", () => {

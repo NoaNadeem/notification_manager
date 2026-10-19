@@ -1076,6 +1076,7 @@ private fun CalendarConnectedScreen(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
+    val actionScrollScope = rememberCoroutineScope()
     var menuExpanded by remember { mutableStateOf(false) }
     var expandedEventId by remember { mutableStateOf<String?>(null) }
     var showLookbackPicker by remember { mutableStateOf(false) }
@@ -1372,6 +1373,10 @@ private fun CalendarConnectedScreen(
                                     .clickable(enabled = !actionLocked) {
                                     onOtherAction()
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
+                                    if (expandedEventId == event.id) actionScrollScope.launch {
+                                        withFrameNanos { }
+                                        if (expandedEventId == event.id) actionBringIntoViewRequester.bringIntoView()
+                                    }
                                 }) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (event.isTwoDaysOld()) Box(
@@ -1441,10 +1446,6 @@ private fun CalendarConnectedScreen(
                             )
                         }
                         if (expandedEventId == event.id && !actionLocked) {
-                            LaunchedEffect(event.id) {
-                                withFrameNanos { }
-                                actionBringIntoViewRequester.bringIntoView()
-                            }
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                     .bringIntoViewRequester(actionBringIntoViewRequester),
@@ -1489,7 +1490,10 @@ private fun CalendarConnectedScreen(
                                                 tooltip = { event.moveDestinationTooltip(target) },
                                                 enabled = movingEventId == null && event.id !in committingActionIds,
                                                 modifier = Modifier.size(44.dp),
-                                                onClick = { onMove(event, target) }
+                                                onClick = {
+                                                    expandedEventId = null
+                                                    onMove(event, target)
+                                                }
                                             )
                                         }
                                         repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.size(44.dp)) }
@@ -1500,6 +1504,7 @@ private fun CalendarConnectedScreen(
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 onActionTile()
+                                                expandedEventId = null
                                                 datePickerEvent = event
                                             }
                                         )
@@ -1526,7 +1531,10 @@ private fun CalendarConnectedScreen(
                                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(days))) },
                                                 enabled = movingEventId == null && event.id !in committingActionIds,
                                                 modifier = Modifier.size(44.dp),
-                                                onClick = { onMove(event, MoveTarget.After(Duration.ofDays(days))) }
+                                                onClick = {
+                                                    expandedEventId = null
+                                                    onMove(event, MoveTarget.After(Duration.ofDays(days)))
+                                                }
                                             )
                                             if (days == 4L) MoveTile(
                                                 label = "✎",

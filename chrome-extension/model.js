@@ -216,6 +216,11 @@ export function parseDismissals(raw) {
 
 export function dismissalKey(eventId, startMs) { return `${eventId}/${startMs}`; }
 
+export function withoutDismissals(events, dismissals, calendarZone) {
+  const keys = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
+  return events.filter((event) => !keys.has(dismissalKey(event.id, eventStartMs(event, calendarZone))));
+}
+
 export function locationHref(location) {
   if (!location) return null;
   const text = location.trim();

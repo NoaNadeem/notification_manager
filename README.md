@@ -8,7 +8,7 @@ The app caches the last loaded event list and dismissal records on the phone for
 
 The Calendar picker opens directly to the date grid. Its clock icon opens an optional time picker, initially set to the event’s start time. Selecting a date immediately stages the move with Undo; without using the clock, the event keeps its original time of day. All-day events have no clock icon.
 
-The 30-second Undo row shows the move interval and full destination date. Its destination is calculated from the tap time, including when the timer crosses midnight. Full Calendar search results display newest dates first; the regular review list remains oldest first.
+The 30-second Undo row shows the move interval and full destination date. Its destination is calculated from the tap time, including when the timer crosses midnight. Expanding an event scrolls its options into view, but committing a move does not request a scroll. Full Calendar search results display newest dates first; the regular review list remains oldest first.
 
 Tap the header refresh icon or pull down from the top of the event list to refresh Calendar events and Drive dismissals immediately. **Refresh events** also remains in the three-dot menu. During refresh, the event list shows one pull-to-refresh spinner.
 

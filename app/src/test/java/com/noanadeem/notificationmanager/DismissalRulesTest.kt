@@ -79,6 +79,18 @@ class DismissalRulesTest {
     }
 
     @Test
+    fun dismissedOctoberEventReappearsWhenCalendarMovesItToDecember() {
+        val october = Instant.parse("2026-10-16T15:00:00Z")
+        val december = Instant.parse("2026-12-25T15:00:00Z")
+        val event = CalendarEvent("primary", "same-id", "Test Event - 1", october,
+            null, ZoneId.of("UTC"))
+        val dismissal = DismissalRecord(event.id, october.toEpochMilli(), october.plusSeconds(3600).toEpochMilli())
+        assertTrue(listOf(event).withoutDismissals(listOf(dismissal)).isEmpty())
+        assertEquals(listOf(event.copy(start = december)),
+            listOf(event.copy(start = december)).withoutDismissals(listOf(dismissal)))
+    }
+
+    @Test
     fun dismissingRecurringInstanceLeavesNextInstanceVisible() {
         val first = CalendarEvent("primary", "series_20260928", "Test Event - 1",
             now.minus(1, ChronoUnit.DAYS), null, ZoneId.of("UTC"), isRecurring = true)

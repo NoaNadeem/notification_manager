@@ -290,7 +290,12 @@ function showFlyout(row, flyout, trigger) {
   openFlyoutTrigger = trigger;
   row.classList.add("flyout-open");
   trigger.setAttribute("aria-expanded", "true");
+  // Overlay the ribbon without changing the row or its title wrapping.
+  const bounds = trigger.getBoundingClientRect();
+  document.body.append(flyout);
   flyout.classList.add("active");
+  flyout.style.left = `${Math.max(4, bounds.left - flyout.getBoundingClientRect().width - 8)}px`;
+  flyout.style.top = `${bounds.top + bounds.height / 2}px`;
 }
 
 function hideFlyout(row) {
@@ -303,6 +308,8 @@ function hideFlyout(row) {
   row.classList.remove("flyout-open");
   trigger?.setAttribute("aria-expanded", "false");
   flyout?.classList.remove("active");
+  // State is cleared before reparenting because a focused button can fire focusout.
+  if (flyout && row.isConnected) trigger.parentElement.append(flyout);
 }
 
 async function load(interactive = false) {

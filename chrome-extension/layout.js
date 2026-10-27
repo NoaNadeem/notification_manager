@@ -4,7 +4,3 @@ export function flyoutPointerInReach(x, y, trigger, flyout, margin = 24) {
     y >= Math.min(trigger.top, flyout.top) - margin &&
     y <= Math.max(trigger.bottom, flyout.bottom) + margin;
 }
-
-export function flyoutAboveRowTop(rowTop, flyoutHeight) {
-  return Math.max(4, rowTop - flyoutHeight);
-}

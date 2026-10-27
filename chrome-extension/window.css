@@ -31,7 +31,7 @@ main.pulling { user-select:none; cursor:grabbing; }
 .flyout { display: none; padding: 8px; border-radius: 7px; background: #30343b; }
 .flyout.active { display: block; }
 .tile-row { display: flex; gap: 6px; margin: 3px 0; }
-.tile-row .tile { flex: 1; }
+.tile-row .tile { flex: none; }
 .tile:disabled { opacity: .28; cursor: default; }
 .tile.danger { background: #594343; }
 .event.busy { opacity: .6; pointer-events: none; }
@@ -42,7 +42,7 @@ select { background: #343941; border: 0; border-radius: 5px; color: #f4f4f4; pad
 #calendar-dialog #time-toggle { display:grid; place-items:center; width:40px; height:40px; padding:6px; flex:none; border:1px solid var(--border); border-radius:6px; color:var(--text); background:var(--tile); cursor:pointer; }
 #calendar-dialog #time-toggle svg { width:27px; height:27px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 
-/* Desktop parity: menu, search, theme, and an action ribbon above its event. */
+/* Desktop parity: menu, search, theme, and an action ribbon within its event. */
 :root { --bg:#17191d; --panel:#22262c; --panel-strong:#30343b; --border:#32363d; --text:#f2f3f5; --muted:#a8adb7; --tile:#3a4049; --tile-main:#4a515b; --tile-hover:#555d68; --link:#9cb8e9; --error:#ffaaa6; --danger:#594343; }
 :root.light { color-scheme:light; --bg:#fafafa; --panel:#f1f2f4; --panel-strong:#e5e8ed; --border:#d9dde3; --text:#202329; --muted:#606874; --tile:#e1e5ea; --tile-main:#d3d9e1; --tile-hover:#c8d1dd; --link:#235aab; --error:#af2727; --danger:#edcccc; }
 [hidden] { display:none !important; }
@@ -88,7 +88,8 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .tile.undo { min-width:52px; height:40px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
 .event.pending .location { display:none; }
-.flyout { position:fixed; z-index:30; background:var(--panel-strong); box-shadow:0 6px 15px #0003; }
+.flyout { position:relative; width:fit-content; max-width:100%; margin:6px 0 0 auto; background:var(--panel-strong); }
+.tile-row { flex-wrap:wrap; }
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
 .search-result { padding:10px 8px; border-bottom:1px solid var(--border); }

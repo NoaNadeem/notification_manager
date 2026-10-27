@@ -1,3 +1,21 @@
+// Move the live manager tab so its UI and pending Undo state stay intact.
+export async function moveManagerToTab(api) {
+  const tab = await api.tabs.getCurrent();
+  if (tab?.id == null) throw new Error("Manager tab is unavailable.");
+  const current = await api.windows.get(tab.windowId);
+  if (current.type === "normal") return;
+  const windows = await api.windows.getAll({ windowTypes: ["normal"] });
+  const regular = windows.filter((window) => window.type === "normal" && window.incognito === false);
+  const target = regular.find((window) => window.focused) || regular.at(-1);
+  if (!target) {
+    await api.windows.create({ tabId: tab.id, type: "normal", focused: true, incognito: false });
+    return;
+  }
+  await api.tabs.move(tab.id, { windowId: target.id, index: -1 });
+  await api.tabs.update(tab.id, { active: true });
+  await api.windows.update(target.id, { focused: true });
+}
+
 export async function openInBrowser(api, url) {
   let target;
   try {

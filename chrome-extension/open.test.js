@@ -110,3 +110,31 @@ test("opening an event makes a regular window if only Incognito windows exist", 
   await openInBrowser(api, "https://calendar.google.com/event");
   assert.deepEqual(calls, [{ url: "https://calendar.google.com/event", type: "normal", focused: true, incognito: false }]);
 });
+
+test("move the live manager tab into a regular window or create one when needed", async () => {
+  const { moveManagerToTab } = await import("./open.js");
+  for (const hasWindow of [true, false]) {
+    const calls = [];
+    await moveManagerToTab({
+      tabs: {
+        getCurrent: async () => ({ id: 20, windowId: 2 }),
+        move: async (...args) => calls.push(["move", ...args]),
+        update: async (...args) => calls.push(["activate", ...args])
+      },
+      windows: {
+        get: async () => ({ type: "popup" }),
+        getAll: async () => [{ id: 7, type: "normal", incognito: true }, ...(hasWindow ? [{ id: 1, type: "normal", incognito: false }] : [])],
+        update: async (...args) => calls.push(["focus", ...args]),
+        create: async (options) => calls.push(["create", options])
+      }
+    });
+    assert.deepEqual(calls, hasWindow
+      ? [["move", 20, { windowId: 1, index: -1 }], ["activate", 20, { active: true }], ["focus", 1, { focused: true }]]
+      : [["create", { tabId: 20, type: "normal", focused: true, incognito: false }]]);
+  }
+});
+
+test("manager already in a browser tab stays there", async () => {
+  const { moveManagerToTab } = await import("./open.js");
+  await moveManagerToTab({ tabs: { getCurrent: async () => ({ id: 20, windowId: 2 }) }, windows: { get: async () => ({ type: "normal" }) } });
+});

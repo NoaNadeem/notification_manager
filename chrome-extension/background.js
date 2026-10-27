@@ -58,7 +58,8 @@ async function openManager() {
     const existing = windows.find(managerTab);
     if (existing) {
       await rememberManager(existing);
-      await chrome.windows.update(existing.id, { ...position, focused: true });
+      await chrome.tabs.update(managerTab(existing).id, { active: true });
+      await chrome.windows.update(existing.id, existing.type === "popup" ? { ...position, focused: true } : { focused: true });
       return;
     }
     const created = await chrome.windows.create({
@@ -83,6 +84,8 @@ async function restoreManagerAfterUpdate(allowLegacyPopup) {
     );
     const existing = tracked || windows.find((window) => window.type === "popup" && managerTab(window));
     const legacy = allowLegacyPopup && !stored && !existing ? oldManagerWindow(windows) : null;
+    const browserManager = windows.find((window) => window.type === "normal" && managerTab(window));
+    if (browserManager) await chrome.tabs.reload(managerTab(browserManager).id);
     const target = existing || legacy;
     if (!target) return;
 

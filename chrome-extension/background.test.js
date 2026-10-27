@@ -32,7 +32,7 @@ async function setup(initialWindows, initialStorage = {}) {
       if (rejectNextTabUpdate) { rejectNextTabUpdate = false; throw new Error("Tab disappeared"); }
       calls.tabsUpdated.push({ id, options });
       const tab = windows.flatMap((window) => window.tabs || []).find((item) => item.id === id);
-      if (tab) tab.url = options.url;
+      if (tab && options.url !== undefined) tab.url = options.url;
     } },
     windows: {
       onCreated: { addListener: (listener) => { listeners.created = listener; } },
@@ -131,5 +131,18 @@ test("install and Chrome updates do not reopen a manager that the user closed", 
   await nextTurn();
   assert.equal(state.calls.created.length, 0);
   assert.equal(state.calls.tabsUpdated.length, 0);
+  delete globalThis.chrome;
+});
+
+test("toolbar activates a browser manager tab without resizing, and update reloads it", async () => {
+  const state = await setup([{ id: 1, type: "normal", tabs: [{ id: 10, url: "https://example.com" }, { id: 20, url: MANAGER_URL }] }]);
+  state.listeners.clicked();
+  await nextTurn();
+  assert.deepEqual(state.calls.tabsUpdated, [{ id: 20, options: { active: true } }]);
+  assert.deepEqual(state.calls.focused, [{ id: 1, options: { focused: true } }]);
+  state.listeners.installed({ reason: "update", previousVersion: "0.3.4" });
+  await nextTurn();
+  assert.deepEqual(state.calls.tabsReloaded, [20]);
+  assert.equal(state.calls.created.length, 0);
   delete globalThis.chrome;
 });

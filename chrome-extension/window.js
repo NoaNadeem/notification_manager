@@ -1,10 +1,10 @@
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
-import { flyoutAboveRowTop, flyoutPointerInReach } from "./layout.js";
+import { flyoutPointerInReach } from "./layout.js";
 import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEventAction, createOpenGuard, moveManagerToTab, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
@@ -290,12 +290,8 @@ function showFlyout(row, flyout, trigger) {
   openFlyoutTrigger = trigger;
   row.classList.add("flyout-open");
   trigger.setAttribute("aria-expanded", "true");
-  document.body.append(flyout);
   flyout.classList.add("active");
-  const bounds = row.getBoundingClientRect();
-  flyout.style.left = `${bounds.left + 10}px`;
-  flyout.style.width = `${bounds.width - 18}px`;
-  flyout.style.top = `${flyoutAboveRowTop(bounds.top, flyout.getBoundingClientRect().height)}px`;
+
 }
 
 function hideFlyout(row) {
@@ -818,6 +814,13 @@ document.addEventListener("pointerdown", (event) => {
 $("#refresh").addEventListener("click", () => {
   closeMenu();
   void refreshEvents();
+});
+$("#open-in-tab").addEventListener("click", async () => {
+  const button = $("#open-in-tab");
+  button.disabled = true;
+  try { await moveManagerToTab(chrome); }
+  catch (error) { showError(`Could not open in Chrome tab: ${error.message}`); }
+  finally { button.disabled = false; }
 });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 const canPullRefresh = () => list.scrollTop <= 0 && !loading && !refreshBusy && !!account && !signedOut;

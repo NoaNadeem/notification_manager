@@ -4,7 +4,7 @@ import { UndoController, actionDescription } from "./undo.js";
 import { flyoutPointerInReach } from "./layout.js";
 import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { calendarEventAction, createOpenGuard, moveManagerToTab, openInBrowser } from "./open.js";
+import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
@@ -811,11 +811,17 @@ $("#refresh").addEventListener("click", () => {
   closeMenu();
   void refreshEvents();
 });
+function updateWindowToggle(mode) {
+  const label = mode === "normal" ? "Move back to extension window" : "Open in Chrome tab";
+  $("#open-in-tab").title = label;
+  $("#open-in-tab").setAttribute("aria-label", label);
+}
+void managerWindowMode(chrome).then(updateWindowToggle).catch(() => {});
 $("#open-in-tab").addEventListener("click", async () => {
   const button = $("#open-in-tab");
   button.disabled = true;
-  try { await moveManagerToTab(chrome); }
-  catch (error) { showError(`Could not open in Chrome tab: ${error.message}`); }
+  try { updateWindowToggle(await toggleManagerWindow(chrome)); }
+  catch (error) { showError(`Could not move manager window: ${error.message}`); }
   finally { button.disabled = false; }
 });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });

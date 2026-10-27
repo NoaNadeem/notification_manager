@@ -138,3 +138,38 @@ test("manager already in a browser tab stays there", async () => {
   const { moveManagerToTab } = await import("./open.js");
   await moveManagerToTab({ tabs: { getCurrent: async () => ({ id: 20, windowId: 2 }) }, windows: { get: async () => ({ type: "normal" }) } });
 });
+
+
+test("window toggle moves a normal browser tab back into a centered popup", async () => {
+  const { toggleManagerWindow, managerWindowMode } = await import("./open.js");
+  const calls = [];
+  const api = {
+    tabs: { getCurrent: async () => ({ id: 20, windowId: 2 }) },
+    windows: {
+      get: async () => ({ type: "normal", left: 100, top: 40, width: 1200, height: 900, incognito: false }),
+      create: async (options) => calls.push(options)
+    }
+  };
+  assert.equal(await managerWindowMode(api), "normal");
+  assert.equal(await toggleManagerWindow(api), "popup");
+  assert.deepEqual(calls, [{ tabId: 20, type: "popup", width: 520, height: 720, left: 440, top: 130, focused: true, incognito: false }]);
+});
+
+test("window toggle moves a popup back into an existing Chrome window", async () => {
+  const { toggleManagerWindow } = await import("./open.js");
+  const calls = [];
+  const api = {
+    tabs: {
+      getCurrent: async () => ({ id: 20, windowId: 2 }),
+      move: async (...args) => calls.push(["move", ...args]),
+      update: async (...args) => calls.push(["activate", ...args])
+    },
+    windows: {
+      get: async () => ({ type: "popup" }),
+      getAll: async () => [{ id: 1, type: "normal", incognito: false }],
+      update: async (...args) => calls.push(["focus", ...args])
+    }
+  };
+  assert.equal(await toggleManagerWindow(api), "normal");
+  assert.deepEqual(calls, [["move", 20, { windowId: 1, index: -1 }], ["activate", 20, { active: true }], ["focus", 1, { focused: true }]]);
+});

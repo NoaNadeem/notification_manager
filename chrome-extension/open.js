@@ -1,3 +1,27 @@
+export async function managerWindowMode(api) {
+  const tab = await api.tabs.getCurrent();
+  if (tab?.id == null) throw new Error("Manager tab is unavailable.");
+  return (await api.windows.get(tab.windowId)).type;
+}
+
+export async function toggleManagerWindow(api) {
+  const tab = await api.tabs.getCurrent();
+  if (tab?.id == null) throw new Error("Manager tab is unavailable.");
+  const current = await api.windows.get(tab.windowId);
+  if (current.type !== "normal") {
+    await moveManagerToTab(api);
+    return "normal";
+  }
+  // Move the existing page back into a centered dedicated window.
+  await api.windows.create({
+    tabId: tab.id, type: "popup", width: 520, height: 720,
+    left: Math.round(current.left + Math.max(0, current.width - 520) / 2),
+    top: Math.round(current.top + Math.max(0, current.height - 720) / 2),
+    focused: true, incognito: current.incognito
+  });
+  return "popup";
+}
+
 // Move the live manager tab so its UI and pending Undo state stay intact.
 export async function moveManagerToTab(api) {
   const tab = await api.tabs.getCurrent();

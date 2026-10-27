@@ -29,7 +29,7 @@ main.pulling { user-select:none; cursor:grabbing; }
 .tile { min-width: 37px; height: 31px; padding: 0 7px; border: 0; border-radius: 6px; color: #f0f1f2; background: #3a4049; font-size: 12px; font-weight: 700; }
 .tile.primary { background: #4a515b; }
 .flyout { display: none; padding: 8px; border-radius: 7px; background: #30343b; }
-.flyout.active { display: block; }
+.flyout.active { display:grid; grid-template-columns:repeat(5,max-content); gap:6px; }
 .tile-row { display: flex; gap: 6px; margin: 3px 0; }
 .tile-row .tile { flex: none; }
 .tile:disabled { opacity: .28; cursor: default; }
@@ -90,6 +90,9 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .flyout { position:fixed; z-index:30; width:max-content; margin:0; padding:6px; transform:translateY(-50%); background:var(--panel-strong); }
 .flyout .tile { min-width:41px; height:35px; font-size:13px; padding:0 8px; }
 .tile-row { flex-wrap:nowrap; }
+@media (min-width:640px) {
+  .flyout.active { grid-template-columns:repeat(10,max-content); }
+}
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
 .search-result { padding:10px 8px; border-bottom:1px solid var(--border); }

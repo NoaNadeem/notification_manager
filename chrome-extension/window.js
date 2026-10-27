@@ -291,22 +291,18 @@ function showFlyout(row, flyout, trigger) {
   row.classList.add("flyout-open");
   trigger.setAttribute("aria-expanded", "true");
   flyout.classList.add("active");
-
 }
 
 function hideFlyout(row) {
   if (openFlyoutRow !== row) return;
   const flyout = openFlyout;
   const trigger = openFlyoutTrigger;
-  // Reparenting a focused tile fires focusout synchronously. Clear state first so
-  // its handler cannot re-enter this cleanup while the DOM move is in progress.
   openFlyoutRow = undefined;
   openFlyout = undefined;
   openFlyoutTrigger = undefined;
   row.classList.remove("flyout-open");
   trigger?.setAttribute("aria-expanded", "false");
   flyout?.classList.remove("active");
-  if (flyout && row.isConnected && flyout.parentNode !== row) row.append(flyout);
 }
 
 async function load(interactive = false) {
@@ -627,7 +623,7 @@ function renderEvent(event) {
       flyoutTrigger.focus();
     }
   });
-  row.append(flyout);
+  actions.append(flyout);
   return row;
 }
 

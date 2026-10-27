@@ -25,7 +25,7 @@ main.pulling { user-select:none; cursor:grabbing; }
 .age { margin-top: 4px; }
 .location { display: block; font-size: 12px; color: #9cb8e9; margin-top: 6px; text-decoration: none; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .location:hover { text-decoration: underline; }
-.actions { display: flex; gap: 5px; flex-shrink: 0; }
+.actions { display: flex; gap: 5px; flex-shrink: 0; align-items: center; }
 .tile { min-width: 37px; height: 31px; padding: 0 7px; border: 0; border-radius: 6px; color: #f0f1f2; background: #3a4049; font-size: 12px; font-weight: 700; }
 .tile.primary { background: #4a515b; }
 .flyout { display: none; padding: 8px; border-radius: 7px; background: #30343b; }
@@ -88,8 +88,10 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .tile.undo { min-width:52px; height:40px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
 .event.pending .location { display:none; }
-.flyout { position:relative; width:fit-content; max-width:100%; margin:6px 0 0 auto; background:var(--panel-strong); }
-.tile-row { flex-wrap:wrap; }
+.flyout { order:-1; width:max-content; margin:0 3px 0 0; padding:6px; background:var(--panel-strong); }
+.flyout .tile { min-width:41px; height:35px; font-size:13px; padding:0 8px; }
+.event.flyout-open .event-top { align-items:center; }
+.tile-row { flex-wrap:nowrap; }
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
 .search-result { padding:10px 8px; border-bottom:1px solid var(--border); }

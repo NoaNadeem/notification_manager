@@ -1,15 +1,17 @@
 export const UNDO_MS = 30_000;
 
 export class UndoController {
-  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}) {
+  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}, onQueue = async () => {}) {
     this.onCommit = onCommit;
     this.onChange = onChange;
     this.schedule = schedule;
     this.cancel = cancel;
     this.onUndo = onUndo;
+    this.onQueue = onQueue;
     this.state = { kind: "Idle" };
     this.timer = null;
     this.queue = Promise.resolve();
+    this.committingActions = new Set();
   }
 
   get current() { return this.state.kind === "Pending" ? this.state.action : null; }
@@ -20,52 +22,72 @@ export class UndoController {
     return result;
   }
 
-  stage(action) {
-    return this.enqueue(async () => {
-      await this.commitCurrent();
-      // A failed timer setup must not leave an Undo row that can never commit.
-      const timer = this.schedule(() => { void this.commit(); }, UNDO_MS);
-      this.state = { kind: "Pending", action };
-      this.timer = timer;
-      try {
-        this.onChange(action);
-      } catch (error) {
-        this.cancel(timer);
-        this.timer = null;
-        this.state = { kind: "Idle" };
-        throw error;
-      }
-    });
-  }
-
-  undo() {
-    return this.enqueue(() => {
-      if (!this.current) return;
-      const action = this.current;
-      this.cancel(this.timer);
+  async stage(action) {
+    // Set up the new Undo immediately; only network saves join the serial queue.
+    const timer = this.schedule(() => { if (this.current === action) void this.commit().catch(() => {}); }, UNDO_MS);
+    void this.commit().catch(() => {});
+    this.state = { kind: "Pending", action };
+    this.timer = timer;
+    try {
+      this.onChange(action);
+    } catch (error) {
+      this.cancel(timer);
       this.timer = null;
       this.state = { kind: "Idle" };
-      this.onChange(null);
-      this.onUndo(action);
-    });
+      throw error;
+    }
   }
 
-  commit() { return this.enqueue(() => this.commitCurrent()); }
-
-  async commitCurrent() {
+  async undo() {
     if (!this.current) return;
     const action = this.current;
     this.cancel(this.timer);
     this.timer = null;
+    this.state = { kind: "Idle" };
+    this.onChange(null);
+    this.onUndo(action);
+  }
+
+  commit() {
+    if (!this.current) return this.queue;
+    const action = this.current;
+    this.cancel(this.timer);
+    this.timer = null;
     this.state = { kind: "Committing", action };
-    try {
-      this.onChange(null);
-      const result = await this.onCommit(action);
-      this.state = result === false ? { kind: "Failed", action } : { kind: "Idle" };
-    } catch (error) {
-      this.state = { kind: "Failed", action, error };
-      throw error;
-    }
+    return this.saveInBackground(action);
+  }
+
+  retry(action) {
+    if ([...this.committingActions].some(item => item.id === action.id)) return this.queue;
+    return this.saveInBackground(action);
+  }
+
+  saveInBackground(action) {
+    this.committingActions.add(action);
+    // Start durable storage now, even if an earlier network save is blocked.
+    const persisted = Promise.resolve().then(() => this.onQueue(action));
+    persisted.catch(() => {});
+    const result = this.enqueue(async () => {
+      try {
+        await persisted;
+        const saved = await this.onCommit(action);
+        // A completed save must never replace a newer event's Undo state.
+        if (this.state.kind === "Committing" && this.state.action === action) {
+          this.state = saved === false ? { kind: "Failed", action } : { kind: "Idle" };
+        }
+        return saved;
+      } catch (error) {
+        if (this.state.kind === "Committing" && this.state.action === action) {
+          this.state = { kind: "Failed", action, error };
+        }
+        throw error;
+      } finally {
+        this.committingActions.delete(action);
+        this.onChange(this.current);
+      }
+    });
+    this.onChange(null);
+    return result;
   }
 }
 

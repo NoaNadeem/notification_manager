@@ -2,6 +2,7 @@ import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref,
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
+import { PendingActionStore } from "./pending-actions.js";
 import { flyoutPointerInReach } from "./layout.js";
 import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
@@ -73,13 +74,62 @@ let storageEstimateRequest = 0;
 let storageEstimateMessage;
 let storageEstimateNode;
 const committing = new Set();
+const pendingStores = new Map();
+let retryingSaves = false;
+let saveStatusRequest = 0;
 const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
   if (undo.state.kind === "Committing") holdAction(undo.state.action);
-  if (undo.state.kind === "Pending" && heldAction?.event !== undo.state.action.event) heldAction = undefined;
+  if (undo.state.kind === "Pending" && heldAction?.event.id !== undo.state.action.event.id) heldAction = undefined;
   render();
-});
+}, undefined, undefined, undefined, persistAction);
+
+function storeFor(accountId) {
+  const key = accountId.toLowerCase();
+  if (!pendingStores.has(key)) pendingStores.set(key, new PendingActionStore(chrome.storage.local, key));
+  return pendingStores.get(key);
+}
+
+async function renderPendingSaves() {
+  const request = ++saveStatusRequest;
+  if (!account || signedOut) {
+    $("#save-warning").textContent = "";
+    $("#retry-saves").hidden = true;
+    return;
+  }
+  try {
+    const records = await storeFor(account).list();
+    if (request !== saveStatusRequest) return;
+    const failures = records.filter(record => record.error);
+    $("#save-warning").textContent = failures.length
+      ? ` · ${failures.length} unsaved action${failures.length === 1 ? "" : "s"}: ${failures[0].error}`
+      : records.length ? ` · Saving ${records.length} action${records.length === 1 ? "" : "s"}…` : "";
+    $("#retry-saves").hidden = records.length === 0;
+    $("#retry-saves").textContent = `Retry unsaved actions (${records.length})`;
+  } catch (error) { showError(`Could not read unsaved actions: ${error.message}`); }
+}
+
+async function persistAction(action) {
+  try {
+    await storeFor(action.account).save(action);
+    void renderPendingSaves();
+  } catch (error) {
+    showError(`Could not save “${action.event.summary || "event"}” locally: ${error.message}. The event was not changed.`);
+    throw error;
+  }
+}
+
+async function retrySavedActions(manual = false) {
+  if (retryingSaves || !account || signedOut) return;
+  retryingSaves = true;
+  try {
+    const records = await storeFor(account).list();
+    const retries = records.filter(record => manual || record.retryable);
+    await Promise.all(retries.map(record => undo.retry(record.action)));
+  } catch (error) { showError(`Could not retry saved actions: ${error.message}`); }
+  finally { retryingSaves = false; void renderPendingSaves(); }
+}
 
 function currentVisibleEvents() {
   const visible = withoutDismissals(events, dismissals, calendarZone);
@@ -90,13 +140,13 @@ function currentVisibleEvents() {
 }
 
 function holdAction(action) {
-  if (heldAction?.event === action.event) return;
-  heldIndex = Math.max(0, currentVisibleEvents().findIndex((event) => event === action.event));
+  if (heldAction?.event.id === action.event.id) return;
+  heldIndex = Math.max(0, currentVisibleEvents().findIndex((event) => event.id === action.event.id));
   heldAction = action;
 }
 
 function clearHeldFor(event) {
-  if (heldAction && heldAction.event !== event) {
+  if (heldAction && heldAction.event.id !== event.id) {
     heldAction = undefined;
     render();
   }
@@ -390,6 +440,7 @@ async function load(interactive = false) {
     loading = false;
     syncAttempted = true;
     renderSync();
+    void retrySavedActions();
   }
 }
 
@@ -510,9 +561,9 @@ function renderEvent(event) {
   const row = document.createElement("article");
   row.className = "event";
   if (isEmphasized(event, account)) row.classList.add("emphasized");
-  const action = undo.current?.event === event ? undo.current : null;
-  const held = heldAction?.event === event ? heldAction : null;
-  const busy = committing.has(eventKey(event));
+  const action = undo.current?.event.id === event.id ? undo.current : null;
+  const held = heldAction?.event.id === event.id ? heldAction : null;
+  const busy = committing.has(eventKey(event)) || [...undo.committingActions].some(action => action.event.id === event.id);
   if (action || held) row.classList.add("pending");
   if (busy && !held) row.classList.add("busy");
   const top = document.createElement("div");
@@ -565,7 +616,11 @@ function renderEvent(event) {
       : `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo");
     undoTile.disabled = !!held;
     actions.append(undoTile);
-  } else if (!busy) {
+  } else if (busy) {
+    const saving = button("Saving", "Saving this event in the background", () => {}, "tile saving");
+    saving.disabled = true;
+    actions.append(saving);
+  } else {
     if (isRecurring(event)) {
       actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
       actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
@@ -649,6 +704,7 @@ function renderEvent(event) {
 }
 
 async function stageAction(event, type, option) {
+  if (undo.current?.event.id === event.id || [...undo.committingActions].some(action => action.event.id === event.id)) return;
   clearHeldFor(event);
   showError("");
   if (type === "move" && isRecurring(event)) {
@@ -657,9 +713,9 @@ async function stageAction(event, type, option) {
   }
   try {
     const stagedAtMs = Date.now();
-    const destinationStart = type === "move"
-      ? shiftEvent(event, option, new Date(stagedAtMs)).start : undefined;
-    await undo.stage({ event, type, option, stagedAtMs, destinationStart });
+    const destination = type === "move" ? shiftEvent(event, option, new Date(stagedAtMs)) : undefined;
+    await undo.stage({ id: crypto.randomUUID(), account, event, type, option, stagedAtMs,
+      destinationStart: destination?.start, destinationEnd: destination?.end });
   } catch (error) {
     showError(`Could not prepare action for “${event.summary || "(Untitled event)"}”: ${error.message}`);
   }
@@ -671,13 +727,16 @@ async function commitAction(action) {
   let cacheWarning = "";
   let failed = false;
   let applied = false;
+  let saveError;
   committing.add(key);
   render();
   try {
     if (action.type === "move") {
-      const moved = await moveEvent(account, event.id, action.option, new Date(action.stagedAtMs));
+      const moved = await moveEvent(account, event.id, action.option, new Date(action.stagedAtMs), {
+        start: action.destinationStart, end: action.destinationEnd, originalStart: event.start, originalEnd: event.end
+      });
       applied = true;
-      events = events.filter((item) => item !== event);
+      events = events.filter((item) => item.id !== event.id);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
       if (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive) {
@@ -689,7 +748,7 @@ async function commitAction(action) {
       if (eventStartMs(event, calendarZone) !== start) {
         try {
           moves = await saveRecentMove(account, {
-            id: crypto.randomUUID(), eventId: event.id, title: event.summary || "(Untitled event)",
+            id: action.id, eventId: event.id, title: event.summary || "(Untitled event)",
             from: eventStartMs(event, calendarZone), to: start, moved: Date.now()
           });
           if (syncState.error?.startsWith("Move history sync failed:")) {
@@ -724,6 +783,7 @@ async function commitAction(action) {
     showError(cacheWarning);
   } catch (error) {
     failed = true;
+    saveError = error;
     if (action.type === "dismiss") {
       const stored = await chrome.storage.local.get(`dismissals:${account.toLowerCase()}`);
       dismissals = stored[`dismissals:${account.toLowerCase()}`] || dismissals;
@@ -741,6 +801,11 @@ async function commitAction(action) {
       showError(`Could not move “${event.summary || "(Untitled event)"}”: ${error.message}`);
     }
   } finally {
+    try {
+      if (applied) await storeFor(action.account).remove(action.id);
+      else if (saveError) await storeFor(action.account).fail(action, saveError);
+    } catch (error) { showError(`Could not update the local save queue: ${error.message}`); }
+    void renderPendingSaves();
     committing.delete(key);
     if (!applied && heldAction === action) heldAction = undefined;
     render();
@@ -845,6 +910,7 @@ $("#open-in-tab").addEventListener("click", async () => {
   catch (error) { showError(`Could not move manager window: ${error.message}`); }
   finally { button.disabled = false; }
 });
+$("#retry-saves").addEventListener("click", () => { closeMenu(); void retrySavedActions(true); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.
 document.addEventListener("pointerdown", (event) => {
@@ -1072,11 +1138,13 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();
-  if (account && !signedOut && !loading && !undo.current && committing.size === 0) void load();
+  void retrySavedActions().then(() => {
+    if (account && !signedOut && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0) void load();
+  });
 });
 const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount"]);
 if (saved.lastAccount) {

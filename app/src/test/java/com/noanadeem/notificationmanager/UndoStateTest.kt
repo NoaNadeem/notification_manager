@@ -34,4 +34,33 @@ class UndoStateTest {
             listOf(first, held.copy(start = held.start.plusSeconds(86_400)), last), held, 1))
         assertEquals(listOf(first, last), displayEventsWithHeldAction(listOf(first, last), null, 1))
     }
+
+    @Test
+    fun tenSuccessiveActionsImmediatelyOwnUndoWhilePreviousCommitsRun() {
+        fun event(id: String) = CalendarEvent("primary", id, "Synthetic $id",
+            Instant.parse("2026-09-28T12:00:00Z"), null, ZoneId.of("UTC"))
+        var state: UndoState = UndoState.Idle
+        val background = mutableListOf<UndoableAction>()
+        val actions = (1..10).map { UndoableAction.Move(event(it.toString()),
+            MoveTarget.After(java.time.Duration.ofDays(1)), "mock-token") }
+        actions.forEach { action ->
+            state = state.stageNextAction(action) { background += it }
+            assertEquals(UndoState.Pending(action), state)
+        }
+        assertEquals(actions.dropLast(1), background)
+        background.forEach { completed ->
+            state = state.finishCommit(completed)
+            assertEquals(UndoState.Pending(actions.last()), state)
+            state = state.finishCommit(completed, "Injected network failure")
+            assertEquals(UndoState.Pending(actions.last()), state)
+        }
+    }
+
+    @Test
+    fun cachedAuthorizationAllowsImmediateTapsButRejectsExpiredTokens() {
+        val authorizedAt = 1_000_000L
+        assertEquals("mock-token", cachedMoveToken("mock-token", authorizedAt, authorizedAt + 1_000))
+        assertEquals(null, cachedMoveToken("mock-token", authorizedAt, authorizedAt + 45 * 60_000L))
+        assertEquals(null, cachedMoveToken(null, authorizedAt, authorizedAt))
+    }
 }

@@ -170,6 +170,14 @@ internal fun UndoState.finishCommit(action: UndoableAction, error: String? = nul
         if (error == null) UndoState.Idle else UndoState.Failed(action, error)
     } else this
 
+internal fun UndoState.stageNextAction(action: UndoableAction, commitPrevious: (UndoableAction) -> Unit): UndoState {
+    pendingAction?.let(commitPrevious)
+    return UndoState.Pending(action)
+}
+
+internal fun cachedMoveToken(token: String?, authorizedAtMillis: Long, nowMillis: Long): String? =
+    token?.takeIf { authorizedAtMillis > 0 && nowMillis - authorizedAtMillis in 0 until 45 * 60_000L }
+
 private data class HeldActionRow(val action: UndoableAction, val index: Int)
 
 private fun UndoableAction.description(): String = when (this) {
@@ -327,6 +335,7 @@ private fun CalendarLoginScreen(
             .onFailure { Log.w("NotificationManagerSync", "Could not persist sync status", it) }
     }
     var currentAccessToken by remember { mutableStateOf<String?>(null) }
+    var tokenAuthorizedAtMillis by remember { mutableStateOf(0L) }
     var storageEstimate by remember { mutableStateOf<String?>(null) }
     var storageEstimateRequest by remember { mutableStateOf(0) }
     var calendarSearchQuery by remember { mutableStateOf<String?>(null) }
@@ -376,6 +385,7 @@ private fun CalendarLoginScreen(
             it.calendarId == action.event.calendarId && it.id == action.event.id
         }.coerceAtLeast(0))
         undoState = committing
+        committingActionIds = committingActionIds + action.event.id
         coroutineScope.launch {
             var commitError: String? = null
             var applied = false
@@ -558,11 +568,11 @@ private fun CalendarLoginScreen(
             return
         }
         currentAccessToken = accessToken
+        tokenAuthorizedAtMillis = System.currentTimeMillis()
 
         if (move != null) {
             pendingMove = null
-            undoState.pendingAction?.let(::commitAction)
-            undoState = UndoState.Pending(UndoableAction.Move(move.event, move.target, accessToken))
+            undoState = undoState.stageNextAction(UndoableAction.Move(move.event, move.target, accessToken), ::commitAction)
             movingEventId = null
             return
         }
@@ -750,6 +760,13 @@ private fun CalendarLoginScreen(
             actionError = "Recurring events can only be dismissed or edited in Google Calendar."
             return
         }
+        if (event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
+        cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
+            if (heldActionRow?.action?.event != event) heldActionRow = null
+            undoState = undoState.stageNextAction(UndoableAction.Move(event, target, token), ::commitAction)
+            actionError = null
+            return
+        }
         if (movingEventId != null) return
         undoState.pendingAction?.let(::commitAction)
         if (heldActionRow?.action?.event != event) heldActionRow = null
@@ -786,9 +803,8 @@ private fun CalendarLoginScreen(
 
     fun dismissEvent(event: CalendarEvent) {
         if (event.id in committingActionIds) return
-        undoState.pendingAction?.let(::commitAction)
         if (heldActionRow?.action?.event != event) heldActionRow = null
-        undoState = UndoState.Pending(UndoableAction.Dismiss(event))
+        undoState = undoState.stageNextAction(UndoableAction.Dismiss(event), ::commitAction)
         actionError = null
     }
 
@@ -1371,7 +1387,7 @@ private fun CalendarConnectedScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.fillMaxWidth()
                                     .clickable(enabled = !actionLocked) {
-                                    onOtherAction()
+                                    // Expanding actions is the touch equivalent of hover; keep Undo pending.
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
                                     if (expandedEventId == event.id) actionScrollScope.launch {
                                         withFrameNanos { }

@@ -2,6 +2,8 @@ import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSe
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
+import { savedMoveState } from "./destination.js";
+
 const CALENDAR = "https://www.googleapis.com/calendar/v3/calendars";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
 let dismissalQueue = Promise.resolve();
@@ -41,7 +43,9 @@ export async function googleRequest(url, options = {}, interactive = false) {
   }
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.error?.message || `Google API returned HTTP ${response.status}.`);
+    const failure = new Error(error?.error?.message || `Google API returned HTTP ${response.status}.`);
+    failure.status = response.status;
+    throw failure;
   }
   const body = await response.text();
   return body ? JSON.parse(body) : {};
@@ -100,18 +104,21 @@ export async function searchPrimaryCalendar(calendarId, query, request = googleR
   return { events: all, hasMore: !!pageToken };
 }
 
-export async function moveEvent(calendarId, eventId, option, now = new Date()) {
+export async function moveEvent(calendarId, eventId, option, now = new Date(), destination = null, request = googleRequest) {
   const url = `${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
-  const current = await googleRequest(url);
-  if (current.status === "cancelled") throw new Error("This event was deleted in Google Calendar.");
-  if (isRecurring(current)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
-  const moved = shiftEvent(current, option, now);
+  const current = await request(url);
+  if (current.status === "cancelled") throw Object.assign(new Error("This event was deleted in Google Calendar."), { status: 410 });
+  if (isRecurring(current)) throw Object.assign(new Error("Recurring events can only be dismissed or edited in Google Calendar."), { status: 409 });
+  if (destination && savedMoveState(current, destination) === "applied") return current;
+  const moved = destination
+    ? { ...structuredClone(current), start: destination.start, end: destination.end }
+    : shiftEvent(current, option, now);
   const update = new URL(url);
   update.searchParams.set("sendUpdates", "none");
   update.searchParams.set("conferenceDataVersion", "1");
   update.searchParams.set("supportsAttachments", "true");
   if (current.eventLabelId) update.searchParams.set("eventLabelVersion", "1");
-  return googleRequest(update.href, {
+  return request(update.href, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...(current.etag ? { "If-Match": current.etag } : {}) },
     body: JSON.stringify(moved)

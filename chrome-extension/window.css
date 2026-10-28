@@ -85,6 +85,7 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .tile.primary { background:var(--tile-main); }
 .tile.danger { background:var(--dismiss-bg); }
 .tile.undo { min-width:52px; height:40px; }
+.tile.saving { min-width:37px; font-size:10px; padding:0 3px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
 .event.pending .location { display:none; }
 .flyout { position:fixed; z-index:30; width:max-content; margin:0; padding:6px; transform:translateY(-50%); background:var(--panel-strong); }

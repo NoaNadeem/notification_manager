@@ -28,13 +28,14 @@
         <input id="search-query" type="search" placeholder="Search loaded events" aria-label="Search loaded events">
         <button id="search-close" class="icon-button" aria-label="Close search">×</button>
       </div>
-      <div id="account" class="account"><span id="account-clock"></span><span id="sync-warning" class="sync-warning" role="status"></span></div>
+      <div id="account" class="account"><span id="account-clock"></span><span id="sync-warning" class="sync-warning" role="status"></span><span id="save-warning" class="sync-warning" role="status"></span></div>
     </div>
     <button id="menu-toggle" class="icon-button" title="Menu" aria-label="Menu" aria-expanded="false">⋮</button>
     <nav id="menu" aria-label="Notification Manager settings" hidden>
       <button id="logout">⇥ &nbsp; Disconnect / Switch Chrome Profile</button>
       <div id="account-email" class="menu-account"></div>
       <button id="sync-open"><span id="sync-menu-label">Sync issues</span></button>
+      <button id="retry-saves" hidden>Retry unsaved actions</button>
       <button id="recent-dismissals-open">Recent dismissals</button>
       <button id="recent-moves-open">Events recently moved</button>
       <button id="refresh">↻ &nbsp; Refresh events</button>

@@ -1,6 +1,7 @@
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
 import { UndoController, actionDescription } from "./undo.js";
+import { InteractionRenderGuard } from "./render-guard.js";
 import { flyoutPointerInReach } from "./layout.js";
 import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
@@ -72,6 +73,7 @@ let storageEstimateRequest = 0;
 let storageEstimateMessage;
 let storageEstimateNode;
 const committing = new Set();
+const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
   if (undo.state.kind === "Committing") holdAction(undo.state.action);
@@ -391,7 +393,9 @@ async function load(interactive = false) {
   }
 }
 
-function render() {
+function render() { renderGuard.request(); }
+
+function renderNow() {
   const previousScroll = list.scrollTop;
   if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
@@ -842,6 +846,13 @@ $("#open-in-tab").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
+// Repainting the list during a press detaches the target and Chrome drops its click.
+document.addEventListener("pointerdown", (event) => {
+  if (event.button === 0 && event.target.closest(".event button, .flyout button")) renderGuard.begin(event.pointerId);
+}, true);
+window.addEventListener("pointerup", (event) => renderGuard.end(event.pointerId), true);
+window.addEventListener("pointercancel", (event) => renderGuard.end(event.pointerId), true);
+window.addEventListener("blur", () => renderGuard.release());
 const canPullRefresh = () => list.scrollTop <= 0 && !loading && !refreshBusy && !!account && !signedOut;
 const pullGesture = new PullRefreshGesture(showPullProgress, () => { void refreshEvents(); });
 list.addEventListener("pointerdown", (event) => {

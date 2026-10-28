@@ -12,6 +12,8 @@ The header shows the computer's local date, time to the minute, and current time
 
 Events at least 48 hours old get a colored dot before the title. All-day events, timed events lasting at least one hour, and events with another invitee get a colored background. The page icon in the header filters the visible list to those highlighted events; click it again to show all. **Skins** in settings offers Green, Blue, Purple, and Rose presets, saved locally in this Chrome profile.
 
+List repaints wait until an event-button press has delivered its click, so a preceding network response cannot detach the next 1D button mid-click. Rapid actions remain queued in order.
+
 Move and dismiss tiles show a 30-second **Undo** state before the change is sent to Google. Clicking another action or leaving/minimizing the manager window commits the pending action. Once committed, the event remains in its original row with a disabled Undo; using another action tile or refreshing removes it from that temporary position. Opening another event or its options leaves the disabled row in place. A failed Calendar move restores the normal controls. A forced browser quit may cancel an uncommitted action. Dismissals use immutable per-dismissal records in Google Drive `appDataFolder`, plus local Chrome storage; both clients still read the previous shared JSON file. This avoids clients overwriting each other's dismissals. Records are pruned when their event start is more than 365 days old; future-event dismissals are retained.
 
 The Undo row shows the move interval and full destination date calculated when the tile is clicked. Full Calendar search results display newest dates first; the regular review list remains oldest first.

@@ -4,7 +4,6 @@ import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECON
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
 import { flyoutPointerInReach } from "./layout.js";
-import { withHeldEvent } from "./held-row.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
@@ -63,8 +62,6 @@ let dateTarget;
 let openFlyoutRow;
 let openFlyout;
 let openFlyoutTrigger;
-let heldAction;
-let heldIndex = 0;
 let searchActive = false;
 let realEventsOnly = false;
 let remoteSearch;
@@ -81,8 +78,6 @@ let saveStatusRequest = 0;
 const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
-  if (undo.state.kind === "Committing") holdAction(undo.state.action);
-  if (undo.state.kind === "Pending" && heldAction?.event.id !== undo.state.action.event.id) heldAction = undefined;
   render();
 }, undefined, undefined, undefined, persistAction);
 
@@ -138,19 +133,6 @@ function currentVisibleEvents() {
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
   return realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched;
-}
-
-function holdAction(action) {
-  if (heldAction?.event.id === action.event.id) return;
-  heldIndex = Math.max(0, currentVisibleEvents().findIndex((event) => event.id === action.event.id));
-  heldAction = action;
-}
-
-function clearHeldFor(event) {
-  if (heldAction && heldAction.event.id !== event.id) {
-    heldAction = undefined;
-    render();
-  }
 }
 
 function renderSync() {
@@ -321,7 +303,6 @@ function moveTile(event, label, option, className = "tile") {
 }
 
 function openEventLink(event, kind = "view") {
-  if (kind === "edit") clearHeldFor(event);
   const action = calendarEventAction(event, kind);
   if (!action) {
     showError("Google Calendar did not provide a valid event link.");
@@ -371,7 +352,6 @@ function hideFlyout(row) {
 
 async function load(interactive = false) {
   if (loading || (signedOut && !interactive)) return;
-  heldAction = undefined;
   loading = true;
   renderSync();
   showError("");
@@ -451,7 +431,7 @@ function renderNow() {
   const previousScroll = list.scrollTop;
   if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
-  const filtered = withHeldEvent(currentVisibleEvents(), heldAction?.event, heldIndex);
+  const filtered = currentVisibleEvents();
   count.textContent = `${filtered.length} event${filtered.length === 1 ? "" : "s"}`;
   if (!filtered.length) {
     const empty = document.createElement("p");
@@ -563,19 +543,18 @@ function renderEvent(event) {
   row.className = "event";
   if (isEmphasized(event, account)) row.classList.add("emphasized");
   const action = undo.current?.event.id === event.id ? undo.current : null;
-  const held = heldAction?.event.id === event.id ? heldAction : null;
   const busy = committing.has(eventKey(event)) || [...undo.committingActions].some(action => action.event.id === event.id);
-  if (action || held) row.classList.add("pending");
-  if (busy && !held) row.classList.add("busy");
+  if (action) row.classList.add("pending");
+  if (busy) row.classList.add("busy");
   const top = document.createElement("div");
   top.className = "event-top";
   const details = document.createElement("div");
   details.className = "details";
-  const title = document.createElement(action || held || busy ? "span" : "a");
+  const title = document.createElement(action || busy ? "span" : "a");
   title.className = "title";
   title.textContent = event.summary || "(Untitled event)";
   title.title = title.textContent;
-  if (!action && !held && !busy) {
+  if (!action && !busy) {
     title.href = calendarEventAction(event)?.url || "#";
     title.addEventListener("click", (click) => {
       click.preventDefault();
@@ -584,7 +563,7 @@ function renderEvent(event) {
   }
   const age = document.createElement("div");
   age.className = "age";
-  age.textContent = action || held ? actionDescription(action || held)
+  age.textContent = action ? actionDescription(action)
     : busy ? "Committing action…" : eventAgeLabel(event, Date.now(), calendarZone);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
@@ -596,7 +575,7 @@ function renderEvent(event) {
   }
   titleLine.append(title);
   details.append(titleLine, age);
-  if (!action && !held && !busy && event.location) {
+  if (!action && !busy && event.location) {
     const location = document.createElement("a");
     location.className = "location";
     location.textContent = event.location;
@@ -612,11 +591,10 @@ function renderEvent(event) {
   const actions = document.createElement("div");
   actions.className = "actions";
   let flyoutTrigger;
-  if (action || held) {
-    const undoTile = button(action ? "Undo" : busy ? "Saving" : "Saved",
-      action ? `Undo pending action for ${event.summary || "event"}` : `Action committed for ${event.summary || "event"}; Undo unavailable`,
-      () => { if (action) void undo.undo(); }, action ? "tile undo" : "tile saving");
-    undoTile.disabled = !action;
+  if (action) {
+    const undoTile = button("Undo",
+      `Undo pending action for ${event.summary || "event"}`,
+      () => { void undo.undo(); }, "tile undo");
     actions.append(undoTile);
   } else if (busy) {
     const saving = button("Saving", "Saving this event in the background", () => {}, "tile saving");
@@ -647,14 +625,13 @@ function renderEvent(event) {
   }
   top.append(details, actions);
   row.append(top);
-  if (action || held || busy || isRecurring(event)) return row;
+  if (action || busy || isRecurring(event)) return row;
   const flyout = document.createElement("div");
   flyout.className = "flyout";
   const topRow = document.createElement("div");
   const bottomRow = document.createElement("div");
   topRow.className = bottomRow.className = "tile-row";
   const calendarTile = button("📅", "Choose a date", () => {
-    clearHeldFor(event);
     void undo.commit();
     dateTarget = event;
     datePicker.value = "";
@@ -707,7 +684,6 @@ function renderEvent(event) {
 
 async function stageAction(event, type, option) {
   if (undo.current?.event.id === event.id || [...undo.committingActions].some(action => action.event.id === event.id)) return;
-  clearHeldFor(event);
   showError("");
   if (type === "move" && isRecurring(event)) {
     showError("Recurring events can only be dismissed or edited in Google Calendar.");
@@ -745,6 +721,7 @@ async function commitAction(action) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b));
       }
+      render();
       try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
       catch (cacheError) { cacheWarning = `Move succeeded, but offline cache was not updated: ${cacheError.message}`; }
       if (eventStartMs(event, calendarZone) !== start) {
@@ -809,7 +786,6 @@ async function commitAction(action) {
     } catch (error) { showError(`Could not update the local save queue: ${error.message}`); }
     void renderPendingSaves();
     committing.delete(key);
-    if (!applied && heldAction === action) heldAction = undefined;
     render();
   }
   return !failed;
@@ -869,7 +845,6 @@ async function logout() {
     await chrome.identity.clearAllCachedAuthTokens();
     await chrome.storage.local.set({ signedOut: true });
     signedOut = true;
-    heldAction = undefined;
     account = undefined;
     scheduleHeaderClock();
     events = [];

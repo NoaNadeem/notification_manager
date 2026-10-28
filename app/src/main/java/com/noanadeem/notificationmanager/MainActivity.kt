@@ -178,8 +178,6 @@ internal fun UndoState.stageNextAction(action: UndoableAction, commitPrevious: (
 internal fun cachedMoveToken(token: String?, authorizedAtMillis: Long, nowMillis: Long): String? =
     token?.takeIf { authorizedAtMillis > 0 && nowMillis - authorizedAtMillis in 0 until 45 * 60_000L }
 
-private data class HeldActionRow(val action: UndoableAction, val index: Int)
-
 private fun UndoableAction.description(): String = when (this) {
     is UndoableAction.Dismiss -> "Dismissed"
     is UndoableAction.Move -> moveUndoDescription(event, target, stagedAt)
@@ -317,7 +315,6 @@ private fun CalendarLoginScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<PendingMove?>(null) }
     var undoState by remember { mutableStateOf<UndoState>(UndoState.Idle) }
-    var heldActionRow by remember { mutableStateOf<HeldActionRow?>(null) }
     var movingEventId by remember { mutableStateOf<String?>(null) }
     var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf(
@@ -383,21 +380,16 @@ private fun CalendarLoginScreen(
         if (undoState.pendingAction != action) return
         val committing = undoState.beginCommit(action)
         if (committing !is UndoState.Committing) return
-        heldActionRow = HeldActionRow(action, recentEvents.indexOfFirst {
-            it.calendarId == action.event.calendarId && it.id == action.event.id
-        }.coerceAtLeast(0))
         undoState = committing
         committingActionIds = committingActionIds + action.event.id
         coroutineScope.launch {
             var commitError: String? = null
-            var applied = false
             when (action) {
                 is UndoableAction.Move -> {
                     committingActionIds = committingActionIds + action.event.id
                     try {
                         val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target,
                             action.stagedAt)
-                        applied = true
                         val now = Instant.now()
                         recentEvents = recentEvents.mapNotNull {
                             if (it.calendarId == action.event.calendarId && it.id == action.event.id) {
@@ -455,7 +447,6 @@ private fun CalendarLoginScreen(
                             dismissalStore.write(selectedAccount, saved)
                             saved
                         }
-                        applied = true
                         dismissals = merged
                         recentEvents = recentEvents.withoutDismissals(merged)
                         actionError = null
@@ -494,14 +485,12 @@ private fun CalendarLoginScreen(
                     }
                 }
             }
-            if (!applied && heldActionRow?.action == action) heldActionRow = null
             undoState = undoState.finishCommit(action, commitError)
         }
     }
 
     fun openEvent(event: CalendarEvent) {
         undoState.pendingAction?.let(::commitAction)
-        if (heldActionRow?.action?.event != event) heldActionRow = null
         coroutineScope.launch {
             try {
                 val link = event.htmlLink ?: fetchEventWebLink(
@@ -704,8 +693,7 @@ private fun CalendarLoginScreen(
     }
 
     fun authorizeCalendar(interactive: Boolean, forceRefresh: Boolean = true) {
-        heldActionRow = null
-        NotificationWidget.clearCompletedRow(activity)
+        NotificationWidget.updateAll(activity)
         loading = interactive
         if (interactive) {
             screen = ConnectionScreen.Disconnected
@@ -764,14 +752,12 @@ private fun CalendarLoginScreen(
         }
         if (event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
-            if (heldActionRow?.action?.event != event) heldActionRow = null
             undoState = undoState.stageNextAction(UndoableAction.Move(event, target, token), ::commitAction)
             actionError = null
             return
         }
         if (movingEventId != null) return
         undoState.pendingAction?.let(::commitAction)
-        if (heldActionRow?.action?.event != event) heldActionRow = null
         pendingMove = PendingMove(event, target)
         movingEventId = event.id
         actionError = null
@@ -805,7 +791,6 @@ private fun CalendarLoginScreen(
 
     fun dismissEvent(event: CalendarEvent) {
         if (event.id in committingActionIds) return
-        if (heldActionRow?.action?.event != event) heldActionRow = null
         undoState = undoState.stageNextAction(UndoableAction.Dismiss(event), ::commitAction)
         actionError = null
     }
@@ -836,8 +821,7 @@ private fun CalendarLoginScreen(
     }
 
     fun logout() {
-        heldActionRow = null
-        NotificationWidget.clearCompletedRow(activity)
+        NotificationWidget.updateAll(activity)
         storageEstimateRequest += 1
         storageEstimate = null
         loading = true
@@ -936,8 +920,7 @@ private fun CalendarLoginScreen(
             loading = loading,
             errorMessage = errorMessage,
             accountName = accountName,
-            events = displayEventsWithHeldAction(recentEvents,
-                heldActionRow?.action?.event, heldActionRow?.index ?: 0),
+            events = recentEvents,
             calendarSearchQuery = calendarSearchQuery,
             calendarSearchResults = calendarSearchResults,
             calendarSearchLoading = calendarSearchLoading,
@@ -977,15 +960,12 @@ private fun CalendarLoginScreen(
             committingActionIds = committingActionIds,
             undoableEventId = undoState.pendingAction?.event?.id,
             undoableActionDescription = undoState.pendingAction?.description(),
-            completedEventId = heldActionRow?.action?.event?.id,
-            completedActionDescription = heldActionRow?.action?.description(),
             onUndo = { undoState = UndoState.Idle },
             onOtherAction = {
                 undoState.pendingAction?.let(::commitAction)
             },
             onActionTile = {
                 undoState.pendingAction?.let(::commitAction)
-                heldActionRow = null
             },
             lookbackDays = lookbackDays,
             lookaheadDays = lookaheadDays,
@@ -1082,8 +1062,6 @@ private fun CalendarConnectedScreen(
     committingActionIds: Set<String>,
     undoableEventId: String?,
     undoableActionDescription: String?,
-    completedEventId: String?,
-    completedActionDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     onActionTile: () -> Unit,
@@ -1384,9 +1362,8 @@ private fun CalendarConnectedScreen(
                     }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
-                    val completedUndo = completedEventId == event.id
                     val savingAction = event.id in committingActionIds
-                    val actionLocked = awaitingUndo || completedUndo || savingAction
+                    val actionLocked = awaitingUndo || savingAction
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                         .background(
                             skin.color(
@@ -1427,7 +1404,6 @@ private fun CalendarConnectedScreen(
                                 }
                                 Text(
                                     if (awaitingUndo) undoableActionDescription.orEmpty()
-                                    else if (completedUndo) completedActionDescription.orEmpty()
                                     else if (savingAction) "Saving in background…"
                                     else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
@@ -1449,7 +1425,7 @@ private fun CalendarConnectedScreen(
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             if (actionLocked) MoveTile(
-                                label = if (awaitingUndo) "Undo" else if (event.id in committingActionIds) "Saving" else "Saved",
+                                label = if (awaitingUndo) "Undo" else "Saving",
                                 description = if (awaitingUndo) "Undo pending action for ${event.title}"
                                     else "Action committed; Undo unavailable for ${event.title}",
                                 enabled = awaitingUndo,

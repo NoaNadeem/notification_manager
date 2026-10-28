@@ -55,7 +55,6 @@ private const val EXTRA_PENDING_KEY = "pending_key"
 private const val EXTRA_ACTION_ID = "action_id"
 private const val EXTRA_SECRET = "widget_secret"
 private const val EXTRA_FORCE = "force"
-private const val HELD_WIDGET_ROW = "held_widget_row"
 private const val CALENDAR_READ_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 private const val CALENDAR_EDIT_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 private const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
@@ -146,28 +145,6 @@ private fun commitWidgetUndo(context: Context, selectedAccount: String) {
     if (pending != null) enqueueWidgetSave(context, pending.first, pending.second, 0)
 }
 
-private data class HeldWidgetRow(
-    val account: String, val actionId: String, val event: CalendarEvent,
-    val index: Int, val description: String
-) {
-    fun json(): String = JSONObject().put("account", account).put("actionId", actionId)
-        .put("event", calendarEventToLocalJson(event)).put("index", index)
-        .put("description", description).toString()
-
-    companion object {
-        fun read(raw: String?): HeldWidgetRow? = runCatching {
-            val json = JSONObject(raw ?: return null)
-            HeldWidgetRow(json.getString("account"), json.getString("actionId"),
-                calendarEventFromLocalJson(json.getJSONObject("event")),
-                json.getInt("index"), json.getString("description"))
-        }.getOrNull()
-    }
-}
-
-private fun heldWidgetRow(context: Context, selectedAccount: String): HeldWidgetRow? =
-    HeldWidgetRow.read(prefs(context).getString(HELD_WIDGET_ROW, null))
-        ?.takeIf { it.account.equals(selectedAccount, ignoreCase = true) }
-
 private fun visibleEvents(context: Context, selectedAccount: String): List<CalendarEvent> {
     val settings = context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)
     val back = settings.getInt("lookback_days", 7).coerceIn(1, 365)
@@ -179,9 +156,7 @@ private fun visibleEvents(context: Context, selectedAccount: String): List<Calen
     val dismissals = DismissalStore(context).read(selectedAccount)
     val events = LocalStateStore(context).readEvents(selectedAccount).withoutDismissals(dismissals)
         .filter { isInDisplayWindow(it.start, now, back, ahead, preset = preset) }
-    val sorted = sortCalendarEvents(events)
-    val held = heldWidgetRow(context, selectedAccount) ?: return sorted
-    return displayEventsWithHeldAction(sorted, held.event, held.index)
+    return sortCalendarEvents(events)
 }
 
 internal class NotificationWidget : AppWidgetProvider() {
@@ -206,7 +181,6 @@ internal class NotificationWidget : AppWidgetProvider() {
         val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
         if (command in setOf("refresh", "real")) account(context)?.let { commitWidgetUndo(context, it) }
         if (command == "refresh") {
-            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
             // The explicit button is also Wi-Fi only, matching the scheduled check.
             if (isWifiConnected(context)) {
                 WorkManager.getInstance(context).enqueueUniqueWork(
@@ -230,15 +204,9 @@ internal class NotificationWidget : AppWidgetProvider() {
         val selectedAccount = account(context) ?: return
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID) ?: return
         val start = intent.getLongExtra(EXTRA_EVENT_START, Long.MIN_VALUE)
-        heldWidgetRow(context, selectedAccount)?.let { held ->
-            if (held.event.id == eventId && held.event.start.toEpochMilli() == start) return
-        }
         val event = visibleEvents(context, selectedAccount).find {
             it.id == eventId && it.start.toEpochMilli() == start
         } ?: return
-        if (command !in setOf("more", "location")) {
-            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
-        }
         val key = pendingKey(event)
         if (command !in setOf("more", "undo") && prefs(context).contains(key)) return
         if (command !in setOf("more", "undo")) commitWidgetUndo(context, selectedAccount)
@@ -317,11 +285,6 @@ internal class NotificationWidget : AppWidgetProvider() {
     companion object {
         fun commitPendingActions(context: Context) {
             account(context)?.let { commitWidgetUndo(context, it) }
-        }
-
-        fun clearCompletedRow(context: Context) {
-            prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
-            updateAll(context)
         }
 
         fun updateAll(context: Context) {
@@ -435,12 +398,10 @@ internal class NotificationWidgetService : RemoteViewsService() {
             val event = events.getOrNull(eventPosition) ?: return null
             val key = eventKey(event)
             val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(event), null))
-            val held = account(context)?.let { heldWidgetRow(context, it) }
-                ?.takeIf { eventKey(it.event) == key }
             val canUndo = pending != null && widgetCanUndo(pending.id,
                 prefs(context).getString(newestWidgetUndoKey(pending.account), null),
                 pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
-            val locked = pending != null || held != null
+            val locked = pending != null
             val expanded = prefs(context).getString("expanded_$widgetId", null) == key && !locked
             val views = RemoteViews(context.packageName,
                 if (event.isEmphasized()) R.layout.notification_widget_event_green
@@ -450,7 +411,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 skin.widgetBackground())
             views.setTextViewText(R.id.widget_event_title, event.title)
             views.setTextColor(R.id.widget_event_title, if (locked) 0xFFBFC7C9.toInt() else 0xFFFFFFFF.toInt())
-            views.setTextViewText(R.id.widget_event_age, held?.description ?: pending?.description ?: event.ageDescription())
+            views.setTextViewText(R.id.widget_event_age, pending?.description ?: event.ageDescription())
             views.setViewVisibility(R.id.widget_event_dot,
                 if (event.isTwoDaysOld()) View.VISIBLE else View.GONE)
             views.setTextColor(R.id.widget_event_dot, skin.widgetAccent())
@@ -458,7 +419,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
             views.setViewVisibility(R.id.widget_event_one_day, if (locked) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.widget_event_one_day, if (event.isRecurring) "✎" else "1D")
             views.setViewVisibility(R.id.widget_event_undo, if (locked) View.VISIBLE else View.GONE)
-            views.setTextViewText(R.id.widget_event_undo, if (canUndo) "Undo" else if (pending != null) "Saving" else "Saved")
+            views.setTextViewText(R.id.widget_event_undo, if (canUndo) "Undo" else "Saving")
             views.setTextColor(R.id.widget_event_undo, if (canUndo) 0xFFFFFFFF.toInt() else 0xFF8D969A.toInt())
             views.setContentDescription(R.id.widget_event_undo,
                 if (canUndo) "Undo pending action" else "Action committed; Undo unavailable")
@@ -531,7 +492,6 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             NotificationWidget.updateAll(context)
             return Result.success()
         }
-        prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
         return try {
             val token = widgetToken(context, selectedAccount, edit = false)
             val primary = verifyCalendarAccess(token)
@@ -587,15 +547,8 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
         val event = LocalStateStore(context).readEvents(action.account).find {
             it.id == action.eventId && it.start.toEpochMilli() == action.start
         }
-        var applied = false
         try {
             if (event == null) throw IllegalStateException("Event changed; refresh the app before retrying")
-            val position = visibleEvents(context, action.account).indexOfFirst { eventKey(it) == eventKey(event) }
-                .coerceAtLeast(0)
-            check(prefs(context).edit().putString(HELD_WIDGET_ROW,
-                HeldWidgetRow(action.account, id, event, position, action.description).json()).commit()) {
-                "Could not keep the completed widget action visible."
-            }
             NotificationWidget.updateAll(context)
             if (action.command == "dismiss") {
                 val store = DismissalStore(context)
@@ -605,7 +558,7 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                 dismissalSyncMutex.withLock {
                     val merged = mergeDismissals(store.read(action.account), listOf(record), Instant.now())
                     store.write(action.account, merged)
-                    applied = true
+                    NotificationWidget.updateAll(context)
                     val state = stateStore.readSync(action.account)
                     stateStore.writeSync(action.account, state.copy(pending = state.pending + record.key))
                     try {
@@ -628,7 +581,6 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                     else if (action.command.endsWith("H")) MoveTarget.After(Duration.ofHours(action.command.dropLast(1).toLong()))
                     else MoveTarget.After(Duration.ofDays(action.command.dropLast(1).toLong()))
                 val moved = moveCalendarEvent(token, event, target, Instant.ofEpochMilli(action.stagedAtMillis))
-                applied = true
                 val stateStore = LocalStateStore(context)
                 val settings = context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)
                 val back = settings.getInt("lookback_days", 7).coerceIn(1, 365)
@@ -637,6 +589,11 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                 val events = stateStore.readEvents(action.account).filterNot { eventKey(it) == eventKey(event) }
                     .toMutableList()
                 if (isInDisplayWindow(moved.start, Instant.now(), back, ahead, preset = preset)) events += moved
+                runCatching { stateStore.writeEvents(action.account, sortCalendarEvents(events)) }
+                    .onFailure {
+                        prefs(context).edit().putString("status", "Event moved; refresh app to update widget").apply()
+                    }
+                NotificationWidget.updateAll(context)
                 if (event.start != moved.start) {
                     try {
                         moveHistoryMutex.withLock {
@@ -655,10 +612,6 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                         prefs(context).edit().putString("status", "Event moved; recent moves sync pending").apply()
                     }
                 }
-                runCatching { stateStore.writeEvents(action.account, sortCalendarEvents(events)) }
-                    .onFailure {
-                        prefs(context).edit().putString("status", "Event moved; refresh app to update widget").apply()
-                    }
             }
             if (prefs(context).getString("status", null) != "Dismissed locally; Drive sync pending" &&
                 prefs(context).getString("status", null) != "Event moved; recent moves sync pending" &&
@@ -668,9 +621,6 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
         } catch (error: Exception) {
             prefs(context).edit().putString("status", error.message ?: "Action failed; open the app").apply()
         } finally {
-            if (!applied && HeldWidgetRow.read(prefs(context).getString(HELD_WIDGET_ROW, null))?.actionId == id) {
-                prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
-            }
             if (PendingWidgetAction.read(prefs(context).getString(key, null))?.id == id) {
                 prefs(context).edit().remove(key).apply()
             }

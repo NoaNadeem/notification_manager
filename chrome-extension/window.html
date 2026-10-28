@@ -41,6 +41,7 @@
       <button id="refresh">↻ &nbsp; Refresh events</button>
       <button id="presets-open">Window: <span id="preset-label">Current: 7 days back to today</span></button>
       <button id="estimate-storage" hidden>Estimate 1-year storage</button>
+      <button id="undo-time-open">Undo Time: <span id="undo-time-label">5 seconds</span></button>
       <button id="theme-toggle">Dark mode: On</button>
       <button id="skins-open">Skins</button>
     </nav>
@@ -94,6 +95,14 @@
     <button data-ahead-days="30">Through 30 days ahead</button>
     <label>Custom days (0–36500) <input id="custom-lookahead" type="number" min="0" max="36500" step="1"></label>
     <div class="dialog-actions"><button id="lookahead-cancel">Cancel</button><button id="lookahead-apply">Apply</button></div>
+  </dialog>
+  <dialog id="undo-time-dialog">
+    <form id="undo-time-form" novalidate>
+      <h2>Undo Time</h2>
+      <label>Seconds (1–30) <input id="undo-seconds" type="number" min="1" max="30" step="1" required autofocus></label>
+      <p id="undo-time-error" class="notice" role="alert"></p>
+      <div class="dialog-actions"><button id="undo-time-cancel" type="button">Cancel</button><button type="submit">Save</button></div>
+    </form>
   </dialog>
   <dialog id="skins-dialog">
     <h2>Skins</h2>

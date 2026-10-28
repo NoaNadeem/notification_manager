@@ -104,11 +104,13 @@ private fun workName(key: String) = "notification-widget-action-$key"
 
 private data class PendingWidgetAction(
     val id: String, val eventId: String, val start: Long, val command: String,
-    val account: String, val description: String, val stagedAtMillis: Long
+    val account: String, val description: String, val stagedAtMillis: Long,
+    val undoSeconds: Int = DEFAULT_UNDO_SECONDS
 ) {
     fun json(): String = JSONObject().put("id", id).put("eventId", eventId)
         .put("start", start).put("command", command).put("account", account)
-        .put("description", description).put("stagedAtMillis", stagedAtMillis).toString()
+        .put("description", description).put("stagedAtMillis", stagedAtMillis)
+        .put("undoSeconds", undoSeconds).toString()
 
     companion object {
         fun read(raw: String?): PendingWidgetAction? = runCatching {
@@ -116,9 +118,32 @@ private data class PendingWidgetAction(
             PendingWidgetAction(json.getString("id"), json.getString("eventId"),
                 json.getLong("start"), json.getString("command"),
                 json.getString("account"), json.getString("description"),
-                json.optLong("stagedAtMillis", System.currentTimeMillis()))
+                json.optLong("stagedAtMillis", System.currentTimeMillis()),
+                validUndoSeconds(json.optInt("undoSeconds", DEFAULT_UNDO_SECONDS)))
         }.getOrNull()
     }
+}
+
+private fun newestWidgetUndoKey(account: String) = "newest_undo:${account.lowercase(Locale.ROOT)}"
+
+private fun enqueueWidgetSave(context: Context, key: String, action: PendingWidgetAction, delaySeconds: Int) {
+    val work = OneTimeWorkRequestBuilder<WidgetActionWorker>()
+        .setInputData(workDataOf(EXTRA_PENDING_KEY to key, EXTRA_ACTION_ID to action.id))
+        .setInitialDelay(delaySeconds.toLong(), TimeUnit.SECONDS).build()
+    WorkManager.getInstance(context).enqueueUniqueWork(workName(key), ExistingWorkPolicy.REPLACE, work)
+}
+
+private fun commitWidgetUndo(context: Context, selectedAccount: String) {
+    val newestKey = newestWidgetUndoKey(selectedAccount)
+    val newestId = prefs(context).getString(newestKey, null) ?: return
+    val pending = prefs(context).all.entries.firstNotNullOfOrNull { (key, value) ->
+        if (!key.startsWith("pending_")) null
+        else PendingWidgetAction.read(value as? String)?.takeIf {
+            it.id == newestId && it.account.equals(selectedAccount, ignoreCase = true)
+        }?.let { key to it }
+    }
+    prefs(context).edit().remove(newestKey).apply()
+    if (pending != null) enqueueWidgetSave(context, pending.first, pending.second, 0)
 }
 
 private data class HeldWidgetRow(
@@ -179,6 +204,7 @@ internal class NotificationWidget : AppWidgetProvider() {
         if (intent.getStringExtra(EXTRA_SECRET) != widgetSecret(context)) return
         val command = intent.getStringExtra(EXTRA_COMMAND) ?: return
         val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (command in setOf("refresh", "real")) account(context)?.let { commitWidgetUndo(context, it) }
         if (command == "refresh") {
             prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
             // The explicit button is also Wi-Fi only, matching the scheduled check.
@@ -214,6 +240,8 @@ internal class NotificationWidget : AppWidgetProvider() {
             prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
         }
         val key = pendingKey(event)
+        if (command !in setOf("more", "undo") && prefs(context).contains(key)) return
+        if (command !in setOf("more", "undo")) commitWidgetUndo(context, selectedAccount)
         when (command) {
             "more" -> {
                 val expanded = prefs(context).getString("expanded_$widgetId", null)
@@ -221,7 +249,10 @@ internal class NotificationWidget : AppWidgetProvider() {
                     if (expanded == eventKey(event)) null else eventKey(event)).apply()
             }
             "undo" -> {
-                prefs(context).edit().remove(key).apply()
+                val pending = PendingWidgetAction.read(prefs(context).getString(key, null)) ?: return
+                if (!widgetCanUndo(pending.id, prefs(context).getString(newestWidgetUndoKey(selectedAccount), null),
+                        pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())) return
+                prefs(context).edit().remove(key).remove(newestWidgetUndoKey(selectedAccount)).apply()
                 WorkManager.getInstance(context).cancelUniqueWork(workName(key))
             }
             "open" -> {
@@ -271,19 +302,23 @@ internal class NotificationWidget : AppWidgetProvider() {
                     else MoveTarget.After(Duration.ofDays(command.dropLast(1).toLong()))
                     moveUndoDescription(event, target, stagedAt)
                 }
+                val seconds = validUndoSeconds(context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)
+                    .getInt(UNDO_SECONDS_KEY, DEFAULT_UNDO_SECONDS))
                 val action = PendingWidgetAction(UUID.randomUUID().toString(), event.id,
-                    event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli())
-                prefs(context).edit().putString(key, action.json()).apply()
-                val work = OneTimeWorkRequestBuilder<WidgetActionWorker>()
-                    .setInputData(workDataOf(EXTRA_PENDING_KEY to key, EXTRA_ACTION_ID to action.id))
-                    .setInitialDelay(30, TimeUnit.SECONDS).build()
-                WorkManager.getInstance(context).enqueueUniqueWork(workName(key), ExistingWorkPolicy.REPLACE, work)
+                    event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli(), seconds)
+                prefs(context).edit().putString(key, action.json())
+                    .putString(newestWidgetUndoKey(selectedAccount), action.id).apply()
+                enqueueWidgetSave(context, key, action, seconds)
             }
         }
         updateAll(context)
     }
 
     companion object {
+        fun commitPendingActions(context: Context) {
+            account(context)?.let { commitWidgetUndo(context, it) }
+        }
+
         fun clearCompletedRow(context: Context) {
             prefs(context).edit().remove(HELD_WIDGET_ROW).apply()
             updateAll(context)
@@ -402,6 +437,9 @@ internal class NotificationWidgetService : RemoteViewsService() {
             val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(event), null))
             val held = account(context)?.let { heldWidgetRow(context, it) }
                 ?.takeIf { eventKey(it.event) == key }
+            val canUndo = pending != null && widgetCanUndo(pending.id,
+                prefs(context).getString(newestWidgetUndoKey(pending.account), null),
+                pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
             val locked = pending != null || held != null
             val expanded = prefs(context).getString("expanded_$widgetId", null) == key && !locked
             val views = RemoteViews(context.packageName,
@@ -420,11 +458,11 @@ internal class NotificationWidgetService : RemoteViewsService() {
             views.setViewVisibility(R.id.widget_event_one_day, if (locked) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.widget_event_one_day, if (event.isRecurring) "✎" else "1D")
             views.setViewVisibility(R.id.widget_event_undo, if (locked) View.VISIBLE else View.GONE)
-            views.setTextColor(R.id.widget_event_undo,
-                if (held != null) 0xFF8D969A.toInt() else 0xFFFFFFFF.toInt())
+            views.setTextViewText(R.id.widget_event_undo, if (canUndo) "Undo" else if (pending != null) "Saving" else "Saved")
+            views.setTextColor(R.id.widget_event_undo, if (canUndo) 0xFFFFFFFF.toInt() else 0xFF8D969A.toInt())
             views.setContentDescription(R.id.widget_event_undo,
-                if (held != null) "Action committed; Undo unavailable" else "Undo pending action")
-            views.setBoolean(R.id.widget_event_undo, "setEnabled", held == null)
+                if (canUndo) "Undo pending action" else "Action committed; Undo unavailable")
+            views.setBoolean(R.id.widget_event_undo, "setEnabled", canUndo)
             views.setViewVisibility(R.id.widget_event_options, if (expanded) View.VISIBLE else View.GONE)
             views.setInt(R.id.widget_event_title, "setMaxLines", if (expanded) 100 else 3)
             views.setViewVisibility(R.id.widget_event_location,
@@ -435,7 +473,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 click(views, R.id.widget_event_age, event, "more")
                 click(views, R.id.widget_event_one_day, event, if (event.isRecurring) "open" else "1D")
                 click(views, R.id.widget_event_location, event, "location")
-            } else if (held == null) click(views, R.id.widget_event_undo, event, "undo")
+            } else if (canUndo) click(views, R.id.widget_event_undo, event, "undo")
             if (expanded) {
                 val firstRow = if (event.allDayDate != null) listOf("0D", "", "")
                     else listOf("1H", "4H", "8H")
@@ -544,6 +582,8 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
         val id = inputData.getString(EXTRA_ACTION_ID) ?: return Result.success()
         val action = PendingWidgetAction.read(prefs(context).getString(key, null))
             ?.takeIf { it.id == id } ?: return Result.success()
+        val newestKey = newestWidgetUndoKey(action.account)
+        if (prefs(context).getString(newestKey, null) == id) prefs(context).edit().remove(newestKey).apply()
         val event = LocalStateStore(context).readEvents(action.account).find {
             it.id == action.eventId && it.start.toEpochMilli() == action.start
         }

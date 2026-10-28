@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { UndoController, UNDO_MS, actionDescription } from "./undo.js";
+import { UndoController, UNDO_MS, actionDescription, parseUndoSeconds } from "./undo.js";
 
 test("Undo cancels a pending move without committing it", async () => {
   const commits = [];
@@ -200,4 +200,24 @@ test("a canceled older timer cannot commit the newest Undo early", async () => {
   assert.equal(undo.current, newest);
   assert.deepEqual(committed, ["first"]);
   await undo.undo();
+});
+
+
+test("Undo Time accepts only whole seconds from 1 through 30", () => {
+  for (const value of [1, 5, 30, " 12 "]) assert.equal(parseUndoSeconds(value), Number(value));
+  for (const value of [0, 31, -1, 1.5, "", "1e1", "5.5", null, "bad"]) assert.equal(parseUndoSeconds(value), null);
+});
+
+test("Undo defaults to five seconds and snapshots each new action's chosen delay", async () => {
+  const delays = [];
+  const undo = new UndoController(async () => {}, () => {}, (_, ms) => { delays.push(ms); return delays.length; }, () => {});
+  await undo.stage({ id: "first" });
+  undo.undoSeconds = 30;
+  assert.deepEqual(delays, [5_000]);
+  await undo.stage({ id: "second" });
+  undo.undoSeconds = 1;
+  await undo.stage({ id: "third" });
+  assert.deepEqual(delays, [5_000, 30_000, 1_000]);
+  await undo.undo();
+  await undo.queue;
 });

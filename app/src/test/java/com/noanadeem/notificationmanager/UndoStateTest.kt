@@ -63,4 +63,22 @@ class UndoStateTest {
         assertEquals(null, cachedMoveToken("mock-token", authorizedAt, authorizedAt + 45 * 60_000L))
         assertEquals(null, cachedMoveToken(null, authorizedAt, authorizedAt))
     }
+
+    @Test
+    fun undoTimeDefaultsToFiveAndValidatesWholeSecondsUpToThirty() {
+        assertEquals(5, DEFAULT_UNDO_SECONDS)
+        for (seconds in listOf(1, 5, 30)) assertEquals(seconds, parseUndoSeconds(seconds.toString()))
+        for (text in listOf("", "0", "31", "-1", "1.5", "1e1", "bad")) assertEquals(null, parseUndoSeconds(text))
+        assertEquals(5, validUndoSeconds(0))
+        assertEquals(5, validUndoSeconds(31))
+    }
+
+    @Test
+    fun widgetAllowsOnlyTheNewestActionToUndoBeforeItsDeadline() {
+        assertEquals(true, widgetCanUndo("new", "new", 1_000, 5, 5_999))
+        assertEquals(false, widgetCanUndo("old", "new", 1_000, 30, 2_000))
+        assertEquals(false, widgetCanUndo("new", "new", 1_000, 5, 6_000))
+        assertEquals(true, widgetCanUndo("new", "new", 1_000, 30, 30_999))
+        assertEquals(false, widgetCanUndo("new", "new", 1_000, 30, 31_000))
+    }
 }

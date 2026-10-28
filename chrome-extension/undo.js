@@ -1,4 +1,11 @@
-export const UNDO_MS = 30_000;
+export const DEFAULT_UNDO_SECONDS = 5;
+export const UNDO_MS = DEFAULT_UNDO_SECONDS * 1_000;
+
+export function parseUndoSeconds(value) {
+  const seconds = typeof value === "number" ? value
+    : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value.trim()) : NaN;
+  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 30 ? seconds : null;
+}
 
 export class UndoController {
   constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}, onQueue = async () => {}) {
@@ -10,6 +17,7 @@ export class UndoController {
     this.onQueue = onQueue;
     this.state = { kind: "Idle" };
     this.timer = null;
+    this.undoSeconds = DEFAULT_UNDO_SECONDS;
     this.queue = Promise.resolve();
     this.committingActions = new Set();
   }
@@ -24,7 +32,7 @@ export class UndoController {
 
   async stage(action) {
     // Set up the new Undo immediately; only network saves join the serial queue.
-    const timer = this.schedule(() => { if (this.current === action) void this.commit().catch(() => {}); }, UNDO_MS);
+    const timer = this.schedule(() => { if (this.current === action) void this.commit().catch(() => {}); }, (parseUndoSeconds(this.undoSeconds) ?? DEFAULT_UNDO_SECONDS) * 1_000);
     void this.commit().catch(() => {});
     this.state = { kind: "Pending", action };
     this.timer = timer;

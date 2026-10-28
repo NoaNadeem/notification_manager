@@ -185,7 +185,6 @@ private fun UndoableAction.description(): String = when (this) {
     is UndoableAction.Move -> moveUndoDescription(event, target, stagedAt)
 }
 
-private const val UNDO_WINDOW_MILLIS = 30_000L
 
 class MainActivity : ComponentActivity() {
     private var widgetIntent by mutableStateOf<Intent?>(null)
@@ -193,6 +192,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         widgetIntent = intent.takeIf { it.hasExtra("widget_destination") }
+        if (widgetIntent != null) NotificationWidget.commitPendingActions(this)
         setContent {
             val preferences = remember {
                 getSharedPreferences(CONNECTION_PREFERENCES, Context.MODE_PRIVATE)
@@ -233,6 +233,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         widgetIntent = intent.takeIf { it.hasExtra("widget_destination") }
+        if (widgetIntent != null) NotificationWidget.commitPendingActions(this)
     }
 }
 
@@ -249,6 +250,7 @@ private fun CalendarLoginScreen(
     val preferences = remember(activity) {
         activity.getSharedPreferences(CONNECTION_PREFERENCES, Context.MODE_PRIVATE)
     }
+    var undoSeconds by remember { mutableStateOf(validUndoSeconds(preferences.getInt(UNDO_SECONDS_KEY, DEFAULT_UNDO_SECONDS))) }
     val coroutineScope = rememberCoroutineScope()
     val dismissalStore = remember(activity) { DismissalStore(activity) }
     val moveHistoryStore = remember(activity) { MoveHistoryStore(activity) }
@@ -545,7 +547,7 @@ private fun CalendarLoginScreen(
 
     LaunchedEffect(undoState.pendingAction?.createdAtNanos) {
         val action = undoState.pendingAction ?: return@LaunchedEffect
-        delay(UNDO_WINDOW_MILLIS)
+        delay(undoSeconds * 1_000L)
         commitAction(action)
     }
 
@@ -966,6 +968,11 @@ private fun CalendarLoginScreen(
             darkMode = darkMode,
             skin = skin,
             onSkinChange = onSkinChange,
+            undoSeconds = undoSeconds,
+            onUndoSecondsChange = { seconds ->
+                undoSeconds = validUndoSeconds(seconds)
+                preferences.edit().putInt(UNDO_SECONDS_KEY, undoSeconds).apply()
+            },
             movingEventId = movingEventId,
             committingActionIds = committingActionIds,
             undoableEventId = undoState.pendingAction?.event?.id,
@@ -1069,6 +1076,8 @@ private fun CalendarConnectedScreen(
     darkMode: Boolean,
     skin: Skin,
     onSkinChange: (Skin) -> Unit,
+    undoSeconds: Int,
+    onUndoSecondsChange: (Int) -> Unit,
     movingEventId: String?,
     committingActionIds: Set<String>,
     undoableEventId: String?,
@@ -1113,6 +1122,8 @@ private fun CalendarConnectedScreen(
             }
         }
     }
+    var showUndoTime by remember { mutableStateOf(false) }
+    var undoSecondsText by remember { mutableStateOf(undoSeconds.toString()) }
     var showSkins by remember { mutableStateOf(false) }
     var customLookbackText by remember { mutableStateOf(lookbackDays.toString()) }
     var customLookaheadText by remember { mutableStateOf(lookaheadDays.toString()) }
@@ -1275,6 +1286,10 @@ private fun CalendarConnectedScreen(
                         onClick = { menuExpanded = false; showPresets = true }
                     )
                     DropdownMenuItem(
+                        text = { Text("Undo Time: $undoSeconds seconds") },
+                        onClick = { menuExpanded = false; undoSecondsText = undoSeconds.toString(); showUndoTime = true }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Dark mode: ${if (darkMode) "On" else "Off"}") },
                         onClick = {
                             menuExpanded = false
@@ -1370,7 +1385,8 @@ private fun CalendarConnectedScreen(
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
                     val completedUndo = completedEventId == event.id
-                    val actionLocked = awaitingUndo || completedUndo
+                    val savingAction = event.id in committingActionIds
+                    val actionLocked = awaitingUndo || completedUndo || savingAction
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                         .background(
                             skin.color(
@@ -1412,6 +1428,7 @@ private fun CalendarConnectedScreen(
                                 Text(
                                     if (awaitingUndo) undoableActionDescription.orEmpty()
                                     else if (completedUndo) completedActionDescription.orEmpty()
+                                    else if (savingAction) "Saving in background…"
                                     else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1432,9 +1449,9 @@ private fun CalendarConnectedScreen(
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             if (actionLocked) MoveTile(
-                                label = "Undo",
-                                description = if (completedUndo) "Action committed; Undo unavailable for ${event.title}"
-                                    else "Undo pending action for ${event.title}",
+                                label = if (awaitingUndo) "Undo" else if (event.id in committingActionIds) "Saving" else "Saved",
+                                description = if (awaitingUndo) "Undo pending action for ${event.title}"
+                                    else "Action committed; Undo unavailable for ${event.title}",
                                 enabled = awaitingUndo,
                                 modifier = Modifier.size(52.dp),
                                 onClick = {
@@ -1827,6 +1844,29 @@ private fun CalendarConnectedScreen(
                 ) { Text("Apply") }
             },
             dismissButton = { TextButton(onClick = { showLookaheadPicker = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showUndoTime) {
+        val seconds = parseUndoSeconds(undoSecondsText)
+        AlertDialog(
+            onDismissRequest = { showUndoTime = false },
+            title = { Text("Undo Time") },
+            text = {
+                OutlinedTextField(
+                    value = undoSecondsText,
+                    onValueChange = { undoSecondsText = it },
+                    label = { Text("Seconds (1–30)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    isError = seconds == null,
+                    supportingText = { if (seconds == null) Text("Enter a whole number from 1 to 30.") }
+                )
+            },
+            confirmButton = { TextButton(enabled = seconds != null, onClick = {
+                onUndoSecondsChange(seconds!!); showUndoTime = false
+            }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showUndoTime = false }) { Text("Cancel") } }
         )
     }
 

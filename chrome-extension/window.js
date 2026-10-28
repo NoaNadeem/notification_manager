@@ -1,6 +1,6 @@
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
-import { UndoController, actionDescription } from "./undo.js";
+import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
 import { flyoutPointerInReach } from "./layout.js";
@@ -33,6 +33,7 @@ const syncDialog = $("#sync-dialog");
 const recentDismissalsDialog = $("#recent-dismissals-dialog");
 const recentMovesDialog = $("#recent-moves-dialog");
 const skinsDialog = $("#skins-dialog");
+const undoTimeDialog = $("#undo-time-dialog");
 const skinPresets = {
   Green: ["#79B590", "#397A51", "#1D422E", "#DDF5E4"],
   Blue: ["#79AEC9", "#346982", "#19394D", "#D6F0FF"],
@@ -612,9 +613,10 @@ function renderEvent(event) {
   actions.className = "actions";
   let flyoutTrigger;
   if (action || held) {
-    const undoTile = button("Undo", held ? `Action committed for ${event.summary || "event"}; Undo unavailable`
-      : `Undo pending action for ${event.summary || "event"}`, () => void undo.undo(), "tile undo");
-    undoTile.disabled = !!held;
+    const undoTile = button(action ? "Undo" : busy ? "Saving" : "Saved",
+      action ? `Undo pending action for ${event.summary || "event"}` : `Action committed for ${event.summary || "event"}; Undo unavailable`,
+      () => { if (action) void undo.undo(); }, action ? "tile undo" : "tile saving");
+    undoTile.disabled = !action;
     actions.append(undoTile);
   } else if (busy) {
     const saving = button("Saving", "Saving this event in the background", () => {}, "tile saving");
@@ -1044,6 +1046,28 @@ $("#estimate-storage").addEventListener("click", () => {
     if (request === storageEstimateRequest) showStorageEstimate(`Could not estimate storage: ${error.message}`, true);
   });
 });
+$("#undo-time-open").addEventListener("click", () => {
+  closeMenu();
+  $("#undo-seconds").value = undo.undoSeconds;
+  $("#undo-time-error").textContent = "";
+  undoTimeDialog.showModal();
+});
+$("#undo-time-cancel").addEventListener("click", () => undoTimeDialog.close());
+$("#undo-time-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const seconds = parseUndoSeconds($("#undo-seconds").value);
+  if (seconds === null) {
+    $("#undo-time-error").textContent = "Enter a whole number from 1 to 30.";
+    $("#undo-seconds").focus();
+    return;
+  }
+  try {
+    await chrome.storage.local.set({ undoSeconds: seconds });
+    undo.undoSeconds = seconds;
+    $("#undo-time-label").textContent = `${seconds} seconds`;
+    undoTimeDialog.close();
+  } catch (error) { $("#undo-time-error").textContent = `Could not save Undo Time: ${error.message}`; }
+});
 $("#theme-toggle").addEventListener("click", () => {
   closeMenu();
   void undo.commit();
@@ -1138,7 +1162,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (account && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !undoTimeDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
 });
 window.addEventListener("online", () => {
   renderSync();
@@ -1146,7 +1170,7 @@ window.addEventListener("online", () => {
     if (account && !signedOut && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0) void load();
   });
 });
-const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount"]);
+const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount", "undoSeconds"]);
 if (saved.lastAccount) {
   const key = `syncState:${saved.lastAccount.toLowerCase()}`;
   const stored = (await chrome.storage.local.get(key))[key];
@@ -1155,6 +1179,8 @@ if (saved.lastAccount) {
     await chrome.storage.local.set({ [key]: withoutHistory });
   }
 }
+undo.undoSeconds = parseUndoSeconds(saved.undoSeconds) ?? DEFAULT_UNDO_SECONDS;
+$("#undo-time-label").textContent = `${undo.undoSeconds} seconds`;
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;
 lookaheadDays = Number.isInteger(saved.lookaheadDays) && saved.lookaheadDays >= 0 && saved.lookaheadDays <= 36500 ? saved.lookaheadDays : 0;
 windowPreset = WINDOW_PRESETS[saved.windowPreset] ? saved.windowPreset : null;

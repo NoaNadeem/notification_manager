@@ -42,6 +42,16 @@ Current repository state: `app/build.gradle.kts` uses package name `com.noanadee
 
 For a newly created **personal** Play developer account, production access currently requires a **closed test with at least 12 testers opted in continuously for 14 days**, followed by an application for production access. This requirement does **not** block the first internal test. [Play personal-account requirements](https://support.google.com/googleplay/android-developer/answer/14151465)
 
+## Prepared diagnostics for the next Android release
+
+Release builds now enable R8 optimization and request `ndk.debugSymbolLevel = "FULL"`. Debug builds keep their existing settings. No new release was built or uploaded for this configuration change; `versionCode = 1` and `versionName = "1.0"` remain unchanged.
+
+For the next upload, use a higher version code than the already-uploaded 1. Run the unit checks, build and verify the optimized release with isolated synthetic data, then generate the signed bundle with the existing upload key. Confirm that the bundle includes the R8 mapping information before uploading. Play can use that information to deobfuscate crash reports. [R8 configuration](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization)
+
+Native metadata can only be packaged if it exists. The current bundle's native library, `libandroidx.graphics.path.so`, is a prebuilt AndroidX dependency with stripped metadata. The FULL setting cannot recreate the publisher's removed symbols, so that warning may remain until unstripped symbols are available. Do not substitute dummy symbol or mapping files. [Native debug symbols](https://developer.android.com/build/include-native-symbols)
+
+Android Studio's generated `app/release/` bundle output is ignored by Git. Keep the upload keystore and its backup outside the repository.
+
 ## Chrome: first store-installed extension
 
 Current repository state: `chrome-extension/manifest.json` has version `0.3.4`, a public OAuth client ID, icons, and a public manifest key intended to preserve extension ID `halmnakmjhbkchjgmbonmhadenodlhhd`. The OAuth client ID and manifest public key are identifiers, **not secrets**.

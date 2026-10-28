@@ -22,8 +22,10 @@ android {
     buildTypes {
         release {
             optimization {
-                enable = false
+                enable = true
             }
+            // Include native symbols when dependencies provide unstripped metadata.
+            ndk.debugSymbolLevel = "FULL"
         }
     }
     compileOptions {

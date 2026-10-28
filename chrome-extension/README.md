@@ -8,6 +8,8 @@ The window loads all pages of events in the selected lookback period (7 days by 
 
 The arrow beside the header refresh button moves the live manager into a regular Chrome tab, creating a normal browser window if none is open. Click the same arrow in the tab to move it back into a centered dedicated extension window. The arrow tooltip describes the next action. The toolbar button focuses the manager wherever it is open.
 
+Save-status messages and errors use the selected skin’s accent color, with spacing between the clock and each status message.
+
 The header shows the computer's local date, time to the minute, and current time-zone abbreviation and name. The connected account appears in the settings menu below Disconnect. The clock updates once per minute without a network request. Hovering or focusing a day move tile shows its destination date; an hour move tile shows the destination date, time, and time zone. These tooltips recalculate when the pointer enters the tile or it gains focus.
 
 Events at least 48 hours old get a colored dot before the title. All-day events, timed events lasting at least one hour, and events with another invitee get a colored background. The page icon in the header filters the visible list to those highlighted events; click it again to show all. **Skins** in settings offers Green, Blue, Purple, and Rose presets, saved locally in this Chrome profile.

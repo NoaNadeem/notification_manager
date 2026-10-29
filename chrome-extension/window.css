@@ -124,7 +124,11 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 #header-undo:disabled { opacity: .35; cursor: default; }
 .header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Always-visible actions share one centered row; titles stay in their own lane. */
+/* Reserve the action row so revealing it never shifts the title or event height. */
+@media (hover:hover) and (pointer:fine) {
+  .event:not(.pending) .actions { opacity:0; pointer-events:none; }
+  .event:hover .actions, .event:focus-within .actions { opacity:1; pointer-events:auto; }
+}
 .event-top { align-items:center; }
 .event-top > .actions { justify-content:flex-end; gap:4px; }
 .event-top > .actions > .tile { width:32px; min-width:0; height:31px; padding:0; }

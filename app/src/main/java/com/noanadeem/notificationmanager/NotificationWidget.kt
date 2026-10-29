@@ -132,16 +132,19 @@ private fun enqueueWidgetSave(context: Context, key: String, action: PendingWidg
     WorkManager.getInstance(context).enqueueUniqueWork(workName(key), ExistingWorkPolicy.REPLACE, work)
 }
 
-private fun commitWidgetUndo(context: Context, selectedAccount: String) {
-    val newestKey = newestWidgetUndoKey(selectedAccount)
-    val newestId = prefs(context).getString(newestKey, null) ?: return
-    val pending = prefs(context).all.entries.firstNotNullOfOrNull { (key, value) ->
+private fun newestWidgetPending(context: Context, selectedAccount: String): Pair<String, PendingWidgetAction>? {
+    val newestId = prefs(context).getString(newestWidgetUndoKey(selectedAccount), null) ?: return null
+    return prefs(context).all.entries.firstNotNullOfOrNull { (key, value) ->
         if (!key.startsWith("pending_")) null
         else PendingWidgetAction.read(value as? String)?.takeIf {
             it.id == newestId && it.account.equals(selectedAccount, ignoreCase = true)
         }?.let { key to it }
     }
-    prefs(context).edit().remove(newestKey).apply()
+}
+
+private fun commitWidgetUndo(context: Context, selectedAccount: String) {
+    val pending = newestWidgetPending(context, selectedAccount)
+    prefs(context).edit().remove(newestWidgetUndoKey(selectedAccount)).apply()
     if (pending != null) enqueueWidgetSave(context, pending.first, pending.second, 0)
 }
 
@@ -156,7 +159,7 @@ private fun visibleEvents(context: Context, selectedAccount: String): List<Calen
     val dismissals = DismissalStore(context).read(selectedAccount)
     val events = LocalStateStore(context).readEvents(selectedAccount).withoutDismissals(dismissals)
         .filter { isInDisplayWindow(it.start, now, back, ahead, preset = preset) }
-    return sortCalendarEvents(events)
+    return sortCalendarEvents(events).filterNot { prefs(context).contains(pendingKey(it)) }
 }
 
 internal class NotificationWidget : AppWidgetProvider() {
@@ -179,6 +182,16 @@ internal class NotificationWidget : AppWidgetProvider() {
         if (intent.getStringExtra(EXTRA_SECRET) != widgetSecret(context)) return
         val command = intent.getStringExtra(EXTRA_COMMAND) ?: return
         val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (command == "undo_latest") {
+            val selectedAccount = account(context) ?: return
+            val (key, pending) = newestWidgetPending(context, selectedAccount) ?: return
+            if (!widgetCanUndo(pending.id, prefs(context).getString(newestWidgetUndoKey(selectedAccount), null),
+                    pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())) return
+            prefs(context).edit().remove(key).remove(newestWidgetUndoKey(selectedAccount)).apply()
+            WorkManager.getInstance(context).cancelUniqueWork(workName(key))
+            updateAll(context)
+            return
+        }
         if (command in setOf("refresh", "real")) account(context)?.let { commitWidgetUndo(context, it) }
         if (command == "refresh") {
             // The explicit button is also Wi-Fi only, matching the scheduled check.
@@ -215,13 +228,6 @@ internal class NotificationWidget : AppWidgetProvider() {
                 val expanded = prefs(context).getString("expanded_$widgetId", null)
                 prefs(context).edit().putString("expanded_$widgetId",
                     if (expanded == eventKey(event)) null else eventKey(event)).apply()
-            }
-            "undo" -> {
-                val pending = PendingWidgetAction.read(prefs(context).getString(key, null)) ?: return
-                if (!widgetCanUndo(pending.id, prefs(context).getString(newestWidgetUndoKey(selectedAccount), null),
-                        pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())) return
-                prefs(context).edit().remove(key).remove(newestWidgetUndoKey(selectedAccount)).apply()
-                WorkManager.getInstance(context).cancelUniqueWork(workName(key))
             }
             "open" -> {
                 val link = event.htmlLink?.let { calendarEventOpenLink(it, edit = false) }
@@ -274,7 +280,7 @@ internal class NotificationWidget : AppWidgetProvider() {
                     .getInt(UNDO_SECONDS_KEY, DEFAULT_UNDO_SECONDS))
                 val action = PendingWidgetAction(UUID.randomUUID().toString(), event.id,
                     event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli(), seconds)
-                prefs(context).edit().putString(key, action.json())
+                prefs(context).edit().remove("expanded_$widgetId").putString(key, action.json())
                     .putString(newestWidgetUndoKey(selectedAccount), action.id).apply()
                 enqueueWidgetSave(context, key, action, seconds)
             }
@@ -326,6 +332,12 @@ internal class NotificationWidget : AppWidgetProvider() {
                     setOnClickPendingIntent(R.id.widget_menu, appIntent(context, id, "menu"))
                     setOnClickPendingIntent(R.id.widget_real_events, commandIntent(context, id, "real"))
                     setOnClickPendingIntent(R.id.widget_refresh, commandIntent(context, id, "refresh"))
+                    val pending = selectedAccount?.let { newestWidgetPending(context, it)?.second }
+                    val canUndo = pending != null && widgetCanUndo(pending.id, pending.id,
+                        pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
+                    setBoolean(R.id.widget_header_undo, "setEnabled", canUndo)
+                    setFloat(R.id.widget_header_undo, "setAlpha", if (canUndo) 1f else 0.35f)
+                    setOnClickPendingIntent(R.id.widget_header_undo, commandIntent(context, id, "undo_latest"))
                     val template = Intent(context, NotificationWidget::class.java).setAction(ACTION_WIDGET)
                         .putExtra(EXTRA_WIDGET_ID, id).putExtra(EXTRA_SECRET, widgetSecret(context))
                     setPendingIntentTemplate(R.id.widget_list, PendingIntent.getBroadcast(context, id + 10_000,
@@ -397,12 +409,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
             val eventPosition = if (laterIndex >= 0 && position > laterIndex) position - 1 else position
             val event = events.getOrNull(eventPosition) ?: return null
             val key = eventKey(event)
-            val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(event), null))
-            val canUndo = pending != null && widgetCanUndo(pending.id,
-                prefs(context).getString(newestWidgetUndoKey(pending.account), null),
-                pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
-            val locked = pending != null
-            val expanded = prefs(context).getString("expanded_$widgetId", null) == key && !locked
+            val expanded = prefs(context).getString("expanded_$widgetId", null) == key
             val views = RemoteViews(context.packageName,
                 if (event.isEmphasized()) R.layout.notification_widget_event_green
                 else R.layout.notification_widget_event)
@@ -410,31 +417,26 @@ internal class NotificationWidgetService : RemoteViewsService() {
             if (event.isEmphasized()) views.setInt(R.id.widget_event_root, "setBackgroundResource",
                 skin.widgetBackground())
             views.setTextViewText(R.id.widget_event_title, event.title)
-            views.setTextColor(R.id.widget_event_title, if (locked) 0xFFBFC7C9.toInt() else 0xFFFFFFFF.toInt())
-            views.setTextViewText(R.id.widget_event_age, pending?.description ?: event.ageDescription())
+            views.setTextColor(R.id.widget_event_title, 0xFFFFFFFF.toInt())
+            views.setTextViewText(R.id.widget_event_age, event.ageDescription())
             views.setViewVisibility(R.id.widget_event_dot,
                 if (event.isTwoDaysOld()) View.VISIBLE else View.GONE)
             views.setTextColor(R.id.widget_event_dot, skin.widgetAccent())
             views.setInt(R.id.widget_tile_dismiss, "setBackgroundResource", skin.widgetDismissBackground())
-            views.setViewVisibility(R.id.widget_event_one_day, if (locked) View.GONE else View.VISIBLE)
+            views.setViewVisibility(R.id.widget_event_one_day, View.VISIBLE)
             views.setTextViewText(R.id.widget_event_one_day, if (event.isRecurring) "✎" else "1D")
-            views.setViewVisibility(R.id.widget_event_undo, if (locked) View.VISIBLE else View.GONE)
-            views.setTextViewText(R.id.widget_event_undo, if (canUndo) "Undo" else "Saving")
-            views.setTextColor(R.id.widget_event_undo, if (canUndo) 0xFFFFFFFF.toInt() else 0xFF8D969A.toInt())
-            views.setContentDescription(R.id.widget_event_undo,
-                if (canUndo) "Undo pending action" else "Action committed; Undo unavailable")
-            views.setBoolean(R.id.widget_event_undo, "setEnabled", canUndo)
+            views.setViewVisibility(R.id.widget_event_undo, View.GONE)
             views.setViewVisibility(R.id.widget_event_options, if (expanded) View.VISIBLE else View.GONE)
             views.setInt(R.id.widget_event_title, "setMaxLines", if (expanded) 100 else 3)
             views.setViewVisibility(R.id.widget_event_location,
-                if (event.location != null && !locked) View.VISIBLE else View.GONE)
+                if (event.location != null) View.VISIBLE else View.GONE)
             views.setTextViewText(R.id.widget_event_location, event.location ?: "")
-            if (!locked) {
+            run {
                 click(views, R.id.widget_event_title, event, "more")
                 click(views, R.id.widget_event_age, event, "more")
                 click(views, R.id.widget_event_one_day, event, if (event.isRecurring) "open" else "1D")
                 click(views, R.id.widget_event_location, event, "location")
-            } else if (canUndo) click(views, R.id.widget_event_undo, event, "undo")
+            }
             if (expanded) {
                 val firstRow = if (event.allDayDate != null) listOf("0D", "", "")
                     else listOf("1H", "4H", "8H")

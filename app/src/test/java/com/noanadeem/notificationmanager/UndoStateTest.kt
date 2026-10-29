@@ -8,6 +8,21 @@ import org.junit.Test
 
 class UndoStateTest {
     @Test
+    fun actionsDisappearImmediatelyAndUndoOrFailureRestoreTheirOriginalOrder() {
+        val events = (1..10).map { id -> CalendarEvent("primary", "$id", "Synthetic $id",
+            Instant.parse("2026-10-28T12:00:00Z").plusSeconds(id.toLong()), null, ZoneId.of("UTC")) }
+        // Nine older actions save while the latest remains undoable.
+        val saving = events.take(9).map { it.id }.toSet()
+        val latest = events.last().id
+        assertTrue(visibleActionEvents(events, saving + latest).isEmpty())
+        assertEquals(listOf(events.last()), visibleActionEvents(events, saving))
+        // Failed older saves reappear without replacing the latest Undo.
+        val failedId = events[2].id
+        assertEquals(listOf(events[2]), visibleActionEvents(events, (saving - failedId) + latest))
+        assertEquals(events, visibleActionEvents(events, emptySet()))
+    }
+
+    @Test
     fun pendingCommitTransitionsToSuccessOrFailureOnlyForMatchingAction() {
         val event = CalendarEvent("primary", "Test Event - 1", "Test Event - 1",
             Instant.parse("2026-09-28T12:00:00Z"), null, ZoneId.of("UTC"))

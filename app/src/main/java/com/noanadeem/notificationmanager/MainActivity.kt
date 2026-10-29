@@ -178,11 +178,6 @@ internal fun UndoState.stageNextAction(action: UndoableAction, commitPrevious: (
 internal fun cachedMoveToken(token: String?, authorizedAtMillis: Long, nowMillis: Long): String? =
     token?.takeIf { authorizedAtMillis > 0 && nowMillis - authorizedAtMillis in 0 until 45 * 60_000L }
 
-private fun UndoableAction.description(): String = when (this) {
-    is UndoableAction.Dismiss -> "Dismissed"
-    is UndoableAction.Move -> moveUndoDescription(event, target, stagedAt)
-}
-
 
 class MainActivity : ComponentActivity() {
     private var widgetIntent by mutableStateOf<Intent?>(null)
@@ -920,7 +915,8 @@ private fun CalendarLoginScreen(
             loading = loading,
             errorMessage = errorMessage,
             accountName = accountName,
-            events = recentEvents,
+            events = visibleActionEvents(recentEvents,
+                committingActionIds + listOfNotNull(undoState.pendingAction?.event?.id, pendingMove?.event?.id)),
             calendarSearchQuery = calendarSearchQuery,
             calendarSearchResults = calendarSearchResults,
             calendarSearchLoading = calendarSearchLoading,
@@ -958,8 +954,7 @@ private fun CalendarLoginScreen(
             },
             movingEventId = movingEventId,
             committingActionIds = committingActionIds,
-            undoableEventId = undoState.pendingAction?.event?.id,
-            undoableActionDescription = undoState.pendingAction?.description(),
+            undoDescription = undoState.pendingAction?.let { "Undo: ${it.event.title}" },
             onUndo = { undoState = UndoState.Idle },
             onOtherAction = {
                 undoState.pendingAction?.let(::commitAction)
@@ -1060,8 +1055,7 @@ private fun CalendarConnectedScreen(
     onUndoSecondsChange: (Int) -> Unit,
     movingEventId: String?,
     committingActionIds: Set<String>,
-    undoableEventId: String?,
-    undoableActionDescription: String?,
+    undoDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     onActionTile: () -> Unit,
@@ -1158,6 +1152,7 @@ private fun CalendarConnectedScreen(
             } else {
                 Text(
                     "Notification Manager",
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium
                 )
                 IconButton(modifier = Modifier.size(40.dp), onClick = {
@@ -1184,8 +1179,14 @@ private fun CalendarConnectedScreen(
                         color = if (realEventsOnly) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurface)
                 }
-                Spacer(modifier = Modifier.weight(1f))
             }
+            IconButton(
+                modifier = Modifier.size(40.dp).semantics {
+                    contentDescription = undoDescription ?: "Undo last action"
+                },
+                enabled = undoDescription != null,
+                onClick = { expandedEventId = null; onUndo() }
+            ) { Text("↶", style = MaterialTheme.typography.headlineMedium) }
             IconButton(
                 modifier = Modifier.size(40.dp),
                 enabled = !eventsLoading && !loading && movingEventId == null,
@@ -1361,9 +1362,6 @@ private fun CalendarConnectedScreen(
                             color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary))
                     }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
-                    val awaitingUndo = undoableEventId == event.id
-                    val savingAction = event.id in committingActionIds
-                    val actionLocked = awaitingUndo || savingAction
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                         .background(
                             skin.color(
@@ -1379,7 +1377,7 @@ private fun CalendarConnectedScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.fillMaxWidth()
-                                    .clickable(enabled = !actionLocked) {
+                                    .clickable {
                                     // Expanding actions is the touch equivalent of hover; keep Undo pending.
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
                                     if (expandedEventId == event.id) actionScrollScope.launch {
@@ -1398,20 +1396,17 @@ private fun CalendarConnectedScreen(
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
                                     maxLines = if (expandedEventId == event.id) Int.MAX_VALUE else 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.alpha(if (actionLocked) 0.35f else 1f)
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 }
                                 Text(
-                                    if (awaitingUndo) undoableActionDescription.orEmpty()
-                                    else if (savingAction) "Saving in background…"
-                                    else event.ageDescription(),
+                                    event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                                 }
-                                if (!actionLocked) event.location?.let { location ->
+                                event.location?.let { location ->
                                     Text(
                                         text = location,
                                         style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
@@ -1424,18 +1419,7 @@ private fun CalendarConnectedScreen(
                                 }
                             }
                             Spacer(modifier = Modifier.width(8.dp))
-                            if (actionLocked) MoveTile(
-                                label = if (awaitingUndo) "Undo" else "Saving",
-                                description = if (awaitingUndo) "Undo pending action for ${event.title}"
-                                    else "Action committed; Undo unavailable for ${event.title}",
-                                enabled = awaitingUndo,
-                                modifier = Modifier.size(52.dp),
-                                onClick = {
-                                    expandedEventId = null
-                                    onUndo()
-                                }
-                            )
-                            else if (event.isRecurring) MoveTile(
+                            if (event.isRecurring) MoveTile(
                                 label = "✎",
                                 description = "Open recurring occurrence in Google Calendar to edit",
                                 enabled = true,
@@ -1454,7 +1438,7 @@ private fun CalendarConnectedScreen(
                                 }
                             )
                         }
-                        if (expandedEventId == event.id && !actionLocked) {
+                        if (expandedEventId == event.id) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                     .bringIntoViewRequester(actionBringIntoViewRequester),

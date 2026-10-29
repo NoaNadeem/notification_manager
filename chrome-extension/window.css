@@ -130,3 +130,6 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 .tile.danger { background:var(--dismiss-bg); }
 .tile:hover,.icon-button:hover { background:var(--tile-hover); }
 #skins-dialog select { display:block; width:100%; margin:8px 0 0; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:8px; }
+
+#header-undo:disabled { opacity: .35; cursor: default; }
+.header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

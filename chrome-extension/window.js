@@ -1,6 +1,6 @@
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
-import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
+import { UndoController, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
 import { flyoutPointerInReach } from "./layout.js";
@@ -128,7 +128,8 @@ async function retrySavedActions(manual = false) {
 }
 
 function currentVisibleEvents() {
-  const visible = withoutDismissals(events, dismissals, calendarZone);
+  const hidden = new Set([undo.current, ...undo.committingActions].filter(Boolean).map(action => action.event.id));
+  const visible = withoutDismissals(events, dismissals, calendarZone).filter(event => !hidden.has(event.id));
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
@@ -428,6 +429,10 @@ async function load(interactive = false) {
 function render() { renderGuard.request(); }
 
 function renderNow() {
+  const latest = undo.current;
+  $("#header-undo").disabled = !latest;
+  $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
+  $("#header-undo").setAttribute("aria-label", $("#header-undo").title);
   const previousScroll = list.scrollTop;
   if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
@@ -542,29 +547,22 @@ function renderEvent(event) {
   const row = document.createElement("article");
   row.className = "event";
   if (isEmphasized(event, account)) row.classList.add("emphasized");
-  const action = undo.current?.event.id === event.id ? undo.current : null;
-  const busy = committing.has(eventKey(event)) || [...undo.committingActions].some(action => action.event.id === event.id);
-  if (action) row.classList.add("pending");
-  if (busy) row.classList.add("busy");
   const top = document.createElement("div");
   top.className = "event-top";
   const details = document.createElement("div");
   details.className = "details";
-  const title = document.createElement(action || busy ? "span" : "a");
+  const title = document.createElement("a");
   title.className = "title";
   title.textContent = event.summary || "(Untitled event)";
   title.title = title.textContent;
-  if (!action && !busy) {
-    title.href = calendarEventAction(event)?.url || "#";
-    title.addEventListener("click", (click) => {
-      click.preventDefault();
-      openEventLink(event);
-    });
-  }
+  title.href = calendarEventAction(event)?.url || "#";
+  title.addEventListener("click", (click) => {
+    click.preventDefault();
+    openEventLink(event);
+  });
   const age = document.createElement("div");
   age.className = "age";
-  age.textContent = action ? actionDescription(action)
-    : busy ? "Committing action…" : eventAgeLabel(event, Date.now(), calendarZone);
+  age.textContent = eventAgeLabel(event, Date.now(), calendarZone);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
   if (isTwoDaysOld(event, calendarZone)) {
@@ -575,7 +573,7 @@ function renderEvent(event) {
   }
   titleLine.append(title);
   details.append(titleLine, age);
-  if (!action && !busy && event.location) {
+  if (event.location) {
     const location = document.createElement("a");
     location.className = "location";
     location.textContent = event.location;
@@ -591,20 +589,10 @@ function renderEvent(event) {
   const actions = document.createElement("div");
   actions.className = "actions";
   let flyoutTrigger;
-  if (action) {
-    const undoTile = button("Undo",
-      `Undo pending action for ${event.summary || "event"}`,
-      () => { void undo.undo(); }, "tile undo");
-    actions.append(undoTile);
-  } else if (busy) {
-    const saving = button("Saving", "Saving this event in the background", () => {}, "tile saving");
-    saving.disabled = true;
-    actions.append(saving);
+  if (isRecurring(event)) {
+    actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
+    actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   } else {
-    if (isRecurring(event)) {
-      actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
-      actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
-    } else {
     flyoutTrigger = moveTile(event, "1D", { days: 1 }, "tile primary");
     flyoutTrigger.setAttribute("aria-haspopup", "true");
     flyoutTrigger.setAttribute("aria-expanded", "false");
@@ -621,11 +609,10 @@ function renderEvent(event) {
       if (!row.contains(event.relatedTarget) && !flyout.contains(event.relatedTarget)) hideFlyout(row);
     });
     actions.append(flyoutTrigger);
-    }
   }
   top.append(details, actions);
   row.append(top);
-  if (action || busy || isRecurring(event)) return row;
+  if (isRecurring(event)) return row;
   const flyout = document.createElement("div");
   flyout.className = "flyout";
   const topRow = document.createElement("div");
@@ -888,6 +875,7 @@ $("#open-in-tab").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 $("#retry-saves").addEventListener("click", () => { closeMenu(); void retrySavedActions(true); });
+$("#header-undo").addEventListener("click", () => { void undo.undo(); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.
 document.addEventListener("pointerdown", (event) => {

@@ -325,10 +325,6 @@ function showFlyout(row, flyout, trigger) {
   openFlyoutTrigger = trigger;
   row.classList.add("flyout-open");
   trigger.setAttribute("aria-expanded", "true");
-  const wide = window.matchMedia("(min-width: 640px)").matches;
-  const orderKey = wide ? "wideOrder" : "compactOrder";
-  flyout.replaceChildren(...Array.from(flyout.children).sort((a, b) =>
-    Number(a.dataset[orderKey]) - Number(b.dataset[orderKey])));
   // Overlay the ribbon without changing the row or its title wrapping.
   const bounds = trigger.getBoundingClientRect();
   document.body.append(flyout);
@@ -649,13 +645,7 @@ function renderEvent(event) {
     bottomRow.append(moveTile(event, `${days}D`, { days }));
     if (days === 4) bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
   }
-  // Preserve the compact 5×2 sequence; put Pencil before Calendar on wide screens.
-  const wideOrder = [0, 1, 2, 4, 5, 6, 7, 8, 3, 9];
-  [...topRow.children, ...bottomRow.children].forEach((tile, index) => {
-    tile.dataset.compactOrder = index;
-    tile.dataset.wideOrder = wideOrder[index];
-    flyout.append(tile);
-  });
+  flyout.append(...topRow.children, ...bottomRow.children);
   flyout.addEventListener("focusout", (event) => {
     if (!flyout.contains(event.relatedTarget) && !row.contains(event.relatedTarget)) hideFlyout(row);
   });

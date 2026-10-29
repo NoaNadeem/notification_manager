@@ -94,9 +94,6 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .flyout { position:fixed; z-index:30; width:max-content; margin:0; padding:6px; transform:translateY(-50%); background:var(--panel-strong); }
 .flyout .tile { min-width:41px; height:35px; font-size:13px; padding:0 8px; }
 .tile-row { flex-wrap:nowrap; }
-@media (min-width:640px) {
-  .flyout.active { grid-template-columns:repeat(10,max-content); }
-}
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
 .search-result { padding:10px 8px; border-bottom:1px solid var(--border); }

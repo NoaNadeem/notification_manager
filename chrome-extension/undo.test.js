@@ -208,16 +208,16 @@ test("Undo Time accepts only whole seconds from 1 through 30", () => {
   for (const value of [0, 31, -1, 1.5, "", "1e1", "5.5", null, "bad"]) assert.equal(parseUndoSeconds(value), null);
 });
 
-test("Undo defaults to five seconds and snapshots each new action's chosen delay", async () => {
+test("Undo defaults to two seconds and snapshots each new action's chosen delay", async () => {
   const delays = [];
   const undo = new UndoController(async () => {}, () => {}, (_, ms) => { delays.push(ms); return delays.length; }, () => {});
   await undo.stage({ id: "first" });
   undo.undoSeconds = 30;
-  assert.deepEqual(delays, [5_000]);
+  assert.deepEqual(delays, [2_000]);
   await undo.stage({ id: "second" });
   undo.undoSeconds = 1;
   await undo.stage({ id: "third" });
-  assert.deepEqual(delays, [5_000, 30_000, 1_000]);
+  assert.deepEqual(delays, [2_000, 30_000, 1_000]);
   await undo.undo();
   await undo.queue;
 });

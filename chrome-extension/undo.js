@@ -1,4 +1,4 @@
-export const DEFAULT_UNDO_SECONDS = 5;
+export const DEFAULT_UNDO_SECONDS = 2;
 export const UNDO_MS = DEFAULT_UNDO_SECONDS * 1_000;
 
 export function parseUndoSeconds(value) {

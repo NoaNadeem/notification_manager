@@ -916,7 +916,7 @@ private fun CalendarLoginScreen(
             errorMessage = errorMessage,
             accountName = accountName,
             events = visibleActionEvents(recentEvents,
-                committingActionIds + listOfNotNull(undoState.pendingAction?.event?.id, pendingMove?.event?.id)),
+                committingActionIds + listOfNotNull(pendingMove?.event?.id)),
             calendarSearchQuery = calendarSearchQuery,
             calendarSearchResults = calendarSearchResults,
             calendarSearchLoading = calendarSearchLoading,
@@ -954,6 +954,7 @@ private fun CalendarLoginScreen(
             },
             movingEventId = movingEventId,
             committingActionIds = committingActionIds,
+            undoableEventId = undoState.pendingAction?.event?.id,
             undoDescription = undoState.pendingAction?.let { "Undo: ${it.event.title}" },
             onUndo = { undoState = UndoState.Idle },
             onOtherAction = {
@@ -1055,6 +1056,7 @@ private fun CalendarConnectedScreen(
     onUndoSecondsChange: (Int) -> Unit,
     movingEventId: String?,
     committingActionIds: Set<String>,
+    undoableEventId: String?,
     undoDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
@@ -1362,6 +1364,7 @@ private fun CalendarConnectedScreen(
                             color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary))
                     }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
+                    val awaitingUndo = undoableEventId == event.id
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                         .background(
                             skin.color(
@@ -1377,7 +1380,7 @@ private fun CalendarConnectedScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.fillMaxWidth()
-                                    .clickable {
+                                    .clickable(enabled = !awaitingUndo) {
                                     // Expanding actions is the touch equivalent of hover; keep Undo pending.
                                     expandedEventId = if (expandedEventId == event.id) null else event.id
                                     if (expandedEventId == event.id) actionScrollScope.launch {
@@ -1396,7 +1399,8 @@ private fun CalendarConnectedScreen(
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
                                     maxLines = if (expandedEventId == event.id) Int.MAX_VALUE else 3,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
                                 )
                                 }
                                 Text(
@@ -1419,7 +1423,12 @@ private fun CalendarConnectedScreen(
                                 }
                             }
                             Spacer(modifier = Modifier.width(8.dp))
-                            if (event.isRecurring) MoveTile(
+                            if (awaitingUndo) MoveTile(
+                                label = "Undo", description = "Undo pending action for ${event.title}",
+                                enabled = true, modifier = Modifier.size(52.dp),
+                                onClick = { expandedEventId = null; onUndo() }
+                            )
+                            else if (event.isRecurring) MoveTile(
                                 label = "✎",
                                 description = "Open recurring occurrence in Google Calendar to edit",
                                 enabled = true,
@@ -1438,7 +1447,7 @@ private fun CalendarConnectedScreen(
                                 }
                             )
                         }
-                        if (expandedEventId == event.id) {
+                        if (expandedEventId == event.id && !awaitingUndo) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                     .bringIntoViewRequester(actionBringIntoViewRequester),

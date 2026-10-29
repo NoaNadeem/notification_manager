@@ -1,6 +1,6 @@
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
-import { UndoController, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
+import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
 import { flyoutPointerInReach } from "./layout.js";
@@ -128,7 +128,7 @@ async function retrySavedActions(manual = false) {
 }
 
 function currentVisibleEvents() {
-  const hidden = new Set([undo.current, ...undo.committingActions].filter(Boolean).map(action => action.event.id));
+  const hidden = new Set([...undo.committingActions].map(action => action.event.id));
   const visible = withoutDismissals(events, dismissals, calendarZone).filter(event => !hidden.has(event.id));
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
@@ -542,12 +542,14 @@ function renderSearchFooter() {
 function renderEvent(event) {
   const row = document.createElement("article");
   row.className = "event";
+  const pending = undo.current?.event.id === event.id ? undo.current : null;
+  if (pending) row.classList.add("pending");
   if (isEmphasized(event, account)) row.classList.add("emphasized");
   const top = document.createElement("div");
   top.className = "event-top";
   const details = document.createElement("div");
   details.className = "details";
-  const title = document.createElement("a");
+  const title = document.createElement(pending ? "span" : "a");
   title.className = "title";
   title.textContent = event.summary || "(Untitled event)";
   title.title = title.textContent;
@@ -558,7 +560,7 @@ function renderEvent(event) {
   });
   const age = document.createElement("div");
   age.className = "age";
-  age.textContent = eventAgeLabel(event, Date.now(), calendarZone);
+  age.textContent = pending ? actionDescription(pending) : eventAgeLabel(event, Date.now(), calendarZone);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
   if (isTwoDaysOld(event, calendarZone)) {
@@ -585,7 +587,10 @@ function renderEvent(event) {
   const actions = document.createElement("div");
   actions.className = "actions";
   let flyoutTrigger;
-  if (isRecurring(event)) {
+  if (pending) {
+    actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`,
+      () => { void undo.undo(); }, "tile undo"));
+  } else if (isRecurring(event)) {
     actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
     actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   } else {
@@ -608,7 +613,7 @@ function renderEvent(event) {
   }
   top.append(details, actions);
   row.append(top);
-  if (isRecurring(event)) return row;
+  if (pending || isRecurring(event)) return row;
   const flyout = document.createElement("div");
   flyout.className = "flyout";
   const topRow = document.createElement("div");

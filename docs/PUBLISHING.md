@@ -76,3 +76,7 @@ An in-app **Request access** button could open an email or form, but it cannot s
 3. If you still want approved users only after OAuth becomes publicly available, implement a **server-held allowlist** with Google identity sign-in, an approval queue, and checks before Calendar/Drive operations. A whitelist embedded only in Android or extension code is not a secure access control. This adds a backend, hosting, privacy, and operational work; defer it until manual invitations become burdensome.
 
 Google's OAuth **Testing** list is a practical beta gate, but it is separate from the stores. Moving OAuth to **In production** removes that test-user-list gate; an unverified app can still show warnings and face a lifetime user cap, so verification is the recommended route before broad availability. [OAuth audience limits](https://support.google.com/cloud/answer/15549945), [OAuth production readiness](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification)
+
+## Unreleased changes
+
+Inline Undo is restored for the latest pending event, with a 2-second default. Header Undo and the configurable 1–30 second Undo Time remain. These changes have been compiled and unit-tested but are not in the previously generated 1.4 bundle. Prepare the next Android version and signed release only when explicitly requested.

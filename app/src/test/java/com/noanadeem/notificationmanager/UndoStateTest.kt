@@ -8,17 +8,17 @@ import org.junit.Test
 
 class UndoStateTest {
     @Test
-    fun actionsDisappearImmediatelyAndUndoOrFailureRestoreTheirOriginalOrder() {
+    fun committingActionsHideWhilePendingAndFailedActionsRemainVisible() {
         val events = (1..10).map { id -> CalendarEvent("primary", "$id", "Synthetic $id",
             Instant.parse("2026-10-28T12:00:00Z").plusSeconds(id.toLong()), null, ZoneId.of("UTC")) }
-        // Nine older actions save while the latest remains undoable.
+        // The latest pending row stays visible; once committed it also hides.
         val saving = events.take(9).map { it.id }.toSet()
         val latest = events.last().id
         assertTrue(visibleActionEvents(events, saving + latest).isEmpty())
         assertEquals(listOf(events.last()), visibleActionEvents(events, saving))
         // Failed older saves reappear without replacing the latest Undo.
         val failedId = events[2].id
-        assertEquals(listOf(events[2]), visibleActionEvents(events, (saving - failedId) + latest))
+        assertEquals(listOf(events[2], events.last()), visibleActionEvents(events, saving - failedId))
         assertEquals(events, visibleActionEvents(events, emptySet()))
     }
 
@@ -67,12 +67,12 @@ class UndoStateTest {
     }
 
     @Test
-    fun undoTimeDefaultsToFiveAndValidatesWholeSecondsUpToThirty() {
-        assertEquals(5, DEFAULT_UNDO_SECONDS)
+    fun undoTimeDefaultsToTwoAndValidatesWholeSecondsUpToThirty() {
+        assertEquals(2, DEFAULT_UNDO_SECONDS)
         for (seconds in listOf(1, 5, 30)) assertEquals(seconds, parseUndoSeconds(seconds.toString()))
         for (text in listOf("", "0", "31", "-1", "1.5", "1e1", "bad")) assertEquals(null, parseUndoSeconds(text))
-        assertEquals(5, validUndoSeconds(0))
-        assertEquals(5, validUndoSeconds(31))
+        assertEquals(2, validUndoSeconds(0))
+        assertEquals(2, validUndoSeconds(31))
     }
 
     @Test

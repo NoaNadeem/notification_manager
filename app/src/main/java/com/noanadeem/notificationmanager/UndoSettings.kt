@@ -1,7 +1,7 @@
 package com.noanadeem.notificationmanager
 
 internal const val UNDO_SECONDS_KEY = "undo_seconds"
-internal const val DEFAULT_UNDO_SECONDS = 5
+internal const val DEFAULT_UNDO_SECONDS = 2
 internal const val MAX_UNDO_SECONDS = 30
 
 internal fun validUndoSeconds(value: Int): Int =

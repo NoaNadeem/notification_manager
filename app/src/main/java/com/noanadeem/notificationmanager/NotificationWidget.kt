@@ -159,7 +159,12 @@ private fun visibleEvents(context: Context, selectedAccount: String): List<Calen
     val dismissals = DismissalStore(context).read(selectedAccount)
     val events = LocalStateStore(context).readEvents(selectedAccount).withoutDismissals(dismissals)
         .filter { isInDisplayWindow(it.start, now, back, ahead, preset = preset) }
-    return sortCalendarEvents(events).filterNot { prefs(context).contains(pendingKey(it)) }
+    return sortCalendarEvents(events).filterNot {
+        val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(it), null))
+        pending != null && !widgetCanUndo(pending.id,
+            prefs(context).getString(newestWidgetUndoKey(selectedAccount), null),
+            pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
+    }
 }
 
 internal class NotificationWidget : AppWidgetProvider() {
@@ -409,7 +414,11 @@ internal class NotificationWidgetService : RemoteViewsService() {
             val eventPosition = if (laterIndex >= 0 && position > laterIndex) position - 1 else position
             val event = events.getOrNull(eventPosition) ?: return null
             val key = eventKey(event)
-            val expanded = prefs(context).getString("expanded_$widgetId", null) == key
+            val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(event), null))
+            val canUndo = pending != null && widgetCanUndo(pending.id,
+                prefs(context).getString(newestWidgetUndoKey(pending.account), null),
+                pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
+            val expanded = !canUndo && prefs(context).getString("expanded_$widgetId", null) == key
             val views = RemoteViews(context.packageName,
                 if (event.isEmphasized()) R.layout.notification_widget_event_green
                 else R.layout.notification_widget_event)
@@ -417,21 +426,24 @@ internal class NotificationWidgetService : RemoteViewsService() {
             if (event.isEmphasized()) views.setInt(R.id.widget_event_root, "setBackgroundResource",
                 skin.widgetBackground())
             views.setTextViewText(R.id.widget_event_title, event.title)
-            views.setTextColor(R.id.widget_event_title, 0xFFFFFFFF.toInt())
+            views.setTextColor(R.id.widget_event_title, if (canUndo) 0xFFBFC7C9.toInt() else 0xFFFFFFFF.toInt())
             views.setTextViewText(R.id.widget_event_age, event.ageDescription())
             views.setViewVisibility(R.id.widget_event_dot,
                 if (event.isTwoDaysOld()) View.VISIBLE else View.GONE)
             views.setTextColor(R.id.widget_event_dot, skin.widgetAccent())
             views.setInt(R.id.widget_tile_dismiss, "setBackgroundResource", skin.widgetDismissBackground())
-            views.setViewVisibility(R.id.widget_event_one_day, View.VISIBLE)
+            views.setViewVisibility(R.id.widget_event_one_day, if (canUndo) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.widget_event_one_day, if (event.isRecurring) "✎" else "1D")
-            views.setViewVisibility(R.id.widget_event_undo, View.GONE)
+            views.setViewVisibility(R.id.widget_event_undo, if (canUndo) View.VISIBLE else View.GONE)
+            views.setTextViewText(R.id.widget_event_undo, "Undo")
+            views.setBoolean(R.id.widget_event_undo, "setEnabled", canUndo)
             views.setViewVisibility(R.id.widget_event_options, if (expanded) View.VISIBLE else View.GONE)
             views.setInt(R.id.widget_event_title, "setMaxLines", if (expanded) 100 else 3)
             views.setViewVisibility(R.id.widget_event_location,
                 if (event.location != null) View.VISIBLE else View.GONE)
             views.setTextViewText(R.id.widget_event_location, event.location ?: "")
-            run {
+            if (canUndo) click(views, R.id.widget_event_undo, event, "undo_latest")
+            else {
                 click(views, R.id.widget_event_title, event, "more")
                 click(views, R.id.widget_event_age, event, "more")
                 click(views, R.id.widget_event_one_day, event, if (event.isRecurring) "open" else "1D")

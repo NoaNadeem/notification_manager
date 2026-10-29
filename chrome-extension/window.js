@@ -3,7 +3,6 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
-import { flyoutPointerInReach } from "./layout.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openInBrowser } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
@@ -59,9 +58,6 @@ let refreshBusy = false;
 let suppressNextClick = false;
 let wheelResetTimer;
 let dateTarget;
-let openFlyoutRow;
-let openFlyout;
-let openFlyoutTrigger;
 let searchActive = false;
 let realEventsOnly = false;
 let remoteSearch;
@@ -317,38 +313,6 @@ function closeMenu() {
   menuToggle.setAttribute("aria-expanded", "false");
 }
 
-function showFlyout(row, flyout, trigger) {
-  if (openFlyoutRow === row) return;
-  if (openFlyoutRow) hideFlyout(openFlyoutRow);
-  openFlyoutRow = row;
-  openFlyout = flyout;
-  openFlyoutTrigger = trigger;
-  row.classList.add("flyout-open");
-  trigger.setAttribute("aria-expanded", "true");
-  // The reserved lane keeps every title clear, with 7D directly left of 1D.
-  const bounds = trigger.getBoundingClientRect();
-  document.body.append(flyout);
-  flyout.classList.add("active");
-  const panel = flyout.getBoundingClientRect();
-  const sevenDays = flyout.querySelector('[data-align-trigger]').getBoundingClientRect();
-  flyout.style.left = `${bounds.left - 6 - (sevenDays.right - panel.left)}px`;
-  flyout.style.top = `${bounds.top - (sevenDays.top - panel.top)}px`;
-}
-
-function hideFlyout(row) {
-  if (openFlyoutRow !== row) return;
-  const flyout = openFlyout;
-  const trigger = openFlyoutTrigger;
-  openFlyoutRow = undefined;
-  openFlyout = undefined;
-  openFlyoutTrigger = undefined;
-  row.classList.remove("flyout-open");
-  trigger?.setAttribute("aria-expanded", "false");
-  flyout?.classList.remove("active");
-  // State is cleared before reparenting because a focused button can fire focusout.
-  if (flyout && row.isConnected) trigger.parentElement.append(flyout);
-}
-
 async function load(interactive = false) {
   if (loading || (signedOut && !interactive)) return;
   loading = true;
@@ -432,7 +396,6 @@ function renderNow() {
   $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
   $("#header-undo").setAttribute("aria-label", $("#header-undo").title);
   const previousScroll = list.scrollTop;
-  if (openFlyoutRow) hideFlyout(openFlyoutRow);
   list.replaceChildren();
   const filtered = currentVisibleEvents();
   count.textContent = `${filtered.length} event${filtered.length === 1 ? "" : "s"}`;
@@ -588,39 +551,20 @@ function renderEvent(event) {
   }
   const actions = document.createElement("div");
   actions.className = "actions";
-  let flyoutTrigger;
+  actions.setAttribute("role", "group");
+  actions.setAttribute("aria-label", `Actions for ${event.summary || "event"}`);
+  top.append(details, actions);
+  row.append(top);
   if (pending) {
     actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`,
       () => { void undo.undo(); }, "tile undo"));
-  } else if (isRecurring(event)) {
-    actions.append(button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
-    actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
-  } else {
-    flyoutTrigger = moveTile(event, "1D", { days: 1 }, "tile primary");
-    flyoutTrigger.setAttribute("aria-haspopup", "true");
-    flyoutTrigger.setAttribute("aria-expanded", "false");
-    flyoutTrigger.addEventListener("pointerenter", () => showFlyout(row, flyout, flyoutTrigger));
-    flyoutTrigger.addEventListener("focus", () => showFlyout(row, flyout, flyoutTrigger));
-    flyoutTrigger.addEventListener("keydown", (key) => {
-      if (key.key === "Tab" && !key.shiftKey || key.key === "ArrowDown") {
-        key.preventDefault();
-        showFlyout(row, flyout, flyoutTrigger);
-        flyout.querySelector("button:not(:disabled)")?.focus();
-      }
-    });
-    row.addEventListener("focusout", (event) => {
-      if (!row.contains(event.relatedTarget) && !flyout.contains(event.relatedTarget)) hideFlyout(row);
-    });
-    actions.append(flyoutTrigger);
+    return row;
   }
-  top.append(details, actions);
-  row.append(top);
-  if (pending || isRecurring(event)) return row;
-  const flyout = document.createElement("div");
-  flyout.className = "flyout";
-  const topRow = document.createElement("div");
-  const bottomRow = document.createElement("div");
-  topRow.className = bottomRow.className = "tile-row";
+  if (isRecurring(event)) {
+    actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"),
+      button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
+    return row;
+  }
   const calendarTile = button("📅", "Choose a date", () => {
     void undo.commit();
     dateTarget = event;
@@ -634,33 +578,18 @@ function renderEvent(event) {
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
   });
-  for (const days of [2, 3, 4]) topRow.append(moveTile(event, `${days}D`, { days }));
-  const sevenDays = moveTile(event, "7D", { days: 7 });
-  sevenDays.dataset.alignTrigger = "true";
-  topRow.append(calendarTile, sevenDays);
+  const fourHours = moveTile(event, "4H", { hours: 4 });
   if (event.start.date) {
-    bottomRow.append(moveTile(event, "0D", { days: 0 }));
-    for (let i = 0; i < 2; i++) {
-      const spacer = button("", "Unavailable for all-day events", () => {});
-      spacer.disabled = true;
-      bottomRow.append(spacer);
-    }
-  } else {
-    for (const hours of [2, 3, 4]) bottomRow.append(moveTile(event, `${hours}H`, { hours }));
+    fourHours.disabled = true;
+    fourHours.title = "Hour moves are unavailable for all-day events";
   }
-  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")),
-    button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
-  flyout.append(...topRow.children, ...bottomRow.children);
-  flyout.addEventListener("focusout", (event) => {
-    if (!flyout.contains(event.relatedTarget) && !row.contains(event.relatedTarget)) hideFlyout(row);
-  });
-  flyout.addEventListener("keydown", (key) => {
-    if (key.key === "Tab" && key.shiftKey && document.activeElement === flyout.querySelector("button:not(:disabled)")) {
-      key.preventDefault();
-      flyoutTrigger.focus();
-    }
-  });
-  actions.append(flyout);
+  actions.append(
+    button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"),
+    button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")),
+    calendarTile,
+    fourHours,
+    ...[7, 3, 2, 1].map(days => moveTile(event, `${days}D`, { days }))
+  );
   return row;
 }
 
@@ -874,7 +803,7 @@ $("#header-undo").addEventListener("click", () => { void undo.undo(); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.
 document.addEventListener("pointerdown", (event) => {
-  if (event.button === 0 && event.target.closest(".event button, .flyout button")) renderGuard.begin(event.pointerId);
+  if (event.button === 0 && event.target.closest(".event button")) renderGuard.begin(event.pointerId);
 }, true);
 window.addEventListener("pointerup", (event) => renderGuard.end(event.pointerId), true);
 window.addEventListener("pointercancel", (event) => renderGuard.end(event.pointerId), true);
@@ -1095,26 +1024,6 @@ datePicker.addEventListener("change", () => {
 });
 calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
 $("#connect").addEventListener("click", () => void load(true));
-document.addEventListener("pointermove", (pointer) => {
-  if (!openFlyoutRow || !openFlyout || !openFlyoutTrigger) return;
-  if (!flyoutPointerInReach(pointer.clientX, pointer.clientY,
-    openFlyoutTrigger.getBoundingClientRect(), openFlyout.getBoundingClientRect())) {
-    hideFlyout(openFlyoutRow);
-  }
-});
-document.addEventListener("pointerdown", (pointer) => {
-  if (openFlyoutRow && !openFlyout?.contains(pointer.target) && !openFlyoutTrigger?.contains(pointer.target)) {
-    hideFlyout(openFlyoutRow);
-  }
-});
-document.addEventListener("keydown", (key) => {
-  if (key.key === "Escape" && openFlyoutRow) {
-    openFlyoutTrigger?.focus();
-    hideFlyout(openFlyoutRow);
-  }
-});
-list.addEventListener("scroll", () => { if (openFlyoutRow) hideFlyout(openFlyoutRow); });
-window.addEventListener("resize", () => { if (openFlyoutRow) hideFlyout(openFlyoutRow); });
 window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {

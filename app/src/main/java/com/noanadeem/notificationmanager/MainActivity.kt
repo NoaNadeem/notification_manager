@@ -955,6 +955,12 @@ private fun CalendarLoginScreen(
             movingEventId = movingEventId,
             committingActionIds = committingActionIds,
             undoableEventId = undoState.pendingAction?.event?.id,
+            undoActionDescription = undoState.pendingAction?.let { action ->
+                when (action) {
+                    is UndoableAction.Move -> moveUndoDescription(action.event, action.target, action.stagedAt)
+                    is UndoableAction.Dismiss -> "Dismissed"
+                }
+            },
             undoDescription = undoState.pendingAction?.let { "Undo: ${it.event.title}" },
             onUndo = { undoState = UndoState.Idle },
             onOtherAction = {
@@ -1057,6 +1063,7 @@ private fun CalendarConnectedScreen(
     movingEventId: String?,
     committingActionIds: Set<String>,
     undoableEventId: String?,
+    undoActionDescription: String?,
     undoDescription: String?,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
@@ -1404,7 +1411,7 @@ private fun CalendarConnectedScreen(
                                 )
                                 }
                                 Text(
-                                    event.ageDescription(),
+                                    if (awaitingUndo) undoActionDescription.orEmpty() else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp)

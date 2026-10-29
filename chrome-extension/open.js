@@ -1,3 +1,5 @@
+import { MANAGER_WIDTH, MANAGER_HEIGHT } from "./window-size.js";
+
 export async function managerWindowMode(api) {
   const tab = await api.tabs.getCurrent();
   if (tab?.id == null) throw new Error("Manager tab is unavailable.");
@@ -14,9 +16,9 @@ export async function toggleManagerWindow(api) {
   }
   // Move the existing page back into a centered dedicated window.
   await api.windows.create({
-    tabId: tab.id, type: "popup", width: 520, height: 720,
-    left: Math.round(current.left + Math.max(0, current.width - 520) / 2),
-    top: Math.round(current.top + Math.max(0, current.height - 720) / 2),
+    tabId: tab.id, type: "popup", width: MANAGER_WIDTH, height: MANAGER_HEIGHT,
+    left: Math.round(current.left + Math.max(0, current.width - MANAGER_WIDTH) / 2),
+    top: Math.round(current.top + Math.max(0, current.height - MANAGER_HEIGHT) / 2),
     focused: true, incognito: current.incognito
   });
   return "popup";

@@ -325,12 +325,14 @@ function showFlyout(row, flyout, trigger) {
   openFlyoutTrigger = trigger;
   row.classList.add("flyout-open");
   trigger.setAttribute("aria-expanded", "true");
-  // Overlay the ribbon without changing the row or its title wrapping.
+  // The reserved lane keeps every title clear, with 7D directly left of 1D.
   const bounds = trigger.getBoundingClientRect();
   document.body.append(flyout);
   flyout.classList.add("active");
-  flyout.style.left = `${Math.max(4, bounds.left - flyout.getBoundingClientRect().width - 8)}px`;
-  flyout.style.top = `${bounds.top + bounds.height / 2}px`;
+  const panel = flyout.getBoundingClientRect();
+  const sevenDays = flyout.querySelector('[data-align-trigger]').getBoundingClientRect();
+  flyout.style.left = `${bounds.left - 6 - (sevenDays.right - panel.left)}px`;
+  flyout.style.top = `${bounds.top - (sevenDays.top - panel.top)}px`;
 }
 
 function hideFlyout(row) {
@@ -632,24 +634,22 @@ function renderEvent(event) {
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
   });
+  for (const days of [2, 3, 4]) topRow.append(moveTile(event, `${days}D`, { days }));
+  const sevenDays = moveTile(event, "7D", { days: 7 });
+  sevenDays.dataset.alignTrigger = "true";
+  topRow.append(calendarTile, sevenDays);
   if (event.start.date) {
-    topRow.append(moveTile(event, "0D", { days: 0 }));
+    bottomRow.append(moveTile(event, "0D", { days: 0 }));
     for (let i = 0; i < 2; i++) {
       const spacer = button("", "Unavailable for all-day events", () => {});
       spacer.disabled = true;
-      topRow.append(spacer);
+      bottomRow.append(spacer);
     }
   } else {
-    for (const hours of [1, 4, 8]) {
-      topRow.append(moveTile(event, `${hours}H`, { hours }));
-    }
+    for (const hours of [2, 3, 4]) bottomRow.append(moveTile(event, `${hours}H`, { hours }));
   }
-  topRow.append(calendarTile);
-  topRow.append(button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
-  for (const days of [2, 3, 4, 7]) {
-    bottomRow.append(moveTile(event, `${days}D`, { days }));
-    if (days === 4) bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")));
-  }
+  bottomRow.append(button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")),
+    button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"));
   flyout.append(...topRow.children, ...bottomRow.children);
   flyout.addEventListener("focusout", (event) => {
     if (!flyout.contains(event.relatedTarget) && !row.contains(event.relatedTarget)) hideFlyout(row);

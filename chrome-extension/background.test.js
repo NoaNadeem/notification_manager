@@ -60,13 +60,13 @@ test("Chrome startup opens one dedicated manager window and toolbar reuses it", 
   await nextTurn();
   assert.equal(state.calls.created.length, 1);
   assert.equal(state.calls.created[0].type, "popup");
-  assert.equal(state.calls.created[0].width, 520);
-  assert.equal(state.calls.created[0].left, 2460);
+  assert.equal(state.calls.created[0].width, 780);
+  assert.equal(state.calls.created[0].left, 2330);
   assert.equal(state.calls.created[0].top, 103);
   assert.deepEqual(state.storage.managerWindow, { windowId: 2, tabId: 2 });
   state.listeners.clicked();
   await nextTurn();
-  assert.deepEqual(state.calls.focused, [{ id: 2, options: { left: 2460, top: 103, focused: true } }]);
+  assert.deepEqual(state.calls.focused, [{ id: 2, options: { left: 2330, top: 103, focused: true } }]);
   delete globalThis.chrome;
 });
 
@@ -93,6 +93,8 @@ test("an extension page that survived the update reloads its new code", async ()
   await nextTurn();
   assert.deepEqual(state.calls.tabsReloaded, [20]);
   assert.equal(state.calls.tabsUpdated.length, 0);
+  assert.equal(state.calls.focused.at(-1).options.width, 780);
+  assert.equal(state.calls.focused.at(-1).options.height, 720);
   delete globalThis.chrome;
 });
 

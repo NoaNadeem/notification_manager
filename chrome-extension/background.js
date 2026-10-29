@@ -1,7 +1,7 @@
+import { MANAGER_WIDTH as WIDTH, MANAGER_HEIGHT as HEIGHT } from "./window-size.js";
+
 const MANAGER_URL = chrome.runtime.getURL("window.html");
 const MANAGER_WINDOW_KEY = "managerWindow";
-const WIDTH = 520;
-const HEIGHT = 720;
 let opening = false;
 
 function managerTab(window) {
@@ -20,7 +20,7 @@ function oldManagerWindow(windows) {
   // default Google page during an unpacked-extension reload. Only reclaim a
   // single-tab popup with the exact dimensions of our dedicated window.
   const candidates = windows.filter((window) =>
-    window.type === "popup" && window.width === WIDTH && window.height === HEIGHT &&
+    window.type === "popup" && window.width === 520 && window.height === HEIGHT &&
     window.tabs?.length === 1 &&
     /^https:\/\/(?:www\.)?google\.com\/?(?:\?.*)?$/.test(window.tabs[0].url || "")
   );
@@ -59,7 +59,11 @@ async function openManager() {
     if (existing) {
       await rememberManager(existing);
       await chrome.tabs.update(managerTab(existing).id, { active: true });
-      await chrome.windows.update(existing.id, existing.type === "popup" ? { ...position, focused: true } : { focused: true });
+      await chrome.windows.update(existing.id, existing.type === "popup" ? {
+        ...position,
+        ...(existing.width === 520 && existing.height === HEIGHT ? { width: WIDTH, height: HEIGHT } : {}),
+        focused: true
+      } : { focused: true });
       return;
     }
     const created = await chrome.windows.create({
@@ -110,7 +114,11 @@ async function restoreManagerAfterUpdate(allowLegacyPopup) {
     }
     if (reloaded) {
       await rememberManager({ ...target, tabs: [{ ...target.tabs[0], url: MANAGER_URL }] });
-      await chrome.windows.update(target.id, { focused: true });
+      await chrome.windows.update(target.id, {
+        ...(target.width === 520 && target.height === HEIGHT
+          ? { ...await centeredPosition(windows), width: WIDTH, height: HEIGHT } : {}),
+        focused: true
+      });
     }
   } finally {
     opening = false;

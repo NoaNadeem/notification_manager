@@ -152,7 +152,7 @@ test("window toggle moves a normal browser tab back into a centered popup", asyn
   };
   assert.equal(await managerWindowMode(api), "normal");
   assert.equal(await toggleManagerWindow(api), "popup");
-  assert.deepEqual(calls, [{ tabId: 20, type: "popup", width: 520, height: 720, left: 440, top: 130, focused: true, incognito: false }]);
+  assert.deepEqual(calls, [{ tabId: 20, type: "popup", width: 780, height: 720, left: 310, top: 130, focused: true, incognito: false }]);
 });
 
 test("window toggle moves a popup back into an existing Chrome window", async () => {

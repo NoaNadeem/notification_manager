@@ -4,7 +4,7 @@ For future changes to Notification Manager:
 - Use the existing checkout at `/Users/nadeem/Documents/notification_manager` and sync the latest GitHub changes before editing.
 - After fixing code, run the relevant checks, reload the installed unpacked extension at `chrome://extensions`, and verify the updated UI. Do not leave deployment for the user to do manually.
 - Commit and push completed changes to `https://github.com/NoaNadeem/notification_manager` so they are backed up.
-- Only prepare or publish a phone-app release when explicitly requested. Ordinary fixes may be compiled and tested, but must not bump the Android release version or regenerate a signed release bundle automatically.
+- Only prepare or publish a phone-app release when explicitly requested. Ordinary fixes may be compiled and tested, but must not bump the Android release version or regenerate a signed release bundle automatically. When a phone release is requested, complete its upload and publication to the existing Play internal-testing track without asking again, unless a new permission or legal agreement requires action-time approval.
 - Report any permission or deployment blocker clearly; do not claim a reload or push succeeded without verification.
 
 ## Real calendar data: read-only during agent work

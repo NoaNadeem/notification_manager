@@ -427,7 +427,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 skin.widgetBackground())
             views.setTextViewText(R.id.widget_event_title, event.title)
             views.setTextColor(R.id.widget_event_title, if (canUndo) 0xFFBFC7C9.toInt() else 0xFFFFFFFF.toInt())
-            views.setTextViewText(R.id.widget_event_age, event.ageDescription())
+            views.setTextViewText(R.id.widget_event_age, if (canUndo) pending?.description else event.ageDescription())
             views.setViewVisibility(R.id.widget_event_dot,
                 if (event.isTwoDaysOld()) View.VISIBLE else View.GONE)
             views.setTextColor(R.id.widget_event_dot, skin.widgetAccent())

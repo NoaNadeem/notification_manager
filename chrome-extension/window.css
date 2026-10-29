@@ -29,7 +29,7 @@ main.pulling { user-select:none; cursor:grabbing; }
 .tile { min-width: 37px; height: 31px; padding: 0 7px; border: 0; border-radius: 6px; color: #f0f1f2; background: #3a4049; font-size: 12px; font-weight: 700; }
 .tile.primary { background: #4a515b; }
 .flyout { display: none; padding: 8px; border-radius: 7px; background: #30343b; }
-.flyout.active { display:grid; grid-template-columns:repeat(5,max-content); gap:6px; }
+.flyout.active { display:grid; grid-template-columns:repeat(5,var(--flyout-tile-size)); gap:6px; }
 .tile-row { display: flex; gap: 6px; margin: 3px 0; }
 .tile-row .tile { flex: none; }
 .tile:disabled { opacity: .28; cursor: default; }
@@ -91,8 +91,8 @@ header { position:relative; align-items:flex-start; border-color:var(--border); 
 .tile.saving { min-width:37px; font-size:10px; padding:0 3px; }
 .event.pending .title { opacity:.35; pointer-events:none; }
 .event.pending .location { display:none; }
-.flyout { position:fixed; z-index:30; width:max-content; margin:0; padding:6px; transform:translateY(-50%); background:var(--panel-strong); }
-.flyout .tile { min-width:41px; height:35px; font-size:13px; padding:0 8px; }
+.flyout { position:fixed; z-index:30; width:max-content; margin:0; padding:6px; background:var(--panel-strong); }
+.flyout .tile { width:var(--flyout-tile-size); min-width:0; height:35px; font-size:13px; padding:0; }
 .tile-row { flex-wrap:nowrap; }
 .search-calendar { display:block; margin:18px auto 12px; }
 .search-heading { margin:22px 8px 6px; color:var(--muted); font-size:13px; font-weight:600; }
@@ -130,3 +130,12 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 
 #header-undo:disabled { opacity: .35; cursor: default; }
 .header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Reserve the whole action lane even when closed; hover never shifts titles. */
+:root { --flyout-tile-size:41px; --action-lane:296px; }
+.event-top > .actions { width:var(--action-lane); justify-content:flex-end; align-self:flex-start; }
+.event-top > .actions > .tile.primary { width:41px; min-width:0; height:35px; }
+#event-list { padding-bottom:100px; }
+@media (max-width:450px) {
+  :root { --flyout-tile-size:31px; --action-lane:236px; }
+}

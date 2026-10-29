@@ -267,7 +267,7 @@ internal class NotificationWidget : AppWidgetProvider() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
             }
             else -> {
-                if (command !in setOf("dismiss", "1D", "2D", "3D", "4D", "7D", "0D", "1H", "4H", "8H")) return
+                if (command !in setOf("dismiss", "1D", "2D", "3D", "4D", "7D", "0D", "2H", "3H", "4H")) return
                 if (event.isRecurring && command != "dismiss") return
                 val stagedAt = Instant.now()
                 val description = if (command == "dismiss") "Dismissed" else {
@@ -439,7 +439,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
             }
             if (expanded) {
                 val firstRow = if (event.allDayDate != null) listOf("0D", "", "")
-                    else listOf("1H", "4H", "8H")
+                    else listOf("2H", "3H", "4H")
                 listOf(R.id.widget_tile_a, R.id.widget_tile_b, R.id.widget_tile_c).forEachIndexed { index, id ->
                     views.setTextViewText(id, firstRow[index])
                     if (!event.isRecurring && firstRow[index].isNotEmpty()) click(views, id, event, firstRow[index])

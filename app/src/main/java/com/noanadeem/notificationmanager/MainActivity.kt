@@ -1462,37 +1462,30 @@ private fun CalendarConnectedScreen(
                                             }
                                         )
                                     } else {
+                                    @Composable
+                                    fun MoveChoice(label: String, target: MoveTarget) {
+                                        MoveTile(
+                                            label = label,
+                                            description = if (label == "0D") "Move all-day event to today"
+                                                else "Move event $label from now",
+                                            tooltip = { event.moveDestinationTooltip(target) },
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            modifier = Modifier.size(44.dp),
+                                            onClick = {
+                                                expandedEventId = null
+                                                onMove(event, target)
+                                            }
+                                        )
+                                    }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        val hourChoices = if (event.allDayDate == null) {
-                                            listOf(
-                                                "1H" to MoveTarget.After(Duration.ofHours(1)),
-                                                "4H" to MoveTarget.After(Duration.ofHours(4)),
-                                                "8H" to MoveTarget.After(Duration.ofHours(8))
-                                            )
-                                        } else {
-                                            listOf("0D" to MoveTarget.After(Duration.ZERO))
+                                        for (days in listOf(2L, 3L, 4L)) {
+                                            MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
                                         }
-                                        for ((label, target) in hourChoices) {
-                                            MoveTile(
-                                                label = label,
-                                                description = if (label == "0D") "Move all-day event to today"
-                                                    else "Move event $label from now",
-                                                tooltip = { event.moveDestinationTooltip(target) },
-                                                enabled = movingEventId == null && event.id !in committingActionIds,
-                                                modifier = Modifier.size(44.dp),
-                                                onClick = {
-                                                    expandedEventId = null
-                                                    onMove(event, target)
-                                                }
-                                            )
-                                        }
-                                        repeat(3 - hourChoices.size) { Spacer(modifier = Modifier.size(44.dp)) }
                                         MoveTile(
-                                            label = "📅",
-                                            description = "Choose a calendar date",
+                                            label = "📅", description = "Choose a calendar date",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
@@ -1501,42 +1494,34 @@ private fun CalendarConnectedScreen(
                                                 datePickerEvent = event
                                             }
                                         )
-                                        MoveTile(
-                                            label = "✓",
-                                            description = "Dismiss event in this app",
-                                            enabled = movingEventId == null && event.id !in committingActionIds,
-                                            modifier = Modifier.size(44.dp),
-                                            isDismiss = true,
-                                            onClick = {
-                                                expandedEventId = null
-                                                onDismiss(event)
-                                            }
-                                        )
+                                        MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
                                     }
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        for ((label, days) in listOf("2D" to 2L, "3D" to 3L, "4D" to 4L, "7D" to 7L)) {
-                                            MoveTile(
-                                                label = label,
-                                                description = "Move event $label from now",
-                                                tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(days))) },
-                                                enabled = movingEventId == null && event.id !in committingActionIds,
-                                                modifier = Modifier.size(44.dp),
-                                                onClick = {
-                                                    expandedEventId = null
-                                                    onMove(event, MoveTarget.After(Duration.ofDays(days)))
-                                                }
-                                            )
-                                            if (days == 4L) MoveTile(
-                                                label = "✎",
-                                                description = "Open event in Google Calendar to edit",
-                                                enabled = true,
-                                                modifier = Modifier.size(44.dp),
-                                                onClick = { onOpenEvent(event) }
-                                            )
+                                        if (event.allDayDate == null) {
+                                            for (hours in listOf(2L, 3L, 4L)) {
+                                                MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
+                                            }
+                                        } else {
+                                            MoveChoice("0D", MoveTarget.After(Duration.ZERO))
+                                            repeat(2) { Spacer(modifier = Modifier.size(44.dp)) }
                                         }
+                                        MoveTile(
+                                            label = "✎", description = "Open event in Google Calendar to edit",
+                                            enabled = true, modifier = Modifier.size(44.dp),
+                                            onClick = { onOpenEvent(event) }
+                                        )
+                                        MoveTile(
+                                            label = "✓", description = "Dismiss event in this app",
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            modifier = Modifier.size(44.dp), isDismiss = true,
+                                            onClick = {
+                                                expandedEventId = null
+                                                onDismiss(event)
+                                            }
+                                        )
                                     }
                                     if (movingEventId == event.id || event.id in committingActionIds) {
                                         Text("Saving action…", modifier = Modifier.padding(top = 8.dp))

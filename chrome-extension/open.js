@@ -60,6 +60,12 @@ export async function openInBrowser(api, url) {
   await api.windows.update(target.id, { focused: true });
 }
 
+// Opening a browser tab must not wait for Calendar or Drive writes to finish.
+export function openWithBackgroundSave(api, url, commit, onSaveError) {
+  void Promise.resolve().then(commit).catch(onSaveError);
+  return openInBrowser(api, url);
+}
+
 export function calendarEditUrl(htmlLink) {
   try {
     const url = new URL(htmlLink);

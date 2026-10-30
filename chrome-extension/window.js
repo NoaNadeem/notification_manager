@@ -4,7 +4,7 @@ import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECON
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
-import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openInBrowser } from "./open.js";
+import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openWithBackgroundSave } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
@@ -207,10 +207,9 @@ async function saveSyncState() {
   statusStorageError = await persistSyncState(chrome.storage.local, account, syncState);
   renderSync();
 }
-const openEventOnce = createOpenGuard(async (url) => {
-  await undo.commit();
-  await openInBrowser(chrome, url);
-});
+const openLink = (url) => openWithBackgroundSave(chrome, url, () => undo.commit(),
+  (error) => showError(`Could not save pending action: ${error.message}`));
+const openEventOnce = createOpenGuard(openLink);
 
 function showError(message) { notice.textContent = message; }
 function showInfo(message) { info.textContent = message; }
@@ -489,7 +488,7 @@ function renderSearchFooter() {
       location.title = event.location;
       location.addEventListener("click", (click) => {
         click.preventDefault();
-        void openInBrowser(chrome, location.href)
+        void openLink(location.href)
           .catch((error) => showError(`Could not open location: ${error.message}`));
       });
       row.append(location);
@@ -544,7 +543,7 @@ function renderEvent(event) {
     location.href = locationHref(event.location);
     location.addEventListener("click", (click) => {
       click.preventDefault();
-      void undo.commit().then(() => openInBrowser(chrome, location.href))
+      void openLink(location.href)
         .catch((error) => showError(`Could not open location: ${error.message}`));
     });
     details.append(location);

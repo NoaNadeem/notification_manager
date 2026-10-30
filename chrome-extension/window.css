@@ -131,10 +131,13 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 }
 .event-top { align-items:center; }
 .event-top > .actions { justify-content:flex-end; gap:4px; }
-.event-top > .actions > .tile { width:32px; min-width:0; height:31px; padding:0; }
+.event-top > .actions > .tile { width:42px; min-width:0; height:40px; padding:0; font-size:15px; }
 .event-top > .actions > .tile.undo { width:auto; min-width:52px; padding:0 7px; }
+@media (max-width:600px) {
+  .event-top > .actions > .tile { width:32px; font-size:13px; }
+}
 @media (max-width:450px) {
   .event-top { gap:7px; }
   .event-top > .actions { gap:3px; }
-  .event-top > .actions > .tile { width:25px; font-size:11px; }
+  .event-top > .actions > .tile { width:25px; font-size:12px; }
 }

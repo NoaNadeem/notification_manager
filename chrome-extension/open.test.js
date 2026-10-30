@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calendarEditUrl, calendarEventAction, createOpenGuard, openInBrowser } from "./open.js";
+import { calendarEditUrl, calendarEventAction, createOpenGuard, openInBrowser, openWithBackgroundSave } from "./open.js";
 
 test("title and pencil share validated Calendar URL rules and editor fallback", () => {
   const event = { htmlLink: "https://www.google.com/calendar/event?eid=YWJj" };
@@ -172,4 +172,23 @@ test("window toggle moves a popup back into an existing Chrome window", async ()
   };
   assert.equal(await toggleManagerWindow(api), "normal");
   assert.deepEqual(calls, [["move", 20, { windowId: 1, index: -1 }], ["activate", 20, { active: true }], ["focus", 1, { focused: true }]]);
+});
+
+
+test("event links open while an earlier save is still blocked, and save errors stay visible", async () => {
+  let rejectSave;
+  const blockedSave = new Promise((_, reject) => { rejectSave = reject; });
+  const tabs = [];
+  const errors = [];
+  const api = {
+    windows: { getLastFocused: async () => ({id: 12, type: "normal", incognito: false}), update: async () => {} },
+    tabs: { create: async (options) => { tabs.push(options.url); } }
+  };
+  const opening = openWithBackgroundSave(api, "https://calendar.google.com/event", () => blockedSave, error => errors.push(error.message));
+  await opening;
+  assert.deepEqual(tabs, ["https://calendar.google.com/event"]);
+  assert.deepEqual(errors, []);
+  rejectSave(new Error("Offline save"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(errors, ["Offline save"]);
 });

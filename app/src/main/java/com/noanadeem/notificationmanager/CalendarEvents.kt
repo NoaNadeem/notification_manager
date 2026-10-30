@@ -277,7 +277,7 @@ internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<C
             val id = item.optString("id")
             if (id.isBlank()) continue
             val end = item.optJSONObject("end")?.let { endObject ->
-                runCatching { parseEventInstant(endObject) }.getOrNull()
+                runCatching { parseEventInstant(endObject, calendarZone) }.getOrNull()
             }
             val attendees = item.optJSONArray("attendees")
             val hasOtherAttendees = attendees != null && (0 until attendees.length()).any { attendeeIndex ->
@@ -322,11 +322,17 @@ internal suspend fun fetchDismissedEventTitle(
     getCalendarJson(url, accessToken).optString("summary").takeIf { it.isNotBlank() }
 }
 
+internal fun undoMoveMatches(start: Instant, end: Instant, original: CalendarEvent, moved: CalendarEvent?): Boolean =
+    (start == original.start && end == original.end) ||
+        (moved != null && start == moved.start && end == moved.end)
+
 internal suspend fun moveCalendarEvent(
     accessToken: String,
     calendarEvent: CalendarEvent,
     target: MoveTarget,
-    now: Instant = Instant.now()
+    now: Instant = Instant.now(),
+    restoreOriginal: CalendarEvent? = null,
+    expectedMoved: CalendarEvent? = null
 ): CalendarEvent = withContext(Dispatchers.IO) {
     require(!calendarEvent.isRecurring) { "Recurring events can only be dismissed or edited in Google Calendar." }
     val eventUrl = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
@@ -345,7 +351,22 @@ internal suspend fun moveCalendarEvent(
     }
     val originalStart = event.getJSONObject("start")
     val originalEnd = event.getJSONObject("end")
-    val movedEvent = if (originalStart.has("date")) {
+    val movedEvent = if (restoreOriginal != null) {
+        val currentStart = parseEventInstant(originalStart, calendarEvent.calendarZone)
+        val currentEnd = parseEventInstant(originalEnd, calendarEvent.calendarZone)
+        require(undoMoveMatches(currentStart, currentEnd, restoreOriginal, expectedMoved)) {
+            "This event changed after your action. Refresh and review it before undoing."
+        }
+        if (currentStart == restoreOriginal.start && currentEnd == restoreOriginal.end) return@withContext restoreOriginal
+        if (restoreOriginal.allDayDate != null) {
+            event.put("start", JSONObject().put("date", restoreOriginal.allDayDate.toString()))
+            event.put("end", JSONObject().put("date", requireNotNull(restoreOriginal.end).atZone(restoreOriginal.calendarZone).toLocalDate().toString()))
+        } else {
+            event.put("start", movedDateTime(restoreOriginal.start, restoreOriginal.calendarZone, originalStart))
+            event.put("end", movedDateTime(requireNotNull(restoreOriginal.end), restoreOriginal.calendarZone, originalEnd))
+        }
+        restoreOriginal
+    } else if (originalStart.has("date")) {
         val startDate = LocalDate.parse(originalStart.getString("date"))
         val endDate = LocalDate.parse(originalEnd.getString("date"))
         val (nextStart, nextEnd) = shiftAllDayDates(
@@ -360,7 +381,8 @@ internal suspend fun moveCalendarEvent(
         event.put("end", JSONObject().put("date", nextEnd.toString()))
         calendarEvent.copy(
             start = nextStart.atStartOfDay(calendarEvent.calendarZone).toInstant(),
-            allDayDate = nextStart
+            allDayDate = nextStart,
+            end = nextEnd.atStartOfDay(calendarEvent.calendarZone).toInstant()
         )
     } else {
         val originalStartInstant = parseEventInstant(originalStart)
@@ -372,7 +394,7 @@ internal suspend fun moveCalendarEvent(
             .getOrDefault(ZoneId.systemDefault())
         event.put("start", movedDateTime(nextStart, zone, originalStart))
         event.put("end", movedDateTime(nextEnd, zone, originalEnd))
-        calendarEvent.copy(start = nextStart)
+        calendarEvent.copy(start = nextStart, end = nextEnd)
     }
 
     val updateUrlBuilder = Uri.parse(eventUrl).buildUpon()
@@ -479,7 +501,8 @@ private fun movedDateTime(instant: Instant, zone: ZoneId, original: JSONObject):
             }
         }
 
-private fun parseEventInstant(value: JSONObject): Instant {
+private fun parseEventInstant(value: JSONObject, calendarZone: ZoneId = ZoneId.systemDefault()): Instant {
+    if (value.has("date")) return LocalDate.parse(value.getString("date")).atStartOfDay(calendarZone).toInstant()
     val dateTime = value.getString("dateTime")
     return runCatching { OffsetDateTime.parse(dateTime).toInstant() }
         .getOrElse {

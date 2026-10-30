@@ -203,9 +203,9 @@ test("a canceled older timer cannot commit the newest Undo early", async () => {
 });
 
 
-test("Undo Time accepts only whole seconds from 1 through 30", () => {
-  for (const value of [1, 5, 30, " 12 "]) assert.equal(parseUndoSeconds(value), Number(value));
-  for (const value of [0, 31, -1, 1.5, "", "1e1", "5.5", null, "bad"]) assert.equal(parseUndoSeconds(value), null);
+test("Undo Time accepts only whole seconds from 0 through 30", () => {
+  for (const value of [0, 1, 5, 30, " 12 "]) assert.equal(parseUndoSeconds(value), Number(value));
+  for (const value of [31, -1, 1.5, "", "1e1", "5.5", null, "bad"]) assert.equal(parseUndoSeconds(value), null);
 });
 
 test("Undo defaults to two seconds and snapshots each new action's chosen delay", async () => {
@@ -220,4 +220,45 @@ test("Undo defaults to two seconds and snapshots each new action's chosen delay"
   assert.deepEqual(delays, [2_000, 30_000, 1_000]);
   await undo.undo();
   await undo.queue;
+});
+
+test("header Undo remains available after saving and reverses only the latest action", async () => {
+  const reversed = [];
+  const undo = new UndoController(async () => true, () => {}, () => 1, () => {}, () => {}, async () => {}, async action => reversed.push(action.id));
+  await undo.stage({id: "first"});
+  await undo.commit();
+  assert.equal(undo.current, null);
+  assert.equal(undo.latestAction.id, "first");
+  await undo.stage({id: "second"});
+  await undo.commit();
+  await undo.undoLast();
+  assert.deepEqual(reversed, ["second"]);
+  assert.equal(undo.latestAction, null);
+});
+
+test("zero seconds commits immediately but preserves header Undo through an in-flight save", async () => {
+  let finish;
+  const calls = [];
+  const undo = new UndoController(() => new Promise(resolve => { finish = resolve; }), () => {}, () => 1, () => {}, () => {}, async () => {}, async action => calls.push(action.id));
+  undo.undoSeconds = 0;
+  await undo.stage({id: "immediate"});
+  assert.equal(undo.current, null);
+  assert.equal(undo.latestAction.id, "immediate");
+  const reversing = undo.undoLast();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, []);
+  finish(true);
+  await reversing;
+  assert.deepEqual(calls, ["immediate"]);
+});
+
+test("failed reversal keeps header Undo available for retry", async () => {
+  let fail = true;
+  const undo = new UndoController(async () => true, () => {}, () => 1, () => {}, () => {}, async () => {}, async () => { if (fail) throw Error("Offline"); });
+  await undo.stage({id: "retry"}); await undo.commit();
+  await assert.rejects(undo.undoLast(), /Offline/);
+  assert.equal(undo.latestAction.id, "retry");
+  assert.equal(undo.reverting, false);
+  fail = false; await undo.undoLast();
+  assert.equal(undo.latestAction, null);
 });

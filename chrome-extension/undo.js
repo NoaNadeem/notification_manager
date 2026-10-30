@@ -4,17 +4,20 @@ export const UNDO_MS = DEFAULT_UNDO_SECONDS * 1_000;
 export function parseUndoSeconds(value) {
   const seconds = typeof value === "number" ? value
     : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value.trim()) : NaN;
-  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 30 ? seconds : null;
+  return Number.isInteger(seconds) && seconds >= 0 && seconds <= 30 ? seconds : null;
 }
 
 export class UndoController {
-  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}, onQueue = async () => {}) {
+  constructor(onCommit, onChange, schedule = (fn, ms) => globalThis.setTimeout(fn, ms), cancel = (id) => globalThis.clearTimeout(id), onUndo = () => {}, onQueue = async () => {}, onRevert = async () => {}) {
     this.onCommit = onCommit;
     this.onChange = onChange;
     this.schedule = schedule;
     this.cancel = cancel;
     this.onUndo = onUndo;
     this.onQueue = onQueue;
+    this.onRevert = onRevert;
+    this.latestAction = null;
+    this.reverting = false;
     this.state = { kind: "Idle" };
     this.timer = null;
     this.undoSeconds = DEFAULT_UNDO_SECONDS;
@@ -31,13 +34,16 @@ export class UndoController {
   }
 
   async stage(action) {
+    if (this.reverting) throw new Error("Wait for Undo to finish before changing another event.");
     // Set up the new Undo immediately; only network saves join the serial queue.
     const timer = this.schedule(() => { if (this.current === action) void this.commit().catch(() => {}); }, (parseUndoSeconds(this.undoSeconds) ?? DEFAULT_UNDO_SECONDS) * 1_000);
     void this.commit().catch(() => {});
     this.state = { kind: "Pending", action };
+    this.latestAction = action;
     this.timer = timer;
     try {
       this.onChange(action);
+      if (this.undoSeconds === 0) void this.commit().catch(() => {});
     } catch (error) {
       this.cancel(timer);
       this.timer = null;
@@ -53,7 +59,25 @@ export class UndoController {
     this.timer = null;
     this.state = { kind: "Idle" };
     this.onChange(null);
+    if (this.latestAction === action) this.latestAction = null;
     this.onUndo(action);
+    this.onChange(null);
+  }
+
+  async undoLast() {
+    const action = this.latestAction;
+    if (!action || this.reverting) return;
+    if (this.current === action) return this.undo();
+    this.reverting = true;
+    this.onChange(this.current);
+    try {
+      await this.queue.catch(() => {});
+      await this.onRevert(action);
+      if (this.latestAction === action) this.latestAction = null;
+    } finally {
+      this.reverting = false;
+      this.onChange(this.current);
+    }
   }
 
   commit() {

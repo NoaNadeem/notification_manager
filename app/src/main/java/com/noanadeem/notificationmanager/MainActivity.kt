@@ -248,6 +248,7 @@ private fun CalendarLoginScreen(
     val dismissalStore = remember(activity) { DismissalStore(activity) }
     val moveHistoryStore = remember(activity) { MoveHistoryStore(activity) }
     val localStateStore = remember(activity) { LocalStateStore(activity) }
+    val lastUndoStore = remember(activity) { LastUndoStore(activity) }
     val sessionStartedAt = remember { System.currentTimeMillis() }
     val connectivity = remember(activity) {
         activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -310,6 +311,24 @@ private fun CalendarLoginScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<PendingMove?>(null) }
     var undoState by remember { mutableStateOf<UndoState>(UndoState.Idle) }
+    var lastUndoAction by remember { mutableStateOf<UndoableAction?>(null) }
+    var lastUndoAccount by remember { mutableStateOf<String?>(null) }
+    var undoInProgress by remember { mutableStateOf(false) }
+    val commitJobs = remember { mutableMapOf<Long, kotlinx.coroutines.Job>() }
+    val committedMoves = remember { mutableMapOf<Long, CalendarEvent>() }
+    LaunchedEffect(accountName) {
+        lastUndoAction = null
+        lastUndoAccount = accountName
+        accountName?.let { selected ->
+            lastUndoStore.read(selected)?.let { saved ->
+                val action = if (saved.move) UndoableAction.Move(saved.event, MoveTarget.After(java.time.Duration.ZERO), "")
+                    else UndoableAction.Dismiss(saved.event)
+                lastUndoAction = action
+                saved.moved?.let { committedMoves[action.createdAtNanos] = it }
+            }
+        }
+    }
+
     var movingEventId by remember { mutableStateOf<String?>(null) }
     var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf(
@@ -377,7 +396,7 @@ private fun CalendarLoginScreen(
         if (committing !is UndoState.Committing) return
         undoState = committing
         committingActionIds = committingActionIds + action.event.id
-        coroutineScope.launch {
+        commitJobs[action.createdAtNanos] = coroutineScope.launch {
             var commitError: String? = null
             when (action) {
                 is UndoableAction.Move -> {
@@ -385,6 +404,11 @@ private fun CalendarLoginScreen(
                     try {
                         val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target,
                             action.stagedAt)
+                        if (lastUndoAction == action) {
+                            committedMoves.clear()
+                            committedMoves[action.createdAtNanos] = movedEvent
+                            lastUndoStore.write(lastUndoAccount ?: action.event.calendarId, LastUndoRecord(action.event, true, movedEvent))
+                        }
                         val now = Instant.now()
                         recentEvents = recentEvents.mapNotNull {
                             if (it.calendarId == action.event.calendarId && it.id == action.event.id) {
@@ -481,6 +505,82 @@ private fun CalendarLoginScreen(
                 }
             }
             undoState = undoState.finishCommit(action, commitError)
+            commitJobs.remove(action.createdAtNanos)
+        }
+    }
+
+    fun stageForUndo(action: UndoableAction) {
+        if (undoInProgress) {
+            actionError = "Wait for Undo to finish before changing another event."
+            return
+        }
+        undoState = undoState.stageNextAction(action, ::commitAction)
+        committedMoves.clear()
+        lastUndoAction = action
+        lastUndoAccount = accountName ?: action.event.calendarId
+        runCatching { lastUndoStore.write(lastUndoAccount!!, LastUndoRecord(action.event, action is UndoableAction.Move)) }
+            .onFailure { Log.w("NotificationManagerUndo", "Could not remember Undo", it) }
+        if (undoSeconds == 0) commitAction(action)
+    }
+
+    fun cancelInlineUndo() {
+        if (lastUndoAction == undoState.pendingAction) {
+            lastUndoAccount?.let { lastUndoStore.write(it, null) }
+            lastUndoAction = null
+        }
+        undoState = UndoState.Idle
+    }
+
+    fun undoLastAction() {
+        val action = lastUndoAction ?: return
+        if (undoInProgress) return
+        if (undoState.pendingAction == action) { cancelInlineUndo(); return }
+        val selectedAccount = lastUndoAccount ?: return
+        if (selectedAccount != accountName) {
+            actionError = "Reconnect the account that performed this action."
+            return
+        }
+        undoInProgress = true
+        coroutineScope.launch {
+            try {
+                commitJobs[action.createdAtNanos]?.join()
+                val token = currentAccessToken ?: throw IllegalStateException("Reconnect Calendar to undo this action.")
+                val restored = when (action) {
+                    is UndoableAction.Move -> {
+                        val expected = committedMoves[action.createdAtNanos]
+                        moveCalendarEvent(token, action.event, action.target, action.stagedAt,
+                            restoreOriginal = action.event, expectedMoved = expected)
+                    }
+                    is UndoableAction.Dismiss -> {
+                        dismissals = dismissalMutex.withLock {
+                            val records = dismissalStore.read(selectedAccount)
+                            val previous = records.find { it.eventId == action.event.id && it.eventStartMillis == action.event.start.toEpochMilli() }
+                            val restore = DismissalRecord(action.event.id, action.event.start.toEpochMilli(),
+                                maxOf(System.currentTimeMillis(), (previous?.dismissedAtMillis ?: 0) + 1), action.event.title, restored = true)
+                            mergeDismissals(records, listOf(restore), Instant.now()).also { dismissalStore.write(selectedAccount, it) }
+                        }
+                        saveSync(selectedAccount, syncState.copy(pending = syncState.pending + "${action.event.id}/${action.event.start.toEpochMilli()}"))
+                        // Restore the row locally even if publishing the restoration must be retried.
+                        recentEvents = sortCalendarEvents(recentEvents.filterNot { it.id == action.event.id } + action.event)
+                        dismissals = dismissalMutex.withLock { syncDismissals(token, dismissalStore, selectedAccount) }
+                        saveSync(selectedAccount, syncState.copy(pending = syncState.pending - "${action.event.id}/${action.event.start.toEpochMilli()}"))
+                        action.event
+                    }
+                }
+                recentEvents = sortCalendarEvents((recentEvents.filterNot { it.id == restored.id } + restored)
+                    .filter { isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) })
+                localStateStore.writeEvents(selectedAccount, recentEvents)
+                NotificationWidget.updateAll(activity)
+                if (lastUndoAction == action) {
+                    lastUndoStore.write(selectedAccount, null)
+                    lastUndoAction = null
+                }
+                committedMoves.remove(action.createdAtNanos)
+                actionError = null
+            } catch (e: Exception) {
+                actionError = "Could not undo “${action.event.title}”: ${e.message}"
+                saveSync(selectedAccount, syncState.copy(error = actionError))
+            } finally { undoInProgress = false }
         }
     }
 
@@ -558,7 +658,7 @@ private fun CalendarLoginScreen(
 
         if (move != null) {
             pendingMove = null
-            undoState = undoState.stageNextAction(UndoableAction.Move(move.event, move.target, accessToken), ::commitAction)
+            stageForUndo(UndoableAction.Move(move.event, move.target, accessToken))
             movingEventId = null
             return
         }
@@ -747,7 +847,7 @@ private fun CalendarLoginScreen(
         }
         if (event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
-            undoState = undoState.stageNextAction(UndoableAction.Move(event, target, token), ::commitAction)
+            stageForUndo(UndoableAction.Move(event, target, token))
             actionError = null
             return
         }
@@ -786,7 +886,7 @@ private fun CalendarLoginScreen(
 
     fun dismissEvent(event: CalendarEvent) {
         if (event.id in committingActionIds) return
-        undoState = undoState.stageNextAction(UndoableAction.Dismiss(event), ::commitAction)
+        stageForUndo(UndoableAction.Dismiss(event))
         actionError = null
     }
 
@@ -961,8 +1061,9 @@ private fun CalendarLoginScreen(
                     is UndoableAction.Dismiss -> "Dismissed"
                 }
             },
-            undoDescription = undoState.pendingAction?.let { "Undo: ${it.event.title}" },
-            onUndo = { undoState = UndoState.Idle },
+            undoDescription = lastUndoAction?.takeUnless { undoInProgress }?.let { "Undo: ${it.event.title}" },
+            onHeaderUndo = ::undoLastAction,
+            onUndo = ::cancelInlineUndo,
             onOtherAction = {
                 undoState.pendingAction?.let(::commitAction)
             },
@@ -1065,6 +1166,7 @@ private fun CalendarConnectedScreen(
     undoableEventId: String?,
     undoActionDescription: String?,
     undoDescription: String?,
+    onHeaderUndo: () -> Unit,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     onActionTile: () -> Unit,
@@ -1194,7 +1296,7 @@ private fun CalendarConnectedScreen(
                     contentDescription = undoDescription ?: "Undo last action"
                 },
                 enabled = undoDescription != null,
-                onClick = { expandedEventId = null; onUndo() }
+                onClick = { expandedEventId = null; onHeaderUndo() }
             ) { Text("↶", style = MaterialTheme.typography.headlineMedium) }
             IconButton(
                 modifier = Modifier.size(40.dp),
@@ -1812,16 +1914,16 @@ private fun CalendarConnectedScreen(
         val seconds = parseUndoSeconds(undoSecondsText)
         AlertDialog(
             onDismissRequest = { showUndoTime = false },
-            title = { Text("Undo Time") },
+            title = { Text("Event Undo Time") },
             text = {
                 OutlinedTextField(
                     value = undoSecondsText,
                     onValueChange = { undoSecondsText = it },
-                    label = { Text("Seconds (1–30)") },
+                    label = { Text("Seconds (0–30)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     isError = seconds == null,
-                    supportingText = { if (seconds == null) Text("Enter a whole number from 1 to 30.") }
+                    supportingText = { Text(if (seconds == null) "Enter a whole number from 0 to 30." else "0 saves immediately. Header Undo has no timer.") }
                 )
             },
             confirmButton = { TextButton(enabled = seconds != null, onClick = {

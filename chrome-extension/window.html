@@ -101,8 +101,9 @@
   </dialog>
   <dialog id="undo-time-dialog">
     <form id="undo-time-form" novalidate>
-      <h2>Undo Time</h2>
-      <label>Seconds (1–30) <input id="undo-seconds" type="number" min="1" max="30" step="1" required autofocus></label>
+      <h2>Event Undo Time</h2>
+      <p>0 saves immediately. Header Undo keeps the last action without a timer.</p>
+      <label>Seconds (0–30) <input id="undo-seconds" type="number" min="0" max="30" step="1" required autofocus></label>
       <p id="undo-time-error" class="notice" role="alert"></p>
       <div class="dialog-actions"><button id="undo-time-cancel" type="button">Cancel</button><button type="submit">Save</button></div>
     </form>

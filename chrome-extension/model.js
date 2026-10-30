@@ -194,7 +194,7 @@ export function mergeDismissals(local, remote, nowMs = Date.now()) {
     if (!record.eventId || record.start < cutoff) continue;
     const key = `${record.eventId}/${record.start}`;
     const current = byKey.get(key);
-    if (!current || current.dismissed < record.dismissed) {
+    if (!current || current.dismissed < record.dismissed || (current.dismissed === record.dismissed && record.restored && !current.restored)) {
       byKey.set(key, record.title || !current?.title ? record : { ...record, title: current.title });
     } else if (!current.title && record.title) {
       byKey.set(key, { ...current, title: record.title });
@@ -204,7 +204,7 @@ export function mergeDismissals(local, remote, nowMs = Date.now()) {
 }
 
 export function recentDismissals(records) {
-  return [...records].sort((a, b) => b.dismissed - a.dismissed ||
+  return records.filter(record => !record.restored).sort((a, b) => b.dismissed - a.dismissed ||
     dismissalKey(a.eventId, a.start).localeCompare(dismissalKey(b.eventId, b.start))).slice(0, 10);
 }
 
@@ -217,7 +217,7 @@ export function parseDismissals(raw) {
 export function dismissalKey(eventId, startMs) { return `${eventId}/${startMs}`; }
 
 export function withoutDismissals(events, dismissals, calendarZone) {
-  const keys = new Set(dismissals.map((record) => dismissalKey(record.eventId, record.start)));
+  const keys = new Set(dismissals.filter(record => !record.restored).map((record) => dismissalKey(record.eventId, record.start)));
   return events.filter((event) => !keys.has(dismissalKey(event.id, eventStartMs(event, calendarZone))));
 }
 

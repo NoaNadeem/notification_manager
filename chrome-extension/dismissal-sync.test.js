@@ -40,3 +40,14 @@ test("dismissal marker preserves optional title from another device", () => {
   const record = { eventId: "Test Event - 2", start: 1000, dismissed: 2000, title: "Test Event - 2" };
   assert.deepEqual(parseDismissalMarker({ id: "fixture", description: JSON.stringify({ version: 2, ...record }) }), record);
 });
+
+test("restoring a dismissal survives stale clients and publishes a newer marker", async () => {
+  const dismissed = {eventId:"synthetic",start:Date.now(),dismissed:100,title:"Synthetic"};
+  const restored = {...dismissed,dismissed:101,restored:true};
+  const markers=[];
+  assert.deepEqual(await publishMissingDismissals([restored],[dismissed],async r=>markers.push(r)),[restored]);
+  assert.deepEqual(markers,[restored]);
+  assert.deepEqual(mergeDismissals([dismissed],[restored]),[restored]);
+  assert.deepEqual(mergeDismissals([restored],[dismissed]),[restored]);
+  assert.deepEqual(parseDismissalMarker({description:JSON.stringify({version:2,...restored})}),restored);
+});

@@ -112,4 +112,14 @@ class DismissalRulesTest {
         }
         assertEquals((12 downTo 3).map { "Test Event - $it" }, recentDismissals(records).map { it.title })
     }
+    @Test
+    fun restoredDismissalWinsOverStaleDeviceRecords() {
+        val now = Instant.now()
+        val dismissed = DismissalRecord("synthetic", now.toEpochMilli(), 100)
+        val restored = dismissed.copy(dismissedAtMillis = 101, restored = true)
+        assertEquals(listOf(restored), mergeDismissals(listOf(dismissed), listOf(restored), now))
+        assertEquals(listOf(restored), mergeDismissals(listOf(restored), listOf(dismissed), now))
+        assertEquals(emptyList<DismissalRecord>(), recentDismissals(listOf(restored)))
+    }
+
 }

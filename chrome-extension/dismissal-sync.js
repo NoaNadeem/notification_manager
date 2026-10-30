@@ -9,14 +9,15 @@ export function parseDismissalMarker(file) {
     throw new Error(`Invalid dismissal marker ${file.id || file.name}.`);
   }
   return { eventId: data.eventId, start: data.start, dismissed: data.dismissed,
+    ...(data.restored === true ? { restored: true } : {}),
     ...(typeof data.title === "string" && data.title ? { title: data.title } : {}) };
 }
 
 export async function publishMissingDismissals(local, remote, createMarker, nowMs = Date.now()) {
   const merged = mergeDismissals(local, remote, nowMs);
-  const remoteKeys = new Set(remote.map((record) => dismissalKey(record.eventId, record.start)));
+  const remoteKeys = new Set(remote.map(record => `${dismissalKey(record.eventId, record.start)}/${record.dismissed}/${!!record.restored}`));
   for (const record of merged) {
-    if (!remoteKeys.has(dismissalKey(record.eventId, record.start))) await createMarker(record);
+    if (!remoteKeys.has(`${dismissalKey(record.eventId, record.start)}/${record.dismissed}/${!!record.restored}`)) await createMarker(record);
   }
   return merged;
 }

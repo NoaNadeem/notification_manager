@@ -69,9 +69,9 @@ class UndoStateTest {
     @Test
     fun undoTimeDefaultsToTwoAndValidatesWholeSecondsUpToThirty() {
         assertEquals(2, DEFAULT_UNDO_SECONDS)
-        for (seconds in listOf(1, 5, 30)) assertEquals(seconds, parseUndoSeconds(seconds.toString()))
-        for (text in listOf("", "0", "31", "-1", "1.5", "1e1", "bad")) assertEquals(null, parseUndoSeconds(text))
-        assertEquals(2, validUndoSeconds(0))
+        for (seconds in listOf(0, 1, 5, 30)) assertEquals(seconds, parseUndoSeconds(seconds.toString()))
+        for (text in listOf("", "31", "-1", "1.5", "1e1", "bad")) assertEquals(null, parseUndoSeconds(text))
+        assertEquals(0, validUndoSeconds(0))
         assertEquals(2, validUndoSeconds(31))
     }
 
@@ -83,4 +83,15 @@ class UndoStateTest {
         assertEquals(true, widgetCanUndo("new", "new", 1_000, 30, 30_999))
         assertEquals(false, widgetCanUndo("new", "new", 1_000, 30, 31_000))
     }
+    @Test
+    fun committedMoveUndoAcceptsOnlyOriginalOrSavedTimes() {
+        val original = CalendarEvent("primary", "synthetic", "Synthetic", Instant.parse("2026-10-30T12:00:00Z"),
+            null, ZoneId.of("UTC"), end = Instant.parse("2026-10-30T13:00:00Z"))
+        val moved = original.copy(start = original.start.plusSeconds(86400), end = original.end!!.plusSeconds(86400))
+        assertTrue(undoMoveMatches(moved.start, moved.end!!, original, moved))
+        assertTrue(undoMoveMatches(original.start, original.end!!, original, moved))
+        assertEquals(false, undoMoveMatches(moved.start.plusSeconds(3600), moved.end!!, original, moved))
+        assertEquals(false, widgetCanUndo("new", "new", 1000, 0, 1000))
+    }
+
 }

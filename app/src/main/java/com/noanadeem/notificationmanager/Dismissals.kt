@@ -23,7 +23,8 @@ internal data class DismissalRecord(
     val eventId: String,
     val eventStartMillis: Long,
     val dismissedAtMillis: Long,
-    val title: String? = null
+    val title: String? = null,
+    val restored: Boolean = false
 ) {
     val key: String get() = "$eventId/$eventStartMillis"
 }
@@ -38,7 +39,7 @@ internal fun mergeDismissals(
         .filter { it.eventId.isNotBlank() && it.eventStartMillis >= cutoff }
         .groupBy { it.key }
         .values.map { records ->
-            val newest = records.maxBy { it.dismissedAtMillis }
+            val newest = records.maxWith(compareBy<DismissalRecord> { it.dismissedAtMillis }.thenBy { it.restored })
             newest.copy(title = newest.title?.takeIf(String::isNotBlank)
                 ?: records.firstNotNullOfOrNull { it.title?.takeIf(String::isNotBlank) })
         }
@@ -46,11 +47,12 @@ internal fun mergeDismissals(
 }
 
 internal fun List<CalendarEvent>.withoutDismissals(records: List<DismissalRecord>): List<CalendarEvent> {
-    val keys = records.mapTo(HashSet()) { it.key }
+    val keys = records.filterNot { it.restored }.mapTo(HashSet()) { it.key }
     return filterNot { "${it.id}/${it.start.toEpochMilli()}" in keys }
 }
 
 internal fun recentDismissals(records: List<DismissalRecord>): List<DismissalRecord> = records
+    .filterNot { it.restored }
     .sortedWith(compareByDescending(DismissalRecord::dismissedAtMillis).thenBy(DismissalRecord::key))
     .take(10)
 
@@ -61,8 +63,8 @@ internal suspend fun publishMissingDismissals(
     createMarker: suspend (DismissalRecord) -> Unit
 ): List<DismissalRecord> {
     val merged = mergeDismissals(local, remote, now)
-    val remoteKeys = remote.mapTo(HashSet()) { it.key }
-    for (record in merged) if (record.key !in remoteKeys) createMarker(record)
+    val remoteKeys = remote.mapTo(HashSet()) { "${it.key}/${it.dismissedAtMillis}/${it.restored}" }
+    for (record in merged) if ("${record.key}/${record.dismissedAtMillis}/${record.restored}" !in remoteKeys) createMarker(record)
     return merged
 }
 
@@ -138,7 +140,7 @@ private fun parseDismissalMarker(file: JSONObject): DismissalRecord {
     val eventId = data.getString("eventId")
     require(eventId.isNotBlank()) { "Dismissal marker is missing an event ID." }
     return DismissalRecord(eventId, data.getLong("start"), data.getLong("dismissed"),
-        data.optString("title").takeIf { it.isNotBlank() })
+        data.optString("title").takeIf { it.isNotBlank() }, data.optBoolean("restored"))
 }
 
 private fun parseDismissals(raw: String): List<DismissalRecord> {
@@ -148,7 +150,7 @@ private fun parseDismissals(raw: String): List<DismissalRecord> {
     return (0 until rows.length()).map { index ->
         val row = rows.getJSONObject(index)
         DismissalRecord(row.getString("eventId"), row.getLong("start"), row.getLong("dismissed"),
-            row.optString("title").takeIf { it.isNotBlank() })
+            row.optString("title").takeIf { it.isNotBlank() }, row.optBoolean("restored"))
     }
 }
 
@@ -158,7 +160,7 @@ private fun serializeDismissals(records: List<DismissalRecord>): String {
         rows.put(JSONObject().put("eventId", record.eventId)
             .put("start", record.eventStartMillis)
             .put("dismissed", record.dismissedAtMillis)
-            .put("title", record.title ?: ""))
+            .put("restored", record.restored).put("title", record.title ?: ""))
     }
     return JSONObject().put("version", 1).put("records", rows).toString()
 }
@@ -179,7 +181,7 @@ private fun createDismissalMarker(token: String, record: DismissalRecord) {
         .put("parents", JSONArray().put("appDataFolder"))
         .put("description", JSONObject().put("version", 2).put("eventId", record.eventId)
             .put("start", record.eventStartMillis).put("dismissed", record.dismissedAtMillis)
-            .put("title", record.title ?: "").toString())
+            .put("restored", record.restored).put("title", record.title ?: "").toString())
     driveRequest("https://www.googleapis.com/drive/v3/files?fields=id", token, "POST",
         metadata.toString(), "application/json; charset=UTF-8")
 }

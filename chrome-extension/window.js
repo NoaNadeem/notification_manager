@@ -71,11 +71,32 @@ const committing = new Set();
 const pendingStores = new Map();
 let retryingSaves = false;
 let saveStatusRequest = 0;
+let lastUndoLoadedAccount;
+let lastUndoWrite = Promise.resolve();
 const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
+  rememberLastUndo();
   render();
-}, undefined, undefined, undefined, persistAction);
+}, undefined, undefined, undefined, persistAction, revertAction);
+
+function rememberLastUndo() {
+  if (!account || lastUndoLoadedAccount !== account.toLowerCase()) return;
+  const key = `lastUndo:${account.toLowerCase()}`;
+  const snapshot = undo.latestAction ? structuredClone(undo.latestAction) : null;
+  lastUndoWrite = lastUndoWrite.then(() => chrome.storage.local.set({ [key]: snapshot }))
+    .catch(error => showError(`Could not remember header Undo: ${error.message}`));
+}
+
+async function restoreLastUndo() {
+  const selected = account.toLowerCase();
+  if (lastUndoLoadedAccount === selected) return;
+  await lastUndoWrite;
+  const key = `lastUndo:${selected}`;
+  const saved = await chrome.storage.local.get(key);
+  undo.latestAction = saved[key] || null;
+  lastUndoLoadedAccount = selected;
+}
 
 function storeFor(accountId) {
   const key = accountId.toLowerCase();
@@ -117,6 +138,7 @@ async function retrySavedActions(manual = false) {
   retryingSaves = true;
   try {
     const records = await storeFor(account).list();
+    if (undo.reverting) return;
     const retries = records.filter(record => manual || record.retryable);
     await Promise.all(retries.map(record => undo.retry(record.action)));
   } catch (error) { showError(`Could not retry saved actions: ${error.message}`); }
@@ -321,6 +343,7 @@ async function load(interactive = false) {
   try {
     const calendar = await primaryCalendar(interactive);
     account = calendar.id;
+    await restoreLastUndo();
     calendarZone = calendar.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const localState = await chrome.storage.local.get(`syncState:${account.toLowerCase()}`);
     syncState = { ...syncState, ...(localState[`syncState:${account.toLowerCase()}`] || {}) };
@@ -390,8 +413,8 @@ async function load(interactive = false) {
 function render() { renderGuard.request(); }
 
 function renderNow() {
-  const latest = undo.current;
-  $("#header-undo").disabled = !latest;
+  const latest = undo.latestAction;
+  $("#header-undo").disabled = !latest || undo.reverting;
   $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
   $("#header-undo").setAttribute("aria-label", $("#header-undo").title);
   const previousScroll = list.scrollTop;
@@ -609,6 +632,39 @@ async function stageAction(event, type, option) {
   }
 }
 
+async function revertAction(action) {
+  if (!account || account.toLowerCase() !== action.account.toLowerCase()) throw new Error("Reconnect the account that performed this action.");
+  // Prevent the durable outbox from reapplying the action after it has been undone.
+  await storeFor(action.account).remove(action.id);
+  if (action.type === "move") {
+    const restored = await moveEvent(action.account, action.event.id, {}, new Date(), {
+      start: action.event.start, end: action.event.end,
+      originalStart: action.destinationStart, originalEnd: action.destinationEnd
+    });
+    events = events.filter(event => event.id !== restored.id);
+    events.push(restored);
+    events.sort(compareEvents);
+  } else {
+    const previous = dismissals.find(record => record.eventId === action.event.id && record.start === eventStartMs(action.event, calendarZone));
+    try {
+      dismissals = await saveDismissal(action.account, {
+        eventId: action.event.id, start: eventStartMs(action.event, calendarZone),
+        dismissed: Math.max(Date.now(), (previous?.dismissed || 0) + 1),
+        title: action.event.summary || "(Untitled event)", restored: true
+      });
+    } finally {
+      const key = `dismissals:${action.account.toLowerCase()}`;
+      const stored = await chrome.storage.local.get(key);
+      dismissals = stored[key] || dismissals;
+      if (!events.some(event => event.id === action.event.id)) events.push(action.event);
+      events.sort(compareEvents);
+    }
+  }
+  await chrome.storage.local.set({ [`cachedEvents:${action.account.toLowerCase()}`]: { events, zone: calendarZone } });
+  showError("");
+  void renderPendingSaves();
+}
+
 async function commitAction(action) {
   const { event } = action;
   const key = eventKey(event);
@@ -798,7 +854,7 @@ $("#open-in-tab").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 $("#retry-saves").addEventListener("click", () => { closeMenu(); void retrySavedActions(true); });
-$("#header-undo").addEventListener("click", () => { void undo.undo(); });
+$("#header-undo").addEventListener("click", () => { void undo.undoLast().catch(error => showError(`Could not undo: ${error.message}`)); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.
 document.addEventListener("pointerdown", (event) => {
@@ -943,7 +999,7 @@ $("#undo-time-form").addEventListener("submit", async event => {
   event.preventDefault();
   const seconds = parseUndoSeconds($("#undo-seconds").value);
   if (seconds === null) {
-    $("#undo-time-error").textContent = "Enter a whole number from 1 to 30.";
+    $("#undo-time-error").textContent = "Enter a whole number from 0 to 30.";
     $("#undo-seconds").focus();
     return;
   }
@@ -1066,6 +1122,7 @@ if (signedOut) {
 } else {
   if (saved.lastAccount) {
     account = saved.lastAccount;
+    await restoreLastUndo();
     const offlineCache = await chrome.storage.local.get([
       `cachedEvents:${account.toLowerCase()}`, `dismissals:${account.toLowerCase()}`,
       `moves:${account.toLowerCase()}`, `syncState:${account.toLowerCase()}`

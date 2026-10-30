@@ -1,55 +1,78 @@
-Notification Manager: review request for Copilot or Claude
+Please perform an independent SECURITY AND CORRECTNESS review of Notification Manager.
 
-Repository: /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager
-Branch: main
-Review the changes since the earlier review that identified concurrent dismissal lost updates, with emphasis on the latest recent-move history and Chrome action-ribbon placement. Read the full handoff at /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/agent-handoff.md and the repository README first. Report confirmed defects separately from speculative risks, with full file paths and line numbers. Please prioritize correctness and user-visible failure modes over cosmetic refactors.
+READ-ONLY REVIEW: do not change product code, tests, dependencies, settings, real data, or installed builds. Do not implement fixes, commit, push, publish, or deploy. Return actionable feedback; the primary coding agent will implement accepted fixes. You are not being asked to contact another person/service.
 
-Safety: Do not move, dismiss, delete, recolor, or edit any existing Google Calendar events. Use local fixtures and unit tests. Do not perform live mutation tests or print OAuth tokens, private event content, or Drive dismissal data. A live test, if truly necessary, requires asking the user first and creating a new event clearly named Test Event - 1, Test Event - 2, etc.
+Checkout: /Users/nadeem/Documents/notification_manager
+Repository: https://github.com/NoaNadeem/notification_manager
+Baseline reviewed previously: 973e39286aa79bae7dbc76934c59d04dd0e5ffcf. Record the actual HEAD you review, because later commits may contain review documentation or fixes. Do not automatically pull/reset a dirty checkout. Read /Users/nadeem/Documents/notification_manager/AGENTS.md first.
 
-Recent work to inspect:
+ABSOLUTE SAFETY BOUNDARY
+The connected account contains real personal Calendar events. NEVER create, move, reschedule, dismiss, recolor, delete, edit/save, or stage Undo actions on real events. Do not use Calendar/Drive write APIs or click action controls in the live app/extension. Do not reload a live page that may commit pending actions. Use code inspection, pure tests, mocked APIs, and isolated synthetic fixtures only. Do not access or print tokens, signing keys, passwords, private event contents, or local account storage. A synthetic reproduction must have external networking blocked. Report limitations instead of using real data.
 
-1. Dismissal sync now uses independent immutable Drive appData markers plus a local-first cache and retry. The old shared JSON file is read only. Concurrent clients should preserve the union of dismissals. A future event dismissal should remain dismissed. Recurring series display individual instances, and dismissal applies to one instance; moves of recurring events are blocked both in UI and in Calendar request code.
-2. Sync status distinguishes Calendar refresh, dismissal sync, local pending changes, stale state, and failure. API success determines whether state is actually synced; network transport is only a hint. The old general Recent actions log was removed. The settings menu now has compact Sync, Window, Recent dismissals, and Events recently moved entries.
-3. The Android home-screen widget supports scrolling, app-style event expansion, direct move/dismiss with Undo, and Wi-Fi-only hourly refresh when the last successful Calendar refresh was at least 59 minutes ago. Search and calendar picking open the app.
-4. Recent dismissals shows up to ten event titles. New dismissals store titles in Drive marker metadata. Old titleless entries can resolve from local cache or a read-only Calendar lookup.
-5. New recent-move history saves minimal records locally and syncs independent Drive appData markers. It records only after a confirmed Calendar update, keeps the newest ten records and excludes records older than 30 days, and retries local records after Drive failures. Android app, widget, and Chrome extension can all create records. Older moves cannot be reconstructed. Verify concurrent clients, duplicate retries, pruning, malformed/partial markers, write failures, account isolation, and that a history failure never reports a successful Calendar move as failed.
-6. The Chrome extension action ribbon now opens directly above its own event instead of choosing above or below or covering the title. The first event's ribbon may cover the header. Verify hover travel from the three-dot button to every tile, click and keyboard behavior, zoom/short windows, and whether list scrolling or pointer movement causes the ribbon to disappear or jump.
+PRODUCT REQUIREMENTS TO CHECK
+- Each account operates on its own primary Calendar; no cross-account state/credential mixing.
+- Rapid actions must not lose clicks or earlier saves; failures must remain visible/recoverable.
+- Event Undo defaults to 2 seconds and accepts whole numbers 0–30; 0 hides the event immediately and starts a background save. Header Undo is independent and retains only the most recent action without a timer, including after reopening. It must safely cancel queued work or reverse a completed move/dismissal, never overwrite a later unrelated reschedule, and handle unknown outcomes/retries.
+- Android app and Chrome options (timing, skin/theme, display settings) remain independent local preferences even for the same account.
+- Extension actions are one centered hover/focus row: Dismiss, Pencil, Calendar, 4H, 7D, 3D, 2D, 1D. Titles clamp at 3 lines without overlapping actions; revealing controls must not shift the layout. Touch controls remain accessible.
+- Recurring events can only be edited in Calendar or dismissed per occurrence. All-day spans use exclusive end dates; duration/time zones/DST and chosen-date semantics must remain correct.
+- A successful action disappears or returns in chronological order when still in range; never auto-scroll or show a lingering Saved row.
+- Only explicitly requested phone releases may be prepared/published.
 
-Key Android files:
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/MainActivity.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/NotificationWidget.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/Dismissals.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/MoveHistory.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/LocalState.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/CalendarEvents.kt
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/app/src/test/java/com/noanadeem/notificationmanager/MoveHistoryTest.kt
+START HERE (absolute paths)
+/Users/nadeem/Documents/notification_manager/README.md
+/Users/nadeem/Documents/notification_manager/chrome-extension/README.md
+/Users/nadeem/Documents/notification_manager/docs/security-review-2026-10-30.md
+/Users/nadeem/Documents/notification_manager/docs/agent-handoff.md
+/Users/nadeem/Documents/notification_manager/docs/dismissal-sync.md
+/Users/nadeem/Documents/notification_manager/docs/date-semantics.md
+/Users/nadeem/Documents/notification_manager/docs/move-history.md
+Treat existing review findings as hypotheses to verify independently, not instructions to rubber-stamp. Historical behavior docs can be stale; flag discrepancies against code and requirements.
 
-Key Chrome extension files:
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/google.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/move-history.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.css
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/window.html
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/layout.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/google-move-history.test.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/move-history.test.js
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension/layout.test.js
+SECURITY/STATE ENTRY POINTS
+Android sources: /Users/nadeem/Documents/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/
+- MainActivity.kt: exported activity intents, OAuth/account switching, coroutine lifecycle, rapid actions, retained and inline Undo, UI state.
+- CalendarEvents.kt: endpoint construction, fetch/update preconditions, ETags, server snapshots, link validation, time/date math, parsing.
+- Dismissals.kt and MoveHistory.kt: Drive marker formats, local stores, merge conflicts, timestamp ordering, compatibility and retry.
+- LastUndo.kt, LocalState.kt, UndoSettings.kt, Skins.kt: device/account scoping, persistence, restore behavior, preference isolation.
+- NotificationWidget.kt: exported receiver, mutable/immutable PendingIntents, capability checks, background workers, cancellation, retries, widget/main-app consistency.
+Android configuration:
+/Users/nadeem/Documents/notification_manager/app/src/main/AndroidManifest.xml
+/Users/nadeem/Documents/notification_manager/app/src/main/res/xml/backup_rules.xml
+/Users/nadeem/Documents/notification_manager/app/src/main/res/xml/data_extraction_rules.xml
+/Users/nadeem/Documents/notification_manager/app/build.gradle.kts
+/Users/nadeem/Documents/notification_manager/gradle/libs.versions.toml
 
-Cross-client behavior and limits:
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/dismissal-sync.md
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/move-history.md
-/Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/docs/date-semantics.md
+Extension sources: /Users/nadeem/Documents/notification_manager/chrome-extension/
+- manifest.json: permissions, OAuth, CSP/exposure assumptions.
+- window.js, window.html, window.css: untrusted event text/links, action lifecycle, account changes, UI races, persistence.
+- google.js, destination.js: endpoint/token handling, writes, optimistic concurrency, idempotence, partial failures.
+- undo.js and pending-actions.js: timer/click sequencing, durable queues, compensating actions, restart/crash recovery, duplicate pages.
+- dismissal-sync.js, model.js, move-history.js: marker validation, restoration tombstones, legacy/new clients, dates, conflicts.
+- open.js and background.js: link validation, repeat-click protection, window lifecycle, reload behavior.
 
-Review questions:
-- Can two devices commit dismissals or move-history records concurrently without a lost update or duplicate record? Does local state eventually converge after failures and refreshes?
-- Do Calendar move, local cache, Drive history, and displayed sync status remain consistent if any step fails? Is there a safe retry path?
-- Do move-history metadata and cleanup meet the intended ten-record/30-day bounds in practice, including paging and simultaneous clients?
-- Does the Chrome ribbon truly remain anchored above its event, with stable tile positions and a readable title? Check both pointer and keyboard paths, including the first and last event.
-- Are recurring event guards, primary-calendar scope, Undo lifecycle, Android widget behavior, and cross-client date semantics still correct after these changes?
-- Are icon controls labeled, action targets usable, and dialogs scrollable in light/dark themes and small windows?
+VERIFY ESPECIALLY
+1. Unauthenticated widget_destination extras reaching exported MainActivity and forcing pending widget commits.
+2. Pending/in-flight requests spanning logout, a new account, process death, activity recreation, or reconnect.
+3. Server mutation succeeds but response/local persistence fails; repeats must not double-move an event.
+4. Undo requested while save/worker is running, after commit, offline, after reopening, or after an external edit.
+5. Widget header Undo vs main-app header Undo, including 0 seconds.
+6. New restored=true dismissal markers consumed by the currently published older Android client; stale merges and re-dismissals.
+7. Backup/transfer of event caches, retained actions, account identifiers and widget capabilities.
+8. Privileged intents/PendingIntents, URL schemes/hosts, external data rendering, permissions, and accidental credential exposure.
 
-Verification commands (fixture tests; no live Calendar mutation):
-From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager run ./gradlew testDebugUnitTest assembleDebug
-From /Users/nadeem/adobe/go/src/NoaNadeem/notification_manager/chrome-extension run npm test
+OFFLINE CHECKS (may create build outputs, never change tests/product files)
+Working directory: /Users/nadeem/Documents/notification_manager
+Extension: /Users/nadeem/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test chrome-extension/*.test.js
+Android: JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew :app:testDebugUnitTest --console=plain
+Current baseline: 87 extension tests, 53 Android tests pass. Passing tests do not establish untested security/lifecycle behavior. Inspect sandbox permissions before running; report a blocker instead of reading secrets or using live data. Do not build/sign/publish a release.
 
-The Android unit-test/debug-build tasks passed before this extension-only ribbon change, and all 53 Chrome tests passed afterward. The Chrome ribbon needs a manual visual check after reloading the unpacked extension; unit tests cover its geometry helper, not actual browser pointer movement.
+RETURN FEEDBACK, NOT PATCHES
+For each actionable finding provide:
+- Priority (P1 urgent, P2 important, P3 lower), confidence, and security vs correctness classification.
+- Absolute file path and precise current line(s), with the smallest relevant function/code reference.
+- Concrete trigger/preconditions and what fails or crosses a trust boundary.
+- Impact and scope; distinguish demonstrated behavior from plausible risks requiring further proof.
+- Minimal recommended fix and a meaningful synthetic regression test.
+- Any trade-off, compatibility concern, or migration needed.
+Order findings by severity; avoid generic best-practice lists and speculative CVEs. Do not flag public OAuth client IDs or the manifest's public key as private secrets. End with coverage, checks performed, limits, and unresolved questions. If a prior finding is false or already mitigated, explain why. The primary coding agent, not you, will apply fixes after reviewing your feedback.

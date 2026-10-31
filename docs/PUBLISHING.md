@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 8`, and `versionName = "1.7"`. Version 8 (1.7) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 9`, and `versionName = "1.8"`. Version 9 (1.8) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -91,3 +91,14 @@ This release adds Google Tasks to the main app and widget: date/day moves, calen
 Validation: 92 extension tests, 56 Android unit tests, signed release build, matching build/signed-artifact hashes, successful signature verification, and isolated Tasks/UI pagination/Undo checks. Extension source is version 0.3.23; its reload remains blocked by browser URL security policy and must not be reported as deployed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/7/details
+
+
+### Android 1.8 / version 9
+
+Published **1.8 internal release** on October 31, 2026; Google Play confirmed **Available to internal testers** for version 9 (1.8). Its signed bundle matches the final release build and passed signature verification. ReTrace mapping is attached; the same known nonblocking native-symbol warning remains.
+
+This fixes the missing-consent upgrade path: Google authorization resolutions are queued until the Android activity is resumed and offered automatically once. Cancelling does not loop; Refresh/Reconnect explicitly retries. The app always exposes Sync details and Reconnect Google access, checks granted Tasks scopes, refreshes Tasks once after migration even with a fresh Calendar cache, and preserves Tasks-specific failures independently of Drive sync. Extension 0.3.24 likewise recognizes missing authorization, offers interactive consent once while visible, and lets explicit Refresh/Reconnect retry. Network/API-disabled errors are not treated as consent failures.
+
+Validation: **58 Android and 96 extension tests pass**, plus synthetic extension UI checks for missing permission, automatic consent, refusal without loops, retained diagnostics, and successful explicit retry. No real account consent dialog was accepted and no actual Tasks/Calendar changes were made by the agent. The extension reload is still blocked by browser URL security policy; source changes are pushed but live reload must not be claimed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/8/details

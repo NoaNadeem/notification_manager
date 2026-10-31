@@ -71,8 +71,9 @@ internal suspend fun fetchTasks(token: String, account: String): List<CalendarEv
     }
     sortCalendarEvents(result)
 }
-internal suspend fun fetchReviewItems(token: String, account: String, back: Int, ahead: Int, preset: WindowPreset?, onTasksError: (String) -> Unit): List<CalendarEvent> {
+internal suspend fun fetchReviewItems(token: String, account: String, back: Int, ahead: Int, preset: WindowPreset?, tasksAllowed: Boolean = true, onTasksError: (String) -> Unit): List<CalendarEvent> {
     val calendar = fetchRecentEvents(token, account, back, ahead, preset = preset)
+    if (!tasksAllowed) { onTasksError("Tasks permission was not granted. Tap Reconnect Google access and allow Tasks."); return calendar }
     val tasks = try { fetchTasks(token, account) } catch (error: Exception) {
         onTasksError("Events loaded, but Tasks could not load: ${error.message}. Enable Google Tasks API and reconnect to grant Tasks access.")
         emptyList()

@@ -69,3 +69,5 @@ Rapid Android action taps reuse recent Calendar authorization so each newest sel
 Undo defaults to 2 seconds. The three-dot menu’s **Undo Time** setting accepts a whole number from 1 to 30 seconds and is saved locally. Only the newest action can be restored by the header Undo arrow. The latest pending event remains visible with inline Undo; saving events are hidden. Failed actions return to the queue with an error; successful moves within the range return to their chronological position without scrolling. Changing Undo Time applies to subsequent actions.
 
 Google Tasks integration, required Google API/OAuth setup, date-only limitations, completion/Undo behavior, and incremental list rendering are documented in [Google Tasks support](docs/google-tasks.md).
+
+Permission recovery: the Android app now offers Google's required consent screen in the foreground after an upgrade, with **Reconnect Google access** and always-accessible **Sync details** in the menu. Cancelling consent does not cause a prompt loop; Refresh or Reconnect explicitly retries. See [Tasks setup and recovery](docs/google-tasks.md).

@@ -13,11 +13,13 @@ internal data class LocalSyncState(
     val pending: Set<String> = emptySet(),
     val error: String? = null,
     val remoteNewer: Boolean = false,
-    val conflictResolved: Boolean = false
+    val conflictResolved: Boolean = false,
+    val tasksAt: Long = 0,
+    val tasksError: String? = null
 ) {
     fun headline(now: Long = System.currentTimeMillis()): String = when {
         pending.isNotEmpty() -> "Local changes waiting to sync"
-        error != null || calendarAt == 0L || dismissalAt == 0L ||
+        error != null || tasksError != null || calendarAt == 0L || dismissalAt == 0L ||
             now - calendarAt >= AUTO_REFRESH_INTERVAL_MILLIS ||
             now - dismissalAt >= AUTO_REFRESH_INTERVAL_MILLIS -> "Sync needs attention"
         else -> "Synced just now"
@@ -87,7 +89,9 @@ internal class LocalStateStore(private val context: Context) {
                 pending = (0 until pending.length()).map { pending.getString(it) }.toSet(),
                 error = json.optString("error").takeIf { it.isNotBlank() },
                 remoteNewer = json.optBoolean("remoteNewer"),
-                conflictResolved = json.optBoolean("conflictResolved")
+                conflictResolved = json.optBoolean("conflictResolved"),
+                tasksAt = json.optLong("tasksAt"),
+                tasksError = json.optString("tasksError").takeIf { it.isNotBlank() }
             )
         }.getOrDefault(LocalSyncState())
     }
@@ -95,11 +99,12 @@ internal class LocalStateStore(private val context: Context) {
     fun writeSync(account: String, state: LocalSyncState) {
         val json = JSONObject().put("calendarAt", state.calendarAt).put("dismissalAt", state.dismissalAt)
             .put("pending", JSONArray(state.pending.toList())).put("error", state.error ?: "")
+            .put("tasksAt", state.tasksAt).put("tasksError", state.tasksError ?: "")
             .put("remoteNewer", state.remoteNewer).put("conflictResolved", state.conflictResolved)
         check(preferences.edit().putString("sync_${key(account)}", json.toString()).commit()) {
             "Could not save local sync status."
         }
-        if (state.pending.isEmpty() && state.error == null) {
+        if (state.pending.isEmpty() && state.error == null && state.tasksError == null) {
             context.getSharedPreferences("notification_widget", Context.MODE_PRIVATE)
                 .edit().remove("status").apply()
         }

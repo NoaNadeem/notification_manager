@@ -39,3 +39,12 @@ Sources:
 - https://developers.google.com/workspace/tasks/reference/rest/v1/tasks
 - https://developers.google.com/workspace/tasks/reference/rest/v1/tasks/list
 - https://developers.google.com/workspace/tasks/auth
+
+
+## Permission recovery (Android 1.8 / extension 0.3.24)
+
+A missing Google authorization resolution is offered automatically once when the Android app is foregrounded. An explicit Refresh or Reconnect Google access can offer consent again; cancelling does not repeatedly reopen it. Background widget workers never launch consent UI themselves; opening the app handles it. Tasks scope grants are checked before calling Tasks, and the first Tasks refresh is not skipped merely because a Calendar cache is fresh.
+
+The extension recognizes missing-authorization errors separately from network/quota/API-disabled errors, offers interactive reconnection once while visible, and retries consent on an explicit Refresh or Reconnect action. Reconnection clears stale cached tokens without revoking the account or deleting local state. Sync details stay available before a successful refresh. A Tasks error is stored separately so successful Drive sync cannot erase it.
+
+No real account permission dialogs were accepted during automated verification; permission-required, cancellation, and retry were exercised with synthetic clients and offline tests.

@@ -520,7 +520,8 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             var tasksWarning: String? = null
             val fetched = fetchReviewItems(token, primary, back, ahead, preset) { warning -> tasksWarning = warning }
             store.writeEvents(selectedAccount, fetched)
-            store.writeSync(selectedAccount, before.copy(calendarAt = System.currentTimeMillis(), error = null))
+            store.writeSync(selectedAccount, before.copy(calendarAt = System.currentTimeMillis(), error = null,
+                tasksAt = if (tasksWarning == null) System.currentTimeMillis() else before.tasksAt, tasksError = tasksWarning))
             try {
                 val local = DismissalStore(context)
                 val merged = dismissalSyncMutex.withLock { syncDismissals(token, local, selectedAccount) }

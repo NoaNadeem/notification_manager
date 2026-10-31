@@ -33,3 +33,13 @@ test("sync-status storage failure remains diagnostic and a later write clears it
   assert.deepEqual(saved, [{ "syncState:me@example.com": { calendarAt: 42, pending: [] } }]);
   assert.deepEqual(state.history, ["legacy"]);
 });
+
+
+test("a Tasks authorization failure survives successful Drive status updates", () => {
+  const now=Date.now();
+  const state={calendarAt:now,dismissalAt:now,error:null,tasksError:"Tasks access required",pending:[]};
+  const driveSucceeded={...state,error:null,dismissalAt:now+1};
+  assert.equal(syncHeadline(driveSucceeded,now+1),"Sync needs attention");
+  assert.match(syncDetail(driveSucceeded),/Tasks error: Tasks access required/);
+  assert.equal(syncHeadline({...driveSucceeded,tasksError:null},now+1),"Synced just now");
+});

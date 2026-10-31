@@ -1,6 +1,6 @@
 export function syncHeadline(state, now = Date.now()) {
   if (state.pending?.length) return "Local changes waiting to sync";
-  if (state.error) return "Sync needs attention";
+  if (state.error || state.tasksError) return "Sync needs attention";
   if (!state.calendarAt || !state.dismissalAt) return "Sync needs attention";
   if (now - state.calendarAt > 3_600_000 || now - state.dismissalAt > 3_600_000) return "Sync needs attention";
   return "Synced just now";
@@ -29,5 +29,6 @@ export function syncDetail(state) {
     `Local-only dismissals: ${state.pending?.length || 0}\n` +
     `Newer state from another device: ${state.remoteNewer ? "Yes, merged" : "No new state detected"}\n` +
     `Conflict resolved: ${state.conflictResolved ? "Yes, dismissal union preserved" : "None detected"}` +
-    (state.error ? `\nLast error: ${state.error}` : "");
+    (state.error ? `\nLast error: ${state.error}` : "") +
+    (state.tasksError ? `\nTasks error: ${state.tasksError}` : "");
 }

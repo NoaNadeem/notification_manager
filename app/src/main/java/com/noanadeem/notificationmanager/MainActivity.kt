@@ -113,6 +113,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import androidx.lifecycle.withResumed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -347,6 +348,9 @@ private fun CalendarLoginScreen(
         runCatching { localStateStore.writeSync(account, updated) }
             .onFailure { Log.w("NotificationManagerSync", "Could not persist sync status", it) }
     }
+    var authorizationResolution by remember { mutableStateOf<android.app.PendingIntent?>(null) }
+    var automaticConsentOffered by remember { mutableStateOf(false) }
+    var authorizationNeeded by remember { mutableStateOf(false) }
     var currentAccessToken by remember { mutableStateOf<String?>(null) }
     var tokenAuthorizedAtMillis by remember { mutableStateOf(0L) }
     var storageEstimate by remember { mutableStateOf<String?>(null) }
@@ -662,6 +666,7 @@ private fun CalendarLoginScreen(
             }
             return
         }
+        authorizationNeeded = TASKS_SCOPE !in result.grantedScopes
         currentAccessToken = accessToken
         tokenAuthorizedAtMillis = System.currentTimeMillis()
 
@@ -702,17 +707,23 @@ private fun CalendarLoginScreen(
                 }
                 screen = ConnectionScreen.Connected
                 errorMessage = null
-                val fetchCalendar = forceRefresh || calendarAutoRefreshDue(syncState.calendarAt)
+                val fetchCalendar = forceRefresh || calendarAutoRefreshDue(syncState.calendarAt) || syncState.tasksAt == 0L
                 eventsLoading = fetchCalendar
                 eventsError = null
                 driveError = null
                 try {
                     val fetched = if (fetchCalendar) {
+                        var tasksWarning: String? = null
                         fetchReviewItems(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
-                            windowPreset) { warning -> eventsError = warning }.also { loaded ->
+                            windowPreset, tasksAllowed = !authorizationNeeded) { warning ->
+                                tasksWarning = warning
+                                eventsError = warning
+                            }.also { loaded ->
                             runCatching { localStateStore.writeEvents(selectedAccount, loaded) }
                                 .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
-                            saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null))
+                            saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null,
+                                tasksAt = if (tasksWarning == null) System.currentTimeMillis() else syncState.tasksAt,
+                                tasksError = tasksWarning))
                         }
                     } else localStateStore.readEvents(selectedAccount)
                     recentEvents = fetched.withoutDismissals(dismissals)
@@ -774,7 +785,11 @@ private fun CalendarLoginScreen(
                 movingEventId = null
                 actionError = "Move cancelled for “$title”."
             } else {
-                errorMessage = "Google authorization was cancelled."
+                authorizationNeeded = true
+                if (accountName != null) {
+                    screen = ConnectionScreen.Connected
+                    eventsError = GOOGLE_ACCESS_REQUIRED
+                } else errorMessage = "Google authorization was cancelled."
             }
         } else {
             try {
@@ -796,7 +811,22 @@ private fun CalendarLoginScreen(
         }
     }
 
-    fun authorizeCalendar(interactive: Boolean, forceRefresh: Boolean = true) {
+    LaunchedEffect(authorizationResolution) {
+        val pendingIntent = authorizationResolution ?: return@LaunchedEffect
+        try {
+            activity.lifecycle.withResumed {
+                loading = true
+                authorizationLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            }
+        } catch (error: Exception) {
+            loading = false
+            eventsError = "Could not show Google permissions: ${error.message}. Use Reconnect Google access to retry."
+            screen = if (accountName != null) ConnectionScreen.Connected else ConnectionScreen.Error
+            if (accountName == null) errorMessage = eventsError
+        } finally { authorizationResolution = null }
+    }
+
+    fun authorizeCalendar(interactive: Boolean, forceRefresh: Boolean = true, allowPrompt: Boolean = interactive) {
         NotificationWidget.updateAll(activity)
         loading = interactive
         if (interactive) {
@@ -817,22 +847,19 @@ private fun CalendarLoginScreen(
         authorizationClient.authorize(requestBuilder.build())
             .addOnSuccessListener { result ->
                 if (result.hasResolution()) {
-                    if (!interactive) {
-                        if (screen == ConnectionScreen.Connected) {
-                            eventsError = "Reconnect Google Calendar to refresh events."
-                        } else {
-                            screen = ConnectionScreen.Disconnected
-                        }
-                    } else {
-                        val pendingIntent = result.pendingIntent
-                        if (pendingIntent == null) {
-                            loading = false
-                            errorMessage = "Authorization resolution was unavailable."
-                        } else {
-                            authorizationLauncher.launch(
-                                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                            )
-                        }
+                    authorizationNeeded = true
+                    loading = false
+                    eventsError = GOOGLE_ACCESS_REQUIRED
+                    accountName?.let { selected -> saveSync(selected, syncState.copy(error = GOOGLE_ACCESS_REQUIRED)) }
+                    val pendingIntent = result.pendingIntent
+                    if (pendingIntent == null) {
+                        eventsError = "Google authorization resolution was unavailable. Use Reconnect Google access to retry."
+                        screen = if (accountName != null) ConnectionScreen.Connected else ConnectionScreen.Disconnected
+                    } else if (shouldOfferGoogleConsent(interactive || allowPrompt, automaticConsentOffered)) {
+                        automaticConsentOffered = true
+                        authorizationResolution = pendingIntent
+                    } else if (screen != ConnectionScreen.Connected) {
+                        screen = ConnectionScreen.Disconnected
                     }
                 } else {
                     useAuthorizationResult(result, interactive, forceRefresh)
@@ -1082,7 +1109,9 @@ private fun CalendarLoginScreen(
             lookbackDays = lookbackDays,
             lookaheadDays = lookaheadDays,
             windowPreset = windowPreset,
-            onRefresh = { authorizeCalendar(interactive = false) },
+            onRefresh = { authorizeCalendar(interactive = false, allowPrompt = true) },
+            onReconnect = { authorizeCalendar(interactive = false, allowPrompt = true) },
+            authorizationNeeded = authorizationNeeded,
             onLookbackChange = { days ->
                 lookbackDays = days
                 windowPreset = null
@@ -1122,7 +1151,7 @@ private fun CalendarLoginScreen(
             } else {
                 Button(
                     modifier = Modifier.padding(top = 24.dp),
-                    onClick = { authorizeCalendar(interactive = screen != ConnectionScreen.Error) }
+                    onClick = { authorizeCalendar(interactive = screen != ConnectionScreen.Error, allowPrompt = true) }
                 ) {
                     Text(if (screen == ConnectionScreen.Error) "Retry connection" else "Connect Google Calendar")
                 }
@@ -1183,6 +1212,8 @@ private fun CalendarConnectedScreen(
     lookaheadDays: Int,
     windowPreset: WindowPreset?,
     onRefresh: () -> Unit,
+    onReconnect: () -> Unit,
+    authorizationNeeded: Boolean,
     onLookbackChange: (Int) -> Unit,
     onLookaheadChange: (Int) -> Unit,
     onPresetChange: (WindowPreset) -> Unit,
@@ -1340,15 +1371,20 @@ private fun CalendarConnectedScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
                     }
-                    if (syncStatusReady) {
-                        val headline = syncState.headline()
+                    run {
+                        val headline = if (syncStatusReady) syncState.headline() else "Sync details"
                         DropdownMenuItem(
-                            text = { Text(if (headline == "Synced just now") "Synced just now" else "Sync issues",
+                            text = { Text(if (headline == "Synced just now" || headline == "Sync details") headline else "Sync issues",
                                 color = if (headline == "Synced just now") MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.error) },
                             onClick = { menuExpanded = false; showSyncDetails = true }
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Reconnect Google access") },
+                        enabled = !loading && !eventsLoading,
+                        onClick = { menuExpanded = false; onReconnect() }
+                    )
                     DropdownMenuItem(
                         text = { Text("Recent dismissals") },
                         onClick = { menuExpanded = false; showRecentDismissals = true }
@@ -1431,6 +1467,9 @@ private fun CalendarConnectedScreen(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 8.dp)
             )
+        }
+        if (authorizationNeeded) TextButton(onClick = onReconnect, enabled = !loading && !eventsLoading) {
+            Text("Reconnect Google access")
         }
         driveError?.let { message ->
             SelectableLinkedText(
@@ -1783,10 +1822,13 @@ private fun CalendarConnectedScreen(
                 Text("Local-only dismissals: ${syncState.pending.size}")
                 Text("Newer state from another device: ${if (syncState.remoteNewer) "Yes, merged" else "No new state detected"}")
                 Text("Conflict resolved: ${if (syncState.conflictResolved) "Yes, dismissal union preserved" else "None detected"}")
-                syncState.error?.let { Text("Last error: $it", color = MaterialTheme.colorScheme.error) }
+                listOfNotNull(syncState.error, eventsError, driveError, syncState.tasksError).distinct().forEach {
+                    Text("Last error: $it", color = MaterialTheme.colorScheme.primary)
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
+        confirmButton = { TextButton(onClick = { showSyncDetails = false; onReconnect() }) { Text("Reconnect Google access") } },
+        dismissButton = { TextButton(onClick = { showSyncDetails = false }) { Text("Close") } }
     )
     if (showRecentDismissals) AlertDialog(
         onDismissRequest = { showRecentDismissals = false },

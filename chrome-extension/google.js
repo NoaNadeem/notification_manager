@@ -46,6 +46,7 @@ export async function googleRequest(url, options = {}, interactive = false) {
     const error = await response.json().catch(() => null);
     const failure = new Error(error?.error?.message || `Google API returned HTTP ${response.status}.`);
     failure.status = response.status;
+    failure.reason = error?.error?.details?.find(detail => detail.reason)?.reason || error?.error?.errors?.[0]?.reason;
     throw failure;
   }
   const body = await response.text();

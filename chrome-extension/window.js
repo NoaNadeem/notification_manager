@@ -1,3 +1,4 @@
+import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask } from "./google.js";
@@ -75,6 +76,7 @@ let saveStatusRequest = 0;
 let renderedItemLimit = 100;
 let moreItemsObserver;
 let lastUndoLoadedAccount;
+let automaticConsentOffered = false;
 let lastUndoWrite = Promise.resolve();
 const renderGuard = new InteractionRenderGuard(renderNow);
 
@@ -163,8 +165,8 @@ function renderSync() {
   const headline = syncHeadline(status);
   const ready = shouldShowSyncStatus(syncAttempted, loading, signedOut, account);
   $("#sync-warning").textContent = ready && headline !== "Synced just now" ? ` · ${headline}` : "";
-  $("#sync-open").hidden = !ready;
-  $("#sync-menu-label").textContent = headline === "Synced just now" ? "Synced just now" : "Sync issues";
+  $("#sync-open").hidden = false;
+  $("#sync-menu-label").textContent = !ready ? "Sync details" : headline === "Synced just now" ? "Synced just now" : "Sync issues";
   $("#sync-open").classList.toggle("has-issues", headline !== "Synced just now");
   $("#sync-detail").textContent = `${headline}\n${syncDetail(status)}`;
 }
@@ -254,7 +256,7 @@ async function refreshEvents() {
   pullIndicator.textContent = "Refreshing…";
   try {
     await undo.commit();
-    await load();
+    await load(false, true);
   } catch (error) {
     showError(`Could not refresh Calendar: ${error.message}`);
   } finally {
@@ -337,9 +339,11 @@ function closeMenu() {
   menuToggle.setAttribute("aria-expanded", "false");
 }
 
-async function load(interactive = false) {
+async function load(interactive = false, allowConsentRetry = false) {
   if (loading || (signedOut && !interactive)) return;
   loading = true;
+  if (interactive) automaticConsentOffered = true;
+  let authorizationRetryNeeded = false;
   renderSync();
   showError("");
   count.textContent = "Loading…";
@@ -362,14 +366,15 @@ async function load(interactive = false) {
     let taskWarning = "";
     let tasks = [];
     try { tasks = await readTasks(googleRequest); }
-    catch (error) { taskWarning = `Events loaded, but Tasks could not load: ${error.message}. Enable Google Tasks API and reconnect to grant Tasks access.`; showError(taskWarning); }
+    catch (error) { if (!interactive && (allowConsentRetry || !automaticConsentOffered) && needsGoogleConsent(error)) throw error; taskWarning = `Events loaded, but Tasks could not load: ${error.message}. Enable Google Tasks API and reconnect to grant Tasks access.`; showError(taskWarning); }
     events = [...recent.events, ...tasks].filter((event) => {
       if (event.task?.due === null) return true;
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
     }).sort((a, b) => compareEvents(a, b));
     syncState.calendarAt = Date.now();
-    syncState.error = taskWarning || null;
+    syncState.tasksError = taskWarning || null;
+    syncState.error = null;
     await chrome.storage.local.set({ lastAccount: account });
     try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
     catch (cacheError) { showError(`Could not update offline event cache: ${cacheError.message}`); }
@@ -405,7 +410,9 @@ async function load(interactive = false) {
     }
     render();
   } catch (error) {
-    showError(`Could not load Calendar: ${error.message}`);
+    authorizationRetryNeeded = needsGoogleConsent(error);
+    showError(`Could not load Calendar: ${error.message}. Use Reconnect Google access if permissions are required.`);
+    if (/oauth|authoriz|permission|sign.in|consent|token/i.test(error.message)) connectPanel.hidden = false;
     syncState.error = error.message;
     await saveSyncState();
     if (!account) connectPanel.hidden = false;
@@ -414,7 +421,10 @@ async function load(interactive = false) {
     loading = false;
     syncAttempted = true;
     renderSync();
-    void retrySavedActions();
+    if (authorizationRetryNeeded && (allowConsentRetry || !automaticConsentOffered) && document.visibilityState === "visible") {
+      automaticConsentOffered = true;
+      reconnectGoogle();
+    } else if (!authorizationRetryNeeded) void retrySavedActions();
   }
 }
 
@@ -1116,7 +1126,12 @@ datePicker.addEventListener("change", () => {
   void stageAction(event, "move", time ? { date, time } : { date });
 });
 calendarDialog.addEventListener("close", () => { dateTarget = undefined; });
-$("#connect").addEventListener("click", () => void load(true));
+function reconnectGoogle() {
+  if (loading) return;
+  void reconnectGoogleAccess(chrome.identity, load).catch(error => showError(`Could not reconnect Google access: ${error.message}`));
+}
+$("#connect").addEventListener("click", reconnectGoogle);
+$("#reconnect-google").addEventListener("click", () => { closeMenu(); reconnectGoogle(); });
 window.addEventListener("blur", () => { void undo.commit(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) void undo.commit(); });
 window.addEventListener("focus", () => {

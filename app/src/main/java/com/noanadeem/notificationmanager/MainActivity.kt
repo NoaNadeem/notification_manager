@@ -378,7 +378,9 @@ private fun CalendarLoginScreen(
             try {
                 val token = currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before searching.")
                 val primaryId = verifyCalendarAccess(token)
-                val results = searchPrimaryCalendar(token, primaryId, term)
+                val calendarResults = searchPrimaryCalendar(token, primaryId, term)
+                val taskResults = fetchTasks(token, primaryId).filter { "${it.title} ${it.location.orEmpty()}".contains(term, ignoreCase = true) }
+                val results = CalendarSearchResults(sortCalendarSearchEvents(calendarResults.events + taskResults), calendarResults.hasMore)
                 if (request == calendarSearchRequest) calendarSearchResults = results
             } catch (e: Exception) {
                 if (request == calendarSearchRequest) {
@@ -461,6 +463,12 @@ private fun CalendarLoginScreen(
                     val record = DismissalRecord(action.event.id, action.event.start.toEpochMilli(),
                         now.toEpochMilli(), action.event.title)
                     try {
+                        if (action.event.isTask) {
+                            require(accountName?.equals(action.event.calendarId, ignoreCase = true) == true) { "Reconnect the account that performed this action." }
+                            completeTaskEvent(currentAccessToken ?: throw IllegalStateException("Reconnect Google Tasks to complete this task."), action.event, true)
+                            recentEvents = recentEvents.filterNot { it.id == action.event.id }
+                            localStateStore.writeEvents(selectedAccount, recentEvents)
+                        }
                         val merged = dismissalMutex.withLock {
                             val saved = mergeDismissals(dismissalStore.read(selectedAccount, now), listOf(record), now)
                             dismissalStore.write(selectedAccount, saved)
@@ -552,6 +560,7 @@ private fun CalendarLoginScreen(
                             restoreOriginal = action.event, expectedMoved = expected)
                     }
                     is UndoableAction.Dismiss -> {
+                        if (action.event.isTask) completeTaskEvent(token, action.event, false)
                         dismissals = dismissalMutex.withLock {
                             val records = dismissalStore.read(selectedAccount)
                             val previous = records.find { it.eventId == action.event.id && it.eventStartMillis == action.event.start.toEpochMilli() }
@@ -568,7 +577,7 @@ private fun CalendarLoginScreen(
                     }
                 }
                 recentEvents = sortCalendarEvents((recentEvents.filterNot { it.id == restored.id } + restored)
-                    .filter { isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) })
+                    .filter { it.isUndatedTask || isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) })
                 localStateStore.writeEvents(selectedAccount, recentEvents)
                 NotificationWidget.updateAll(activity)
                 if (lastUndoAction == action) {
@@ -596,7 +605,7 @@ private fun CalendarLoginScreen(
                     ?: throw IllegalStateException("Google Calendar returned an invalid event link.")
                 try {
                     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(calendarLink))
-                        .setPackage("com.google.android.calendar"))
+                        .setPackage(if (event.isTask) "com.google.android.apps.tasks" else "com.google.android.calendar"))
                 } catch (_: ActivityNotFoundException) {
                     val webEditLink = calendarEventOpenLink(link, edit = true) ?: calendarLink
                     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webEditLink))
@@ -699,8 +708,8 @@ private fun CalendarLoginScreen(
                 driveError = null
                 try {
                     val fetched = if (fetchCalendar) {
-                        fetchRecentEvents(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
-                            preset = windowPreset).also { loaded ->
+                        fetchReviewItems(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
+                            windowPreset) { warning -> eventsError = warning }.also { loaded ->
                             runCatching { localStateStore.writeEvents(selectedAccount, loaded) }
                                 .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
                             saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null))
@@ -798,7 +807,7 @@ private fun CalendarLoginScreen(
         errorMessage = null
 
         val requestBuilder = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(CALENDAR_SCOPE), Scope(DRIVE_APPDATA_SCOPE)))
+            .setRequestedScopes(listOf(Scope(CALENDAR_SCOPE), Scope(DRIVE_APPDATA_SCOPE), Scope(TASKS_SCOPE)))
         if (interactive) {
             requestBuilder.setPrompt(AuthorizationRequest.Prompt.SELECT_ACCOUNT)
         } else {
@@ -857,7 +866,7 @@ private fun CalendarLoginScreen(
         movingEventId = event.id
         actionError = null
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(CALENDAR_SCOPE), Scope(CALENDAR_WRITE_SCOPE), Scope(DRIVE_APPDATA_SCOPE)))
+            .setRequestedScopes(listOf(Scope(CALENDAR_SCOPE), Scope(CALENDAR_WRITE_SCOPE), Scope(DRIVE_APPDATA_SCOPE), Scope(TASKS_SCOPE)))
             .apply { accountName?.let { setAccount(Account(it, "com.google")) } }
             .build()
         authorizationClient.authorize(request)
@@ -941,7 +950,7 @@ private fun CalendarLoginScreen(
 
         val request = RevokeAccessRequest.builder()
             .setAccount(Account(selectedAccount, "com.google"))
-            .setScopes(listOf(Scope(CALENDAR_SCOPE), Scope(CALENDAR_WRITE_SCOPE), Scope(DRIVE_APPDATA_SCOPE)))
+            .setScopes(listOf(Scope(CALENDAR_SCOPE), Scope(CALENDAR_WRITE_SCOPE), Scope(DRIVE_APPDATA_SCOPE), Scope(TASKS_SCOPE)))
             .build()
         authorizationClient.revokeAccess(request)
             .addOnSuccessListener {
@@ -1522,12 +1531,12 @@ private fun CalendarConnectedScreen(
                                 event.location?.let { location ->
                                     Text(
                                         text = location,
-                                        style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                                        style = MaterialTheme.typography.bodySmall.copy(textDecoration = if (event.locationIsLink) TextDecoration.Underline else TextDecoration.None),
                                         color = MaterialTheme.colorScheme.primary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                                            .clickable(onClickLabel = "Open event location") { onOpenLocation(location) }
+                                            .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier)
                                     )
                                 }
                             }
@@ -1618,7 +1627,7 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        if (event.allDayDate == null) {
+                                        if (event.allDayDate == null && !event.isTask) {
                                             for (hours in listOf(2L, 3L, 4L)) {
                                                 MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
                                             }
@@ -1715,10 +1724,10 @@ private fun CalendarConnectedScreen(
                                         )
                                         event.location?.let { location ->
                                             Text(location, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                                                style = MaterialTheme.typography.bodySmall.copy(textDecoration = if (event.locationIsLink) TextDecoration.Underline else TextDecoration.None),
                                                 color = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                                                    .clickable(onClickLabel = "Open event location") { onOpenLocation(location) })
+                                                    .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier))
                                         }
                                     }
                                     MoveTile(
@@ -1959,7 +1968,7 @@ private fun CalendarConnectedScreen(
             }
         ) {
             Column {
-                if (event.allDayDate == null) IconButton(
+                if (event.allDayDate == null && !event.isTask) IconButton(
                     modifier = Modifier.align(Alignment.End).padding(end = 24.dp)
                         .semantics { contentDescription = "Choose move time, ${(selectedTime ?: initialTime).format(DateTimeFormatter.ofPattern("h:mm a"))}" },
                     onClick = {

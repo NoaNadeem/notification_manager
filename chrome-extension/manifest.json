@@ -1,12 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Notification Manager",
-  "version": "0.3.22",
+  "version": "0.3.23",
   "description": "Past events from your primary Google Calendar in a dedicated window.",
   "minimum_chrome_version": "105",
-  "permissions": ["identity", "storage", "tabs", "windows", "system.display"],
-  "host_permissions": ["https://www.googleapis.com/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": [
+    "identity",
+    "storage",
+    "tabs",
+    "windows",
+    "system.display"
+  ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://tasks.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -25,7 +37,8 @@
     "scopes": [
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/drive.appdata"
+      "https://www.googleapis.com/auth/drive.appdata",
+      "https://www.googleapis.com/auth/tasks"
     ]
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs//P0Vs+3UVSxeZz7qVcznevf9AYQtUjOW0X7Vu4UQp+9zrbGCKj+CxbKgHSEfwibgEndkkCIPXT9wlpk7vnsXRvN5hukTGWRsf0ukkVxj5aYzKuTbNoi39hVJRZHdNYAyTF9kojuW4WadnoOzCNHneUOul3ywEUTblKKyo1EO8ZnxIAfF4oJreVd9Dvyxed65VldN7eXWIk8HZIrEelPoDmigMjrNWiXmj7k5IPaReVwU8AS2VuxxTas0tyLn1Ps3sN5y9AIW4C45ufcaFH5lg2hjfuVH83gyAk/C3fSXwR2sS2BxtaPq0LWuKURqbykC6RqJ3rJu/6o3+MemMF4QIDAQAB"

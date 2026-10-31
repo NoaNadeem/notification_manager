@@ -36,7 +36,7 @@ internal fun mergeDismissals(
 ): List<DismissalRecord> {
     val cutoff = now.minus(MAX_LOOKBACK_DAYS, ChronoUnit.DAYS).toEpochMilli()
     return (first + second).asSequence()
-        .filter { it.eventId.isNotBlank() && it.eventStartMillis >= cutoff }
+        .filter { it.eventId.isNotBlank() && (it.eventStartMillis >= cutoff || it.eventId.startsWith("task:")) }
         .groupBy { it.key }
         .values.map { records ->
             val newest = records.maxWith(compareBy<DismissalRecord> { it.dismissedAtMillis }.thenBy { it.restored })
@@ -47,7 +47,7 @@ internal fun mergeDismissals(
 }
 
 internal fun List<CalendarEvent>.withoutDismissals(records: List<DismissalRecord>): List<CalendarEvent> {
-    val keys = records.filterNot { it.restored }.mapTo(HashSet()) { it.key }
+    val keys = records.filterNot { it.restored || it.eventId.startsWith("task:") }.mapTo(HashSet()) { it.key }
     return filterNot { "${it.id}/${it.start.toEpochMilli()}" in keys }
 }
 
@@ -125,7 +125,7 @@ internal suspend fun syncDismissals(
     publishMissingDismissals(local, remote, now) { record -> createDismissalMarker(token, record) }
     val cutoff = now.minus(MAX_LOOKBACK_DAYS, ChronoUnit.DAYS).toEpochMilli()
     for ((index, file) in markerFiles.withIndex()) {
-        if (markerRecords[index].eventStartMillis < cutoff) {
+        if (markerRecords[index].eventStartMillis < cutoff && !markerRecords[index].eventId.startsWith("task:")) {
             runCatching {
                 driveRequest("https://www.googleapis.com/drive/v3/files/${file.getString("id")}", token, "DELETE")
             }.onFailure { Log.w("NotificationManagerSync", "Could not prune old dismissal marker", it) }

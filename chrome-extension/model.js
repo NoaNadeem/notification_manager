@@ -19,11 +19,13 @@ function futureDateLabel(ms, zone) {
 }
 
 export function isFutureEvent(event, nowMs = Date.now(), zone) {
+  if (event.task?.due === null) return false;
   if (event.start?.date) return event.start.date > localDateKey(nowMs, zone);
   return eventStartMs(event, zone) > nowMs;
 }
 
 export function eventAgeLabel(event, nowMs = Date.now(), zone) {
+  if (event.task?.due === null) return "No due date";
   if (event.start?.date) {
     if (isFutureEvent(event, nowMs, zone)) {
       return futureDateLabel(Date.parse(`${event.start.date}T12:00:00Z`), "UTC");
@@ -84,6 +86,7 @@ export function isRecurring(event) {
 }
 
 export function eventStartMs(event, calendarTimeZone) {
+  if (event.task?.due === null) return 0;
   if (event.start?.dateTime) return Date.parse(event.start.dateTime);
   if (!event.start?.date) return NaN;
   // Match Android's all-day date at midnight in the calendar's time zone.
@@ -91,10 +94,12 @@ export function eventStartMs(event, calendarTimeZone) {
 }
 
 export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
+  if (event.task?.due === null) return false;
   return eventStartMs(event, zone) < nowMs - DAY_MS;
 }
 
 export function isEmphasized(event, account) {
+  if (event.task?.due === null) return false;
   if (event.start?.date) return true;
   const start = Date.parse(event.start?.dateTime);
   const end = Date.parse(event.end?.dateTime);
@@ -114,6 +119,7 @@ function eventLocalDate(event, zone) {
 }
 
 export function compareEvents(a, b, zone) {
+  if ((a.task?.due === null) !== (b.task?.due === null)) return a.task?.due === null ? 1 : -1;
   const dateOrder = eventLocalDate(a, zone).localeCompare(eventLocalDate(b, zone));
   if (dateOrder) return dateOrder;
   if (Boolean(a.start?.date) !== Boolean(b.start?.date)) return a.start?.date ? -1 : 1;
@@ -121,6 +127,7 @@ export function compareEvents(a, b, zone) {
 }
 
 export function compareSearchEvents(a, b, zone) {
+  if ((a.task?.due === null) !== (b.task?.due === null)) return a.task?.due === null ? 1 : -1;
   const dateOrder = eventLocalDate(b, zone).localeCompare(eventLocalDate(a, zone));
   if (dateOrder) return dateOrder;
   if (Boolean(a.start?.date) !== Boolean(b.start?.date)) return a.start?.date ? -1 : 1;
@@ -177,6 +184,7 @@ export function shiftEvent(event, option, now = new Date()) {
     updated.start = { dateTime: new Date(targetMs).toISOString(), ...(event.start.timeZone ? { timeZone: event.start.timeZone } : {}) };
     updated.end = { dateTime: new Date(targetMs + duration).toISOString(), ...(event.end.timeZone ? { timeZone: event.end.timeZone } : {}) };
   }
+  if (updated.task) updated.task = {...updated.task, due:updated.start.date};
   return updated;
 }
 
@@ -191,7 +199,7 @@ export function mergeDismissals(local, remote, nowMs = Date.now()) {
   const cutoff = nowMs - 365 * DAY_MS;
   const byKey = new Map();
   for (const record of [...local, ...remote]) {
-    if (!record.eventId || record.start < cutoff) continue;
+    if (!record.eventId || (record.start < cutoff && !record.eventId.startsWith("task:"))) continue;
     const key = `${record.eventId}/${record.start}`;
     const current = byKey.get(key);
     if (!current || current.dismissed < record.dismissed || (current.dismissed === record.dismissed && record.restored && !current.restored)) {
@@ -217,7 +225,7 @@ export function parseDismissals(raw) {
 export function dismissalKey(eventId, startMs) { return `${eventId}/${startMs}`; }
 
 export function withoutDismissals(events, dismissals, calendarZone) {
-  const keys = new Set(dismissals.filter(record => !record.restored).map((record) => dismissalKey(record.eventId, record.start)));
+  const keys = new Set(dismissals.filter(record => !record.restored && !record.eventId.startsWith("task:")).map((record) => dismissalKey(record.eventId, record.start)));
   return events.filter((event) => !keys.has(dismissalKey(event.id, eventStartMs(event, calendarZone))));
 }
 

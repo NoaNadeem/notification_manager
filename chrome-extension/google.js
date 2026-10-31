@@ -1,3 +1,4 @@
+import { moveTask, taskReference, setTaskCompleted } from "./tasks.js";
 import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
@@ -105,6 +106,7 @@ export async function searchPrimaryCalendar(calendarId, query, request = googleR
 }
 
 export async function moveEvent(calendarId, eventId, option, now = new Date(), destination = null, request = googleRequest) {
+  if (taskReference(eventId)) return moveTask(eventId, option, now, destination, request);
   const url = `${CALENDAR}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   const current = await request(url);
   if (current.status === "cancelled") throw Object.assign(new Error("This event was deleted in Google Calendar."), { status: 410 });
@@ -157,7 +159,7 @@ async function syncDismissalsNow(account) {
   await publishMissingDismissals(local, remote, createDismissalMarker);
   const cutoff = Date.now() - 365 * 86_400_000;
   for (const file of markerFiles) {
-    if (parseDismissalMarker(file).start < cutoff) {
+    if (parseDismissalMarker(file).start < cutoff && !parseDismissalMarker(file).eventId.startsWith("task:")) {
       try { await googleRequest(`${DRIVE}/${encodeURIComponent(file.id)}`, { method: "DELETE" }); }
       catch { /* Pruning is retried on the next sync. */ }
     }
@@ -249,3 +251,5 @@ async function syncRecentMovesNow(account) {
   }
   return merged;
 }
+
+export function completeTask(id, completed, request = googleRequest) { return setTaskCompleted(id, completed, request); }

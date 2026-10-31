@@ -141,3 +141,5 @@ header,footer { background:var(--panel-custom,var(--panel)); }
   .event-top > .actions { gap:3px; }
   .event-top > .actions > .tile { width:25px; font-size:12px; }
 }
+
+.location:not([href]):hover { text-decoration:none; }

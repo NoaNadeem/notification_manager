@@ -12,3 +12,7 @@ For future changes to Notification Manager:
 - Never perform write actions on the user's actual calendar events. The connected test account contains real personal events; calling it a test account does not authorize modifying them.
 - Do not click move, reschedule, dismiss, delete, edit/save, or other event-changing controls on real events, including actions that first enter an Undo period or later commit on blur, navigation, timeout, or reload. Do not call Calendar or dismissal-sync write APIs against those events.
 - Verify behavior with local fixtures, mocks, or isolated synthetic data. Read-only inspection and UI checks that cannot stage or commit an event change are allowed.
+
+## Real Google Tasks: read-only during agent work
+
+Apply the same real-data boundary to Google Tasks. Never create, move, complete, reopen, dismiss, delete, edit, or stage actions on the user's actual tasks while testing. Use isolated synthetic tasks and mocked Tasks APIs only; do not grant new OAuth permissions on the user's behalf during UI checks.

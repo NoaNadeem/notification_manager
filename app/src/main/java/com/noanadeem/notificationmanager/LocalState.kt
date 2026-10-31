@@ -43,7 +43,9 @@ internal fun calendarEventFromLocalJson(row: JSONObject): CalendarEvent = Calend
     location = row.optString("location").takeIf { it.isNotBlank() },
     end = row.optLong("end").takeIf { it != 0L }?.let(Instant::ofEpochMilli),
     hasOtherAttendees = row.optBoolean("otherAttendees"),
-    isRecurring = row.optBoolean("recurring")
+    isRecurring = row.optBoolean("recurring"),
+    taskListId = row.optString("taskListId").takeIf(String::isNotBlank),
+    taskId = row.optString("taskId").takeIf(String::isNotBlank)
 )
 
 internal fun calendarEventToLocalJson(event: CalendarEvent): JSONObject = JSONObject()
@@ -52,6 +54,7 @@ internal fun calendarEventToLocalJson(event: CalendarEvent): JSONObject = JSONOb
     .put("allDayDate", event.allDayDate?.toString() ?: "")
     .put("zone", event.calendarZone.id).put("htmlLink", event.htmlLink ?: "")
     .put("location", event.location ?: "").put("end", event.end?.toEpochMilli() ?: 0L)
+    .put("taskListId", event.taskListId ?: "").put("taskId", event.taskId ?: "")
     .put("otherAttendees", event.hasOtherAttendees).put("recurring", event.isRecurring)
 
 internal class LocalStateStore(private val context: Context) {

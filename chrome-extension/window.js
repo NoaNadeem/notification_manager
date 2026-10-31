@@ -1,5 +1,6 @@
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
-import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove } from "./google.js";
+import { readTasks, taskNoteUrl } from "./tasks.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
+import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
@@ -71,6 +72,8 @@ const committing = new Set();
 const pendingStores = new Map();
 let retryingSaves = false;
 let saveStatusRequest = 0;
+let renderedItemLimit = 100;
+let moreItemsObserver;
 let lastUndoLoadedAccount;
 let lastUndoWrite = Promise.resolve();
 const renderGuard = new InteractionRenderGuard(renderNow);
@@ -356,12 +359,17 @@ async function load(interactive = false) {
       showInfo("");
     }
     const recent = await recentEvents(account, lookbackDays, lookaheadDays, windowPreset);
-    events = recent.events.filter((event) => {
+    let taskWarning = "";
+    let tasks = [];
+    try { tasks = await readTasks(googleRequest); }
+    catch (error) { taskWarning = `Events loaded, but Tasks could not load: ${error.message}. Enable Google Tasks API and reconnect to grant Tasks access.`; showError(taskWarning); }
+    events = [...recent.events, ...tasks].filter((event) => {
+      if (event.task?.due === null) return true;
       const start = eventStartMs(event, calendarZone);
       return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
     }).sort((a, b) => compareEvents(a, b));
     syncState.calendarAt = Date.now();
-    syncState.error = null;
+    syncState.error = taskWarning || null;
     await chrome.storage.local.set({ lastAccount: account });
     try { await chrome.storage.local.set({ [`cachedEvents:${account.toLowerCase()}`]: { events, zone: calendarZone } }); }
     catch (cacheError) { showError(`Could not update offline event cache: ${cacheError.message}`); }
@@ -418,9 +426,11 @@ function renderNow() {
   $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
   $("#header-undo").setAttribute("aria-label", $("#header-undo").title);
   const previousScroll = list.scrollTop;
+  moreItemsObserver?.disconnect();
+  moreItemsObserver = null;
   list.replaceChildren();
   const filtered = currentVisibleEvents();
-  count.textContent = `${filtered.length} event${filtered.length === 1 ? "" : "s"}`;
+  count.textContent = `${filtered.length} item${filtered.length === 1 ? "" : "s"}`;
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -431,7 +441,7 @@ function renderNow() {
     list.append(empty);
   } else {
     const firstFutureIndex = filtered.findIndex((event) => isFutureEvent(event));
-    filtered.forEach((event, index) => {
+    filtered.slice(0, renderedItemLimit).forEach((event, index) => {
       if (index === firstFutureIndex) {
         const divider = document.createElement("div");
         divider.className = "later-divider";
@@ -443,12 +453,25 @@ function renderNow() {
       list.append(renderEvent(event));
     });
   }
+  if (filtered.length > renderedItemLimit) {
+    appendMoreItems();
+  }
   if (searchActive) renderSearchFooter();
   list.scrollTop = previousScroll;
 }
 
+function appendMoreItems() {
+  const more = button("Show next 100", "Show the next 100 events and tasks", () => { renderedItemLimit += 100; render(); }, "search-calendar");
+  more.classList.add("load-more-items");
+  list.append(more);
+  moreItemsObserver ||= new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting && entry.target.isConnected)) { moreItemsObserver.disconnect(); renderedItemLimit += 100; render(); }
+  }, {root:list, rootMargin:"0px 0px 200px 0px"});
+  moreItemsObserver.observe(more);
+}
+
 function renderSearchFooter() {
-  const searchButton = button("Search Calendar", "Search all past and future Calendar events", () => void searchCalendar(), "search-calendar");
+  const searchButton = button("Search Calendar & Tasks", "Search all Calendar events and Tasks", () => void searchCalendar(), "search-calendar");
   searchButton.disabled = !searchQueryInput.value.trim() || remoteSearch?.loading;
   list.append(searchButton);
   if (!remoteSearch || remoteSearch.query !== searchQueryInput.value.trim()) return;
@@ -468,7 +491,7 @@ function renderSearchFooter() {
   }
   const heading = document.createElement("div");
   heading.className = "search-heading";
-  heading.textContent = "Calendar results · read only";
+  heading.textContent = "Calendar & Tasks results · read only";
   list.append(heading);
   const results = realEventsOnly
     ? remoteSearch.events.filter((event) => isEmphasized(event, account))
@@ -479,7 +502,7 @@ function renderSearchFooter() {
     empty.textContent = realEventsOnly ? "No real Calendar events match this search." : "No Calendar events match this search.";
     list.append(empty);
   }
-  for (const event of results) {
+  for (const event of results.slice(0, renderedItemLimit)) {
     const row = document.createElement("div");
     row.className = "search-result";
     if (isEmphasized(event, account)) row.classList.add("emphasized");
@@ -498,7 +521,7 @@ function renderSearchFooter() {
     title.title = title.textContent;
     title.addEventListener("click", (click) => { click.preventDefault(); openEventLink(event); });
     const date = document.createElement("small");
-    date.textContent = event.start?.date
+    date.textContent = event.task?.due === null ? "No due date" : event.start?.date
       ? `${event.start.date} · all day`
       : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.start.dateTime));
     titleLine.append(title);
@@ -507,17 +530,19 @@ function renderSearchFooter() {
       const location = document.createElement("a");
       location.className = "location";
       location.textContent = event.location;
-      location.href = locationHref(event.location);
+      location.href = event.task ? taskNoteUrl(event.location) || "" : locationHref(event.location);
       location.title = event.location;
-      location.addEventListener("click", (click) => {
+      if (!event.task || taskNoteUrl(event.location)) location.addEventListener("click", (click) => {
         click.preventDefault();
         void openLink(location.href)
           .catch((error) => showError(`Could not open location: ${error.message}`));
       });
+      if (event.task && !taskNoteUrl(event.location)) location.removeAttribute("href");
       row.append(location);
     }
     list.append(row);
   }
+  if (results.length > renderedItemLimit) appendMoreItems();
   if (remoteSearch.hasMore) {
     const more = document.createElement("p");
     more.className = "search-heading";
@@ -563,12 +588,13 @@ function renderEvent(event) {
     location.className = "location";
     location.textContent = event.location;
     location.title = event.location;
-    location.href = locationHref(event.location);
-    location.addEventListener("click", (click) => {
+    location.href = event.task ? taskNoteUrl(event.location) || "" : locationHref(event.location);
+    if (!event.task || taskNoteUrl(event.location)) location.addEventListener("click", (click) => {
       click.preventDefault();
       void openLink(location.href)
         .catch((error) => showError(`Could not open location: ${error.message}`));
     });
+    if (event.task && !taskNoteUrl(event.location)) location.removeAttribute("href");
     details.append(location);
   }
   const actions = document.createElement("div");
@@ -594,14 +620,14 @@ function renderEvent(event) {
     const eventTime = new Date(event.start.dateTime || 0);
     timePicker.value = event.start.date ? "" : `${String(eventTime.getHours()).padStart(2, "0")}:${String(eventTime.getMinutes()).padStart(2, "0")}`;
     timePicker.hidden = true;
-    timeToggle.hidden = !!event.start.date;
+    timeToggle.hidden = !!event.start.date || !!event.task;
     timeToggle.setAttribute("aria-label", `Choose move time${event.start.date ? "" : `, initially ${eventTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}`);
     calendarDialog.showModal();
     try { datePicker.showPicker(); }
     catch { datePicker.focus(); }
   });
   const fourHours = moveTile(event, "4H", { hours: 4 });
-  if (event.start.date) {
+  if (event.start.date || event.task) {
     fourHours.disabled = true;
     fourHours.title = "Hour moves are unavailable for all-day events";
   }
@@ -639,12 +665,14 @@ async function revertAction(action) {
   if (action.type === "move") {
     const restored = await moveEvent(action.account, action.event.id, {}, new Date(), {
       start: action.event.start, end: action.event.end,
-      originalStart: action.destinationStart, originalEnd: action.destinationEnd
+      originalStart: action.destinationStart, originalEnd: action.destinationEnd,
+      ...(action.event.task ? {taskDue:action.event.task.due, originalTaskDue:action.destinationStart.date} : {})
     });
     events = events.filter(event => event.id !== restored.id);
     events.push(restored);
     events.sort(compareEvents);
   } else {
+    if (action.event.task) await completeTask(action.event.id, false);
     const previous = dismissals.find(record => record.eventId === action.event.id && record.start === eventStartMs(action.event, calendarZone));
     try {
       dismissals = await saveDismissal(action.account, {
@@ -677,13 +705,13 @@ async function commitAction(action) {
   try {
     if (action.type === "move") {
       const moved = await moveEvent(account, event.id, action.option, new Date(action.stagedAtMs), {
-        start: action.destinationStart, end: action.destinationEnd, originalStart: event.start, originalEnd: event.end
+        start: action.destinationStart, end: action.destinationEnd, originalStart: event.start, originalEnd: event.end, ...(event.task ? {originalTaskDue:event.task.due} : {})
       });
       applied = true;
       events = events.filter((item) => item.id !== event.id);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
-      if (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive) {
+      if (moved.task?.due === null || (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive)) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b));
       }
@@ -715,6 +743,13 @@ async function commitAction(action) {
         }
       }
     } else {
+      if (event.task) {
+        if (account?.toLowerCase() !== action.account.toLowerCase()) throw new Error("Reconnect the account that performed this action.");
+        await completeTask(event.id, true);
+        applied = true;
+        events = events.filter(item => item.id !== event.id);
+        await chrome.storage.local.set({ [`cachedEvents:${action.account.toLowerCase()}`]: {events, zone:calendarZone} });
+      }
       dismissals = await saveDismissal(account, {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now(),
         title: event.summary || "(Untitled event)"
@@ -766,6 +801,9 @@ async function searchCalendar() {
   render();
   try {
     const results = await searchPrimaryCalendar(account, query);
+    const tasks = await readTasks(googleRequest);
+    results.events.push(...tasks.filter(task => `${task.summary} ${task.location || ""}`.toLowerCase().includes(query.toLowerCase())));
+    results.events.sort((a,b) => compareSearchEvents(a,b));
     if (request === remoteSearchRequest) remoteSearch = { query, ...results };
   } catch (error) {
     if (request === remoteSearchRequest) remoteSearch = { query, error: `Could not search Calendar: ${error.message}` };

@@ -158,7 +158,7 @@ private fun visibleEvents(context: Context, selectedAccount: String): List<Calen
     val now = Instant.now()
     val dismissals = DismissalStore(context).read(selectedAccount)
     val events = LocalStateStore(context).readEvents(selectedAccount).withoutDismissals(dismissals)
-        .filter { isInDisplayWindow(it.start, now, back, ahead, preset = preset) }
+        .filter { it.isUndatedTask || isInDisplayWindow(it.start, now, back, ahead, preset = preset) }
     return sortCalendarEvents(events).filterNot {
         val pending = PendingWidgetAction.read(prefs(context).getString(pendingKey(it), null))
         pending != null && !widgetCanUndo(pending.id,
@@ -239,7 +239,7 @@ internal class NotificationWidget : AppWidgetProvider() {
                 if (link != null) {
                     try {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))
-                            .setPackage("com.google.android.calendar")
+                            .setPackage(if (event.isTask) "com.google.android.apps.tasks" else "com.google.android.calendar")
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     } catch (_: ActivityNotFoundException) {
                         val editor = calendarEventOpenLink(link, edit = true) ?: link
@@ -447,10 +447,11 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 click(views, R.id.widget_event_title, event, "more")
                 click(views, R.id.widget_event_age, event, "more")
                 click(views, R.id.widget_event_one_day, event, if (event.isRecurring) "open" else "1D")
-                click(views, R.id.widget_event_location, event, "location")
+                if (event.locationIsLink) click(views, R.id.widget_event_location, event, "location")
+                else views.setOnClickFillInIntent(R.id.widget_event_location, null)
             }
             if (expanded) {
-                val firstRow = if (event.allDayDate != null) listOf("0D", "", "")
+                val firstRow = if (event.allDayDate != null || event.isTask) listOf("0D", "", "")
                     else listOf("2H", "3H", "4H")
                 listOf(R.id.widget_tile_a, R.id.widget_tile_b, R.id.widget_tile_c).forEachIndexed { index, id ->
                     views.setTextViewText(id, firstRow[index])
@@ -481,7 +482,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
 
 private suspend fun widgetToken(context: Context, selectedAccount: String, edit: Boolean): String =
     withContext(Dispatchers.IO) {
-        val scopes = mutableListOf(Scope(CALENDAR_READ_SCOPE), Scope(DRIVE_SCOPE))
+        val scopes = mutableListOf(Scope(CALENDAR_READ_SCOPE), Scope(DRIVE_SCOPE), Scope(TASKS_SCOPE))
         if (edit) scopes += Scope(CALENDAR_EDIT_SCOPE)
         val request = AuthorizationRequest.builder().setAccount(Account(selectedAccount, "com.google"))
             .setRequestedScopes(scopes).build()
@@ -516,7 +517,8 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             val back = settings.getInt("lookback_days", 7).coerceIn(1, 365)
             val ahead = settings.getInt("lookahead_days", 0).coerceIn(0, 36500)
             val preset = runCatching { settings.getString("window_preset", null)?.let(WindowPreset::valueOf) }.getOrNull()
-            val fetched = fetchRecentEvents(token, primary, back, ahead, preset = preset)
+            var tasksWarning: String? = null
+            val fetched = fetchReviewItems(token, primary, back, ahead, preset) { warning -> tasksWarning = warning }
             store.writeEvents(selectedAccount, fetched)
             store.writeSync(selectedAccount, before.copy(calendarAt = System.currentTimeMillis(), error = null))
             try {
@@ -536,7 +538,8 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
                 store.writeSync(selectedAccount, store.readSync(selectedAccount).copy(
                     error = "Move history sync failed: ${error.message ?: "Unknown error"}"))
             }
-            prefs(context).edit().remove("status").apply()
+            if (tasksWarning == null) prefs(context).edit().remove("status").apply()
+            else prefs(context).edit().putString("status", tasksWarning).apply()
             NotificationWidget.updateAll(context)
             Result.success()
         } catch (error: Exception) {
@@ -565,6 +568,11 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
             if (event == null) throw IllegalStateException("Event changed; refresh the app before retrying")
             NotificationWidget.updateAll(context)
             if (action.command == "dismiss") {
+                if (event.isTask) {
+                    completeTaskEvent(widgetToken(context, action.account, edit = false), event, true)
+                    val cache = LocalStateStore(context)
+                    cache.writeEvents(action.account, cache.readEvents(action.account).filterNot { it.id == event.id })
+                }
                 val store = DismissalStore(context)
                 val record = DismissalRecord(event.id, event.start.toEpochMilli(),
                     System.currentTimeMillis(), event.title)

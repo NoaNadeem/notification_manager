@@ -35,18 +35,24 @@ internal data class CalendarEvent(
     val location: String? = null,
     val end: Instant? = null,
     val hasOtherAttendees: Boolean = false,
-    val isRecurring: Boolean = false
+    val isRecurring: Boolean = false,
+    val taskListId: String? = null,
+    val taskId: String? = null
 ) {
+    val isTask: Boolean get() = taskListId != null
+    val isUndatedTask: Boolean get() = isTask && allDayDate == null
+    val locationIsLink: Boolean get() = !isTask || taskNoteUrl(location) != null
     fun isFutureForDisplay(now: Instant = Instant.now(), phoneZone: ZoneId = ZoneId.systemDefault()): Boolean =
-        allDayDate?.isAfter(now.atZone(phoneZone).toLocalDate()) ?: start.isAfter(now)
+        !isUndatedTask && (allDayDate?.isAfter(now.atZone(phoneZone).toLocalDate()) ?: start.isAfter(now))
 
     fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
-        start.isBefore(now.minus(Duration.ofDays(1)))
+        !isUndatedTask && start.isBefore(now.minus(Duration.ofDays(1)))
 
     fun isEmphasized(): Boolean = allDayDate != null || hasOtherAttendees ||
         (end != null && Duration.between(start, end) >= Duration.ofHours(1))
 
     fun ageDescription(now: Instant = Instant.now(), phoneZone: ZoneId = ZoneId.systemDefault()): String {
+        if (isUndatedTask) return "No due date"
         val today = now.atZone(phoneZone).toLocalDate()
         if (isFutureForDisplay(now, phoneZone)) {
             val date = allDayDate ?: start.atZone(phoneZone).toLocalDate()
@@ -181,7 +187,7 @@ internal suspend fun searchPrimaryCalendar(
 internal fun sortCalendarEvents(
     events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
 ): List<CalendarEvent> = events.sortedWith(
-    compareBy<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+    compareBy<CalendarEvent> { it.isUndatedTask }.thenBy { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
         .thenByDescending { it.allDayDate != null }
         .thenBy { it.start }
 )
@@ -246,7 +252,7 @@ internal fun calendarEditLink(htmlLink: String): String? {
 
 internal fun calendarEventOpenLink(htmlLink: String, edit: Boolean): String? {
     val uri = runCatching { URI(htmlLink) }.getOrNull() ?: return null
-    if (uri.scheme != "https" || uri.host !in setOf("www.google.com", "calendar.google.com")) return null
+    if (uri.scheme != "https" || uri.host !in setOf("www.google.com", "calendar.google.com", "tasks.google.com")) return null
     return if (edit) calendarEditLink(htmlLink) ?: htmlLink else htmlLink
 }
 
@@ -334,6 +340,7 @@ internal suspend fun moveCalendarEvent(
     restoreOriginal: CalendarEvent? = null,
     expectedMoved: CalendarEvent? = null
 ): CalendarEvent = withContext(Dispatchers.IO) {
+    if (calendarEvent.isTask) return@withContext moveTaskEvent(accessToken, calendarEvent, target, now, restoreOriginal, expectedMoved)
     require(!calendarEvent.isRecurring) { "Recurring events can only be dismissed or edited in Google Calendar." }
     val eventUrl = Uri.parse("https://www.googleapis.com/calendar/v3/calendars")
         .buildUpon()

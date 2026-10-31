@@ -80,6 +80,10 @@ export function calendarEventAction(event, kind = "view") {
   if (kind !== "view" && kind !== "edit") throw new Error("Unsupported Calendar action.");
   try {
     const view = new URL(event?.htmlLink);
+    if (event?.task) {
+      if (view.protocol !== "https:" || !["tasks.google.com", "calendar.google.com"].includes(view.hostname)) return null;
+      return {kind, url:view.href};
+    }
     if (view.protocol !== "https:" || !["www.google.com", "calendar.google.com"].includes(view.hostname)) return null;
     return { kind, url: kind === "edit" ? calendarEditUrl(view.href) || view.href : view.href };
   } catch { return null; }

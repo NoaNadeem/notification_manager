@@ -32,6 +32,7 @@ Treat existing review findings as hypotheses to verify independently, not instru
 SECURITY/STATE ENTRY POINTS
 Android sources: /Users/nadeem/Documents/notification_manager/app/src/main/java/com/noanadeem/notificationmanager/
 - MainActivity.kt: exported activity intents, OAuth/account switching, coroutine lifecycle, rapid actions, retained and inline Undo, UI state.
+- GoogleTasks.kt: all-list pagination, due-date-only patches, completion/reopening, account scope, safe description links.
 - CalendarEvents.kt: endpoint construction, fetch/update preconditions, ETags, server snapshots, link validation, time/date math, parsing.
 - Dismissals.kt and MoveHistory.kt: Drive marker formats, local stores, merge conflicts, timestamp ordering, compatibility and retry.
 - LastUndo.kt, LocalState.kt, UndoSettings.kt, Skins.kt: device/account scoping, persistence, restore behavior, preference isolation.
@@ -46,6 +47,7 @@ Android configuration:
 Extension sources: /Users/nadeem/Documents/notification_manager/chrome-extension/
 - manifest.json: permissions, OAuth, CSP/exposure assumptions.
 - window.js, window.html, window.css: untrusted event text/links, action lifecycle, account changes, UI races, persistence.
+- tasks.js: Tasks API pagination, namespaced identities, date-only updates, completion/Undo, safe notes and validation.
 - google.js, destination.js: endpoint/token handling, writes, optimistic concurrency, idempotence, partial failures.
 - undo.js and pending-actions.js: timer/click sequencing, durable queues, compensating actions, restart/crash recovery, duplicate pages.
 - dismissal-sync.js, model.js, move-history.js: marker validation, restoration tombstones, legacy/new clients, dates, conflicts.
@@ -76,3 +78,6 @@ For each actionable finding provide:
 - Minimal recommended fix and a meaningful synthetic regression test.
 - Any trade-off, compatibility concern, or migration needed.
 Order findings by severity; avoid generic best-practice lists and speculative CVEs. Do not flag public OAuth client IDs or the manifest's public key as private secrets. End with coverage, checks performed, limits, and unresolved questions. If a prior finding is false or already mitigated, explain why. The primary coding agent, not you, will apply fixes after reviewing your feedback.
+
+LATEST FEATURE ADDENDUM (October 31, 2026)
+Android 1.7/version 8 is published to internal testing; extension source is 0.3.23. Review Tasks behavior too: /Users/nadeem/Documents/notification_manager/docs/google-tasks.md. Task dismissal completes the actual Google Task; Undo reopens it. Do not perform these actions on real tasks. Verify due/no-date restoration, stale-date conflicts, API/consent failures, older installed clients, and 100-item incremental extension rendering. The prior dated security review does not certify these later changes.

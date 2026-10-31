@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 7`, and `versionName = "1.6"`. Version 7 (1.6) was signed with the existing upload key and published to the existing internal-testing track on October 29, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 8`, and `versionName = "1.7"`. Version 8 (1.7) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -80,3 +80,14 @@ Google's OAuth **Testing** list is a practical beta gate, but it is separate fro
 ## Latest phone release
 
 Version 7 (1.6), published October 29, 2026, restores the existing “Moved … to …” destination description during the phone app and widget's inline Undo period. Play Console confirmed **Available to internal testers** for **1.6 internal release**. The signed bundle includes the ReTrace mapping file; the known native-symbol warning remains nonblocking.
+
+
+### Android 1.7 / version 8
+
+Published **1.7 internal release** on October 31, 2026. Play confirmed **Available to internal testers** for version 8 (1.7), with the ReTrace mapping file attached. The existing nonblocking native-debug-symbol warning remains. No new terms or billing agreement was accepted.
+
+This release adds Google Tasks to the main app and widget: date/day moves, calendar-date selection, completion on dismissal, reopening on Undo, and the first notes line with safe web links. It also ships the retained main-app header Undo and 0–30 second event Undo settings. Google Tasks API was enabled in project `notification-manager-509623`; the OAuth Data Access page currently lists no preconfigured scopes, consistent with its prior Calendar flow. Users must reconnect and personally authorize the newly requested Tasks scope. No real task/event writes were used to verify the feature.
+
+Validation: 92 extension tests, 56 Android unit tests, signed release build, matching build/signed-artifact hashes, successful signature verification, and isolated Tasks/UI pagination/Undo checks. Extension source is version 0.3.23; its reload remains blocked by browser URL security policy and must not be reported as deployed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/7/details

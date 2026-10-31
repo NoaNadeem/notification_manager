@@ -18,6 +18,8 @@ The first nonblank line of task notes appears below the title using the event-lo
 
 ## Setup
 
+Google Tasks API was enabled for this project during Android 1.7 publication on October 31, 2026. Users still need to authorize Tasks access.
+
 1. Enable **Google Tasks API** in Cloud project `notification-manager-509623`: https://console.cloud.google.com/apis/library/tasks.googleapis.com?project=notification-manager-509623
 2. Add/allow the OAuth scope `https://www.googleapis.com/auth/tasks` in the project's Google Auth Platform configuration if required by its current consent setup. Google exposes read-only access or full task management, not a narrower move/complete-only scope.
 3. Reload the updated extension and reconnect its Google account to grant Tasks access. The extension adds the `tasks.googleapis.com` API host permission.

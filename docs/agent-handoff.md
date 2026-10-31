@@ -18,6 +18,8 @@ The Google account contains real personal Calendar events. Never change or stage
 - The extension shows one centered action row on event hover/focus: Dismiss, Pencil, Calendar, 4H, 7D, 3D, 2D, 1D. Titles clamp to three lines. Undo remains visible; touch actions remain accessible.
 - Successful moves return chronologically if still in range; no automatic scrolling or Saved placeholder.
 - The Android widget has its own worker/Undo paths and needs explicit consistency review; do not assume main-app fixes automatically cover it.
-- The published Android build remains 1.6/version 7. Newer source changes have not been published. Mixed-version marker compatibility matters.
+- Android 1.7/version 8 was published to internal testing on October 31, 2026, including Tasks and retained main-app Undo. Older installed clients can remain on 1.6; mixed-version marker compatibility still matters.
+
+Google Tasks code is in `GoogleTasks.kt` and `chrome-extension/tasks.js`; read [Tasks behavior and setup](google-tasks.md). Task dismissal completes the Google Task and Undo reopens it; Task dates cannot expose time-of-day. The extension renders 100 more items as you scroll; Android retains its lazy list. This feature was added after the dated security review and needs independent review too.
 
 The main focus is exported-component trust, OAuth/account isolation, race/lifecycle safety, durable writes and compensations, marker compatibility, and backup/privacy boundaries. Return prioritized findings with concrete triggers, exact file/line evidence, proposed fixes, and synthetic regression tests. Validate earlier findings independently.

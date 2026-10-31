@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readTasks,taskAsEvent,taskReference,taskNote,taskNoteUrl,moveTask} from './tasks.js';
-import {shiftEvent,eventStartMs,eventAgeLabel,mergeDismissals,withoutDismissals,compareEvents} from './model.js';
+import {shiftEvent,eventStartMs,eventAgeLabel,mergeDismissals,withoutDismissals,compareEvents,isEmphasized} from './model.js';
 import {calendarEventAction} from './open.js';
 
 test('tasks load all lists/pages, omit finished tasks, and have collision-free event IDs', async()=>{
@@ -70,4 +70,13 @@ test('task dismissal completes it remotely and Undo reopens it without changing 
  await setTaskCompleted(id,false,request);assert.deepEqual(patches[1],{status:'needsAction',completed:null});
  assert.equal(task.due,'2026-10-30T00:00:00Z');assert.equal(task.notes,'Keep notes');
  await setTaskCompleted(id,false,request);assert.equal(patches.length,2);
+});
+
+
+test('dated and undated Tasks use the short-event background even with all-day date adapters',()=>{
+ const dated=taskAsEvent({id:'dated',due:'2026-10-31T00:00:00Z'},'list');
+ const undated=taskAsEvent({id:'undated'},'list');
+ assert.equal(isEmphasized(dated),false);
+ assert.equal(isEmphasized(undated),false);
+ assert.equal(isEmphasized({...dated,task:undefined}),true);
 });

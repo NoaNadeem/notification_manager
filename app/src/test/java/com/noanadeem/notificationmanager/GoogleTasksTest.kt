@@ -33,4 +33,12 @@ class GoogleTasksTest {
         assertEquals(listOf(event,undated),sortCalendarEvents(listOf(undated,event)))
         assertEquals("https://tasks.google.com/task/example", calendarEventOpenLink("https://tasks.google.com/task/example",true))
     }
+    @Test fun datedTasksNeverUseTheLongEventHighlight() {
+        val date=LocalDate.of(2026,10,31)
+        val task=CalendarEvent("primary","task:list:synthetic","Synthetic task",date.atStartOfDay(ZoneId.of("UTC")).toInstant(),
+            date,ZoneId.of("UTC"),end=date.plusDays(1).atStartOfDay(ZoneId.of("UTC")).toInstant(),taskListId="list",taskId="synthetic")
+        assertFalse(task.isEmphasized())
+        assertTrue(task.copy(taskListId=null,taskId=null).isEmphasized())
+    }
+
 }

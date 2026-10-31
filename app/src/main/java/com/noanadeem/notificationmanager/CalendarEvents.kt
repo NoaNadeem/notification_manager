@@ -48,8 +48,8 @@ internal data class CalendarEvent(
     fun isTwoDaysOld(now: Instant = Instant.now()): Boolean =
         !isUndatedTask && start.isBefore(now.minus(Duration.ofDays(1)))
 
-    fun isEmphasized(): Boolean = allDayDate != null || hasOtherAttendees ||
-        (end != null && Duration.between(start, end) >= Duration.ofHours(1))
+    fun isEmphasized(): Boolean = !isTask && (allDayDate != null || hasOtherAttendees ||
+        (end != null && Duration.between(start, end) >= Duration.ofHours(1)))
 
     fun ageDescription(now: Instant = Instant.now(), phoneZone: ZoneId = ZoneId.systemDefault()): String {
         if (isUndatedTask) return "No due date"

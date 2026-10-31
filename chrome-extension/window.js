@@ -645,7 +645,7 @@ function renderEvent(event) {
     button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"),
     button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")),
     calendarTile,
-    fourHours,
+    ...(event.task ? [] : [fourHours]),
     ...[7, 3, 2, 1].map(days => moveTile(event, `${days}D`, { days }))
   );
   return row;

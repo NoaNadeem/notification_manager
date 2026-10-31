@@ -99,7 +99,7 @@ export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
 }
 
 export function isEmphasized(event, account) {
-  if (event.task?.due === null) return false;
+  if (event.task) return false;
   if (event.start?.date) return true;
   const start = Date.parse(event.start?.dateTime);
   const end = Date.parse(event.end?.dateTime);

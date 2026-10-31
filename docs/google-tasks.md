@@ -1,10 +1,10 @@
 # Google Tasks support
 
-Google Tasks are displayed with Calendar events in the Android main app, home-screen widget, and Chrome extension. All task lists are read with pagination, including assigned tasks exposed by the API; completed, deleted, and hidden tasks are excluded. Dated tasks use the same review window as events. Undated tasks remain visible at the end as “No due date.” Task and event IDs are namespaced to prevent collisions, including identical task IDs in different lists.
+Google Tasks are displayed with Calendar events in the Android main app, home-screen widget, and Chrome extension. All task lists are read with pagination, including assigned tasks exposed by the API; completed, deleted, and hidden tasks are excluded. Dated tasks use the same review window as events. Undated tasks remain visible at the end as “No due date.” Tasks use the normal short-event background, even when dated; they do not receive the long/all-day-event highlight. Task and event IDs are namespaced to prevent collisions, including identical task IDs in different lists.
 
 ## Actions and Undo
 
-Day moves and the date picker update only the Google Task's date. Hour moves and time selection are unavailable: Google Tasks does not expose time-of-day through its API. Pencil/title opens Google's task UI using the returned web link; no unsupported editor route is invented. For undated tasks, date moves assign a date and Undo can remove it again.
+Day moves and the date picker update only the Google Task's date. The extension omits 4H entirely for tasks. Phone task menus (main app and widget) use one row: **2D / 7D / Calendar / Pencil / Dismiss**. Hour moves and time selection are unavailable: Google Tasks does not expose time-of-day through its API. Pencil/title opens Google's task UI using the returned web link; no unsupported editor route is invented. For undated tasks, date moves assign a date and Undo can remove it again.
 
 Dismissing a task **marks it completed in Google Tasks**. Header Undo reopens it as incomplete. Local dismissal records remain history, but they do not override Google Tasks' active/completed state: reopening a task in Google's own UI makes it visible here again. Event dismissal is unchanged and remains specific to Notification Manager.
 

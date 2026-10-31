@@ -1643,13 +1643,8 @@ private fun CalendarConnectedScreen(
                                             }
                                         )
                                     }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        for (days in listOf(2L, 3L, 4L)) {
-                                            MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
-                                        }
+                                    @Composable
+                                    fun DateChoice() {
                                         MoveTile(
                                             label = "📅", description = "Choose a calendar date",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
@@ -1660,34 +1655,44 @@ private fun CalendarConnectedScreen(
                                                 datePickerEvent = event
                                             }
                                         )
-                                        MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
                                     }
-                                    Row(
+                                    @Composable
+                                    fun EditChoice() {
+                                        MoveTile(label = "✎", description = if (event.isTask) "Open task to edit" else "Open event in Google Calendar to edit",
+                                            enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) })
+                                    }
+                                    @Composable
+                                    fun DismissChoice() {
+                                        MoveTile(label = "✓", description = if (event.isTask) "Complete task" else "Dismiss event in this app",
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            modifier = Modifier.size(44.dp), isDismiss = true,
+                                            onClick = { expandedEventId = null; onDismiss(event) })
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        if (event.isTask) {
+                                            MoveChoice("2D", MoveTarget.After(Duration.ofDays(2)))
+                                            MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
+                                            DateChoice()
+                                            EditChoice()
+                                            DismissChoice()
+                                        } else {
+                                            for (days in listOf(2L, 3L, 4L)) MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
+                                            DateChoice()
+                                            MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
+                                        }
+                                    }
+                                    if (!event.isTask) Row(
                                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        if (event.allDayDate == null && !event.isTask) {
-                                            for (hours in listOf(2L, 3L, 4L)) {
-                                                MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
-                                            }
+                                        if (event.allDayDate == null) {
+                                            for (hours in listOf(2L, 3L, 4L)) MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
                                         } else {
                                             MoveChoice("0D", MoveTarget.After(Duration.ZERO))
                                             repeat(2) { Spacer(modifier = Modifier.size(44.dp)) }
                                         }
-                                        MoveTile(
-                                            label = "✎", description = "Open event in Google Calendar to edit",
-                                            enabled = true, modifier = Modifier.size(44.dp),
-                                            onClick = { onOpenEvent(event) }
-                                        )
-                                        MoveTile(
-                                            label = "✓", description = "Dismiss event in this app",
-                                            enabled = movingEventId == null && event.id !in committingActionIds,
-                                            modifier = Modifier.size(44.dp), isDismiss = true,
-                                            onClick = {
-                                                expandedEventId = null
-                                                onDismiss(event)
-                                            }
-                                        )
+                                        EditChoice()
+                                        DismissChoice()
                                     }
                                     if (movingEventId == event.id || event.id in committingActionIds) {
                                         Text("Saving action…", modifier = Modifier.padding(top = 8.dp))

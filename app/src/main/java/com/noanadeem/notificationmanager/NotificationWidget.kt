@@ -399,7 +399,7 @@ internal class NotificationWidgetService : RemoteViewsService() {
             laterIndex = events.indexOfFirst { it.isFutureForDisplay(now) }
         }
         override fun getCount() = events.size + if (laterIndex >= 0) 1 else 0
-        override fun getViewTypeCount() = 3
+        override fun getViewTypeCount() = 4
         override fun hasStableIds() = true
         override fun getItemId(position: Int): Long = if (position == laterIndex) Long.MIN_VALUE
             else eventKey(events[if (laterIndex >= 0 && position > laterIndex) position - 1 else position])
@@ -420,7 +420,8 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 pending.stagedAtMillis, pending.undoSeconds, System.currentTimeMillis())
             val expanded = !canUndo && prefs(context).getString("expanded_$widgetId", null) == key
             val views = RemoteViews(context.packageName,
-                if (event.isEmphasized()) R.layout.notification_widget_event_green
+                if (event.isTask) R.layout.notification_widget_task
+                else if (event.isEmphasized()) R.layout.notification_widget_event_green
                 else R.layout.notification_widget_event)
             val skin = readSkin(context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE))
             if (event.isEmphasized()) views.setInt(R.id.widget_event_root, "setBackgroundResource",
@@ -450,7 +451,11 @@ internal class NotificationWidgetService : RemoteViewsService() {
                 if (event.locationIsLink) click(views, R.id.widget_event_location, event, "location")
                 else views.setOnClickFillInIntent(R.id.widget_event_location, null)
             }
-            if (expanded) {
+            if (expanded && event.isTask) {
+                listOf(R.id.widget_tile_2d to "2D", R.id.widget_tile_7d to "7D",
+                    R.id.widget_tile_calendar to "cal", R.id.widget_tile_open to "open",
+                    R.id.widget_tile_dismiss to "dismiss").forEach { (id, command) -> click(views, id, event, command) }
+            } else if (expanded) {
                 val firstRow = if (event.allDayDate != null || event.isTask) listOf("0D", "", "")
                     else listOf("2H", "3H", "4H")
                 listOf(R.id.widget_tile_a, R.id.widget_tile_b, R.id.widget_tile_c).forEachIndexed { index, id ->

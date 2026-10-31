@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 9`, and `versionName = "1.8"`. Version 9 (1.8) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 10`, and `versionName = "1.9"`. Version 10 (1.9) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -102,3 +102,12 @@ This fixes the missing-consent upgrade path: Google authorization resolutions ar
 Validation: **58 Android and 96 extension tests pass**, plus synthetic extension UI checks for missing permission, automatic consent, refusal without loops, retained diagnostics, and successful explicit retry. No real account consent dialog was accepted and no actual Tasks/Calendar changes were made by the agent. The extension reload is still blocked by browser URL security policy; source changes are pushed but live reload must not be claimed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/8/details
+
+
+### Android 1.9 / version 10
+
+Published **1.9 internal release** on October 31, 2026 at 12:42 AM; Google Play confirmed **Available to internal testers** for version 10 (1.9). Tasks now use normal short-event backgrounds. The app and widget task menus use one row: **2D, 7D, Calendar, Pencil, Dismiss**. Event menus remain unchanged.
+
+Validation: 59 Android unit tests pass (97 extension tests passed with the corresponding UI change), signed release build, successful signature verification, and matching signed/build artifact hashes. Play attached the ReTrace mapping file; only the existing nonblocking native-debug-symbol warning remains. No new terms were accepted and no real task/event actions were used for verification.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/9/details

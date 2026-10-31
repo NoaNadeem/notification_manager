@@ -18,10 +18,10 @@ The Google account contains real personal Calendar events. Never change or stage
 - The extension shows one centered action row on event hover/focus: Dismiss, Pencil, Calendar, 4H, 7D, 3D, 2D, 1D. Titles clamp to three lines. Undo remains visible; touch actions remain accessible.
 - Successful moves return chronologically if still in range; no automatic scrolling or Saved placeholder.
 - The Android widget has its own worker/Undo paths and needs explicit consistency review; do not assume main-app fixes automatically cover it.
-- Android 1.8/version 9 was published to internal testing on October 31, 2026, including Tasks and retained main-app Undo. Older installed clients can remain on 1.6; mixed-version marker compatibility still matters.
+- Android 1.9/version 10 was published to internal testing on October 31, 2026, including normal Task backgrounds and single-row app/widget Task menus, plus Tasks and retained main-app Undo. Older installed clients can remain on 1.6; mixed-version marker compatibility still matters.
 
 Google Tasks code is in `GoogleTasks.kt` and `chrome-extension/tasks.js`; read [Tasks behavior and setup](google-tasks.md). Task dismissal completes the Google Task and Undo reopens it; Task dates cannot expose time-of-day. The extension renders 100 more items as you scroll; Android retains its lazy list. This feature was added after the dated security review and needs independent review too.
 
 The main focus is exported-component trust, OAuth/account isolation, race/lifecycle safety, durable writes and compensations, marker compatibility, and backup/privacy boundaries. Return prioritized findings with concrete triggers, exact file/line evidence, proposed fixes, and synthetic regression tests. Validate earlier findings independently.
 
-The 1.8 permission recovery paths are in `AuthorizationFlow.kt`, `MainActivity.kt`, `chrome-extension/authorization.js`, and `window.js`. Review once-per-session prompting, foreground-only launch, cancellation and explicit retry, partial grants, and independent Tasks error persistence. Current checks: 58 Android tests and 96 extension tests.
+The 1.8 permission recovery paths are in `AuthorizationFlow.kt`, `MainActivity.kt`, `chrome-extension/authorization.js`, and `window.js`. Review once-per-session prompting, foreground-only launch, cancellation and explicit retry, partial grants, and independent Tasks error persistence. Current checks: 59 Android tests and 97 extension tests.

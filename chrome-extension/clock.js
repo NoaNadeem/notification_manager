@@ -39,6 +39,6 @@ export function moveTooltip(event, option, now = new Date(), zone = localZone())
     ? new Date(`${moved.start.date}T12:00:00`)
     : new Date(moved.start.dateTime);
   const date = dateLabel(start, zone);
-  if (!option.hours) return `Move to ${date}`;
+  if (!option.hours && !option.time) return `Move to ${date}`;
   return `Move to ${date}, ${timeLabel(start, zone)} ${zoneLabels(start, zone)}`;
 }

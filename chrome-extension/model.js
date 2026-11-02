@@ -152,6 +152,13 @@ export function zonedMidnightMs(date, zone) {
   return candidate;
 }
 
+// Resolve at tap time so queued saves retain the selected date and preference.
+export function dayMoveOption(event, option, now = new Date(), morning = true, account) {
+  if (!morning || event.task || isEmphasized(event, account) || !event.start?.dateTime ||
+      option.date || option.hours || !Number.isInteger(option.days) || option.days <= 0) return option;
+  return { date: dateInDays(now, option.days), time: "06:00" };
+}
+
 export function shiftEvent(event, option, now = new Date()) {
   if (isRecurring(event)) throw new Error("Recurring events can only be dismissed or edited in Google Calendar.");
   if (option.time && (!option.date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(option.time))) {

@@ -1,6 +1,6 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, withoutDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
@@ -10,6 +10,7 @@ import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerW
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
 
+let smallEventMorning = true;
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
 const notice = $("#notice");
@@ -311,7 +312,7 @@ function button(label, title, action, className = "tile") {
 
 function moveTile(event, label, option, className = "tile") {
   const tooltip = () => {
-    try { return moveTooltip(event, option, new Date()); }
+    try { return moveTooltip(event, dayMoveOption(event, option, new Date(), smallEventMorning, account), new Date()); }
     catch { return `Move ${label} from now`; }
   };
   const tile = button(label, tooltip(), () => void stageAction(event, "move", option), className);
@@ -660,6 +661,7 @@ async function stageAction(event, type, option) {
   }
   try {
     const stagedAtMs = Date.now();
+    if (type === "move") option = dayMoveOption(event, option, new Date(stagedAtMs), smallEventMorning, account);
     const destination = type === "move" ? shiftEvent(event, option, new Date(stagedAtMs)) : undefined;
     await undo.stage({ id: crypto.randomUUID(), account, event, type, option, stagedAtMs,
       destinationStart: destination?.start, destinationEnd: destination?.end });
@@ -1036,6 +1038,16 @@ $("#estimate-storage").addEventListener("click", () => {
     if (request === storageEstimateRequest) showStorageEstimate(`Could not estimate storage: ${error.message}`, true);
   });
 });
+$("#day-move-toggle").addEventListener("click", async () => {
+  closeMenu();
+  try {
+    const next = !smallEventMorning;
+    await chrome.storage.local.set({ smallEventMorning: next });
+    smallEventMorning = next;
+    $("#day-move-label").textContent = next ? "6am local" : "24-hour increments";
+    render();
+  } catch (error) { showError(`Could not save day-move setting: ${error.message}`); }
+});
 $("#undo-time-open").addEventListener("click", () => {
   closeMenu();
   $("#undo-seconds").value = undo.undoSeconds;
@@ -1145,7 +1157,7 @@ window.addEventListener("online", () => {
     if (account && !signedOut && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0) void load();
   });
 });
-const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount", "undoSeconds"]);
+const saved = await chrome.storage.local.get(["lookbackDays", "lookaheadDays", "windowPreset", "darkMode", "signedOut", "skinName", "lastAccount", "undoSeconds", "smallEventMorning"]);
 if (saved.lastAccount) {
   const key = `syncState:${saved.lastAccount.toLowerCase()}`;
   const stored = (await chrome.storage.local.get(key))[key];
@@ -1154,6 +1166,8 @@ if (saved.lastAccount) {
     await chrome.storage.local.set({ [key]: withoutHistory });
   }
 }
+smallEventMorning = saved.smallEventMorning !== false;
+$("#day-move-label").textContent = smallEventMorning ? "6am local" : "24-hour increments";
 undo.undoSeconds = parseUndoSeconds(saved.undoSeconds) ?? DEFAULT_UNDO_SECONDS;
 $("#undo-time-label").textContent = `${undo.undoSeconds} seconds`;
 lookbackDays = Number.isInteger(saved.lookbackDays) && saved.lookbackDays >= 1 && saved.lookbackDays <= 365 ? saved.lookbackDays : 7;

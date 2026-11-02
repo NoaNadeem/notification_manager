@@ -244,6 +244,7 @@ private fun CalendarLoginScreen(
     val preferences = remember(activity) {
         activity.getSharedPreferences(CONNECTION_PREFERENCES, Context.MODE_PRIVATE)
     }
+    var smallEventMorning by remember { mutableStateOf(preferences.getBoolean(SMALL_EVENT_MORNING_KEY, true)) }
     var undoSeconds by remember { mutableStateOf(validUndoSeconds(preferences.getInt(UNDO_SECONDS_KEY, DEFAULT_UNDO_SECONDS))) }
     val coroutineScope = rememberCoroutineScope()
     val dismissalStore = remember(activity) { DismissalStore(activity) }
@@ -521,7 +522,10 @@ private fun CalendarLoginScreen(
         }
     }
 
-    fun stageForUndo(action: UndoableAction) {
+    fun stageForUndo(requestedAction: UndoableAction) {
+        val action = if (requestedAction is UndoableAction.Move) requestedAction.copy(target =
+            smallEventMoveTarget(requestedAction.event, requestedAction.target, requestedAction.stagedAt, morning = smallEventMorning))
+            else requestedAction
         if (undoInProgress) {
             actionError = "Wait for Undo to finish before changing another event."
             return
@@ -1083,6 +1087,11 @@ private fun CalendarLoginScreen(
             darkMode = darkMode,
             skin = skin,
             onSkinChange = onSkinChange,
+            smallEventMorning = smallEventMorning,
+            onSmallEventMorningChange = { value ->
+                smallEventMorning = value
+                preferences.edit().putBoolean(SMALL_EVENT_MORNING_KEY, value).apply()
+            },
             undoSeconds = undoSeconds,
             onUndoSecondsChange = { seconds ->
                 undoSeconds = validUndoSeconds(seconds)
@@ -1197,6 +1206,8 @@ private fun CalendarConnectedScreen(
     darkMode: Boolean,
     skin: Skin,
     onSkinChange: (Skin) -> Unit,
+    smallEventMorning: Boolean,
+    onSmallEventMorningChange: (Boolean) -> Unit,
     undoSeconds: Int,
     onUndoSecondsChange: (Int) -> Unit,
     movingEventId: String?,
@@ -1421,6 +1432,10 @@ private fun CalendarConnectedScreen(
                         onClick = { menuExpanded = false; showPresets = true }
                     )
                     DropdownMenuItem(
+                        text = { Text("Small-event day moves: ${if (smallEventMorning) "6am local" else "24-hour increments"}") },
+                        onClick = { menuExpanded = false; onSmallEventMorningChange(!smallEventMorning) }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Undo Time: $undoSeconds seconds") },
                         onClick = { menuExpanded = false; undoSecondsText = undoSeconds.toString(); showUndoTime = true }
                     )
@@ -1595,7 +1610,7 @@ private fun CalendarConnectedScreen(
                             else MoveTile(
                                 label = "1D",
                                 description = "Move event one day from now",
-                                tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1))) },
+                                tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1)), morning = smallEventMorning) },
                                 enabled = movingEventId == null && event.id !in committingActionIds,
                                 modifier = Modifier.size(44.dp),
                                 onClick = {
@@ -1634,7 +1649,7 @@ private fun CalendarConnectedScreen(
                                             label = label,
                                             description = if (label == "0D") "Move all-day event to today"
                                                 else "Move event $label from now",
-                                            tooltip = { event.moveDestinationTooltip(target) },
+                                            tooltip = { event.moveDestinationTooltip(target, morning = smallEventMorning) },
                                             enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
@@ -2089,10 +2104,12 @@ private fun CalendarEvent.searchDateDescription(): String =
     }
 
 internal fun CalendarEvent.moveDestinationTooltip(
-    target: MoveTarget,
+    requestedTarget: MoveTarget,
     now: Instant = Instant.now(),
-    phoneZone: ZoneId = ZoneId.systemDefault()
+    phoneZone: ZoneId = ZoneId.systemDefault(),
+    morning: Boolean = false
 ): String {
+    val target = smallEventMoveTarget(this, requestedTarget, now, phoneZone, morning)
     val date = if (allDayDate != null) {
         shiftAllDayDates(allDayDate, allDayDate.plusDays(1), now, phoneZone, calendarZone, target)
             .first

@@ -200,6 +200,17 @@ internal fun sortCalendarSearchEvents(
         .thenByDescending { it.start }
 )
 
+internal const val SMALL_EVENT_MORNING_KEY = "small_event_morning"
+
+internal fun smallEventMoveTarget(
+    event: CalendarEvent, target: MoveTarget, now: Instant = Instant.now(),
+    zone: ZoneId = ZoneId.systemDefault(), morning: Boolean = true
+): MoveTarget {
+    if (!morning || event.isTask || event.isEmphasized() || target !is MoveTarget.After ||
+        target.duration <= Duration.ZERO || target.duration.seconds % 86400L != 0L || target.duration.nano != 0) return target
+    return MoveTarget.OnDateTime(now.atZone(zone).toLocalDate().plusDays(target.duration.toDays()), LocalTime.of(6, 0))
+}
+
 internal fun moveUndoDescription(
     event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
     phoneZone: ZoneId = ZoneId.systemDefault()

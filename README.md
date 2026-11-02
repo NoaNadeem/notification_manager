@@ -71,3 +71,12 @@ Undo defaults to 2 seconds. The three-dot menu’s **Undo Time** setting accepts
 Google Tasks integration, required Google API/OAuth setup, date-only limitations, completion/Undo behavior, and incremental list rendering are documented in [Google Tasks support](docs/google-tasks.md).
 
 Permission recovery: the Android app now offers Google's required consent screen in the foreground after an upgrade, with **Reconnect Google access** and always-accessible **Sync details** in the menu. Cancelling consent does not cause a prompt loop; Refresh or Reconnect explicitly retries. See [Tasks setup and recovery](docs/google-tasks.md).
+
+
+### Small-event day moves
+
+Day buttons (1D, 2D, 3D, 4D, 7D) default to **6am in the device's local time**, on today's local date plus the selected number of calendar days. This applies to normal-color timed events: under one hour, without other attendees. Duration is preserved. Highlighted events, all-day events, Tasks, hour buttons, and the date/time picker retain their existing behavior.
+
+In **⋮ → Small-event day moves**, toggle between **6am local** and **24-hour increments** (the previous behavior, measured from the click). Android app and widget share the phone preference; Chrome stores a separate local preference. Local time follows travel and daylight saving rather than fixing every move to Pacific time. Queued actions retain the choice made when staged.
+
+The change passed 61 Android unit tests, 99 extension tests, and an isolated browser check of the default, stored option, and both move destinations, with real networking disabled. Android release remains 1.9/version 10 until another phone release is explicitly requested. Extension source is 0.3.26; live reload is blocked by the browser automation URL policy for `chrome://extensions` and must not be reported as deployed.

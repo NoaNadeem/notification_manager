@@ -104,12 +104,13 @@ private fun workName(key: String) = "notification-widget-action-$key"
 private data class PendingWidgetAction(
     val id: String, val eventId: String, val start: Long, val command: String,
     val account: String, val description: String, val stagedAtMillis: Long,
-    val undoSeconds: Int = DEFAULT_UNDO_SECONDS
+    val undoSeconds: Int = DEFAULT_UNDO_SECONDS,
+    val morningDate: String? = null
 ) {
     fun json(): String = JSONObject().put("id", id).put("eventId", eventId)
         .put("start", start).put("command", command).put("account", account)
         .put("description", description).put("stagedAtMillis", stagedAtMillis)
-        .put("undoSeconds", undoSeconds).toString()
+        .put("undoSeconds", undoSeconds).put("morningDate", morningDate).toString()
 
     companion object {
         fun read(raw: String?): PendingWidgetAction? = runCatching {
@@ -118,7 +119,8 @@ private data class PendingWidgetAction(
                 json.getLong("start"), json.getString("command"),
                 json.getString("account"), json.getString("description"),
                 json.optLong("stagedAtMillis", System.currentTimeMillis()),
-                validUndoSeconds(json.optInt("undoSeconds", DEFAULT_UNDO_SECONDS)))
+                validUndoSeconds(json.optInt("undoSeconds", DEFAULT_UNDO_SECONDS)),
+                json.optString("morningDate").takeIf { it.isNotBlank() && it != "null" })
         }.getOrNull()
     }
 }
@@ -275,16 +277,21 @@ internal class NotificationWidget : AppWidgetProvider() {
                 if (command !in setOf("dismiss", "1D", "2D", "3D", "4D", "7D", "0D", "2H", "3H", "4H")) return
                 if (event.isRecurring && command != "dismiss") return
                 val stagedAt = Instant.now()
+                val settings = context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)
+                var morningDate: String? = null
                 val description = if (command == "dismiss") "Dismissed" else {
                     val target = if (command.endsWith("H")) MoveTarget.After(
                         Duration.ofHours(command.dropLast(1).toLong()))
                     else MoveTarget.After(Duration.ofDays(command.dropLast(1).toLong()))
-                    moveUndoDescription(event, target, stagedAt)
+                    val resolved = smallEventMoveTarget(event, target, stagedAt,
+                        morning = settings.getBoolean(SMALL_EVENT_MORNING_KEY, true))
+                    morningDate = (resolved as? MoveTarget.OnDateTime)?.date?.toString()
+                    moveUndoDescription(event, resolved, stagedAt)
                 }
                 val seconds = validUndoSeconds(context.getSharedPreferences("calendar_connection", Context.MODE_PRIVATE)
                     .getInt(UNDO_SECONDS_KEY, DEFAULT_UNDO_SECONDS))
                 val action = PendingWidgetAction(UUID.randomUUID().toString(), event.id,
-                    event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli(), seconds)
+                    event.start.toEpochMilli(), command, selectedAccount, description, stagedAt.toEpochMilli(), seconds, morningDate)
                 prefs(context).edit().remove("expanded_$widgetId").putString(key, action.json())
                     .putString(newestWidgetUndoKey(selectedAccount), action.id).apply()
                 enqueueWidgetSave(context, key, action, seconds)
@@ -605,7 +612,9 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
             } else {
                 if (event.isRecurring) throw IllegalStateException("Recurring events cannot be moved")
                 val token = widgetToken(context, action.account, edit = true)
-                val target = if (action.command == "0D") MoveTarget.After(Duration.ZERO)
+                val target = if (action.morningDate != null) MoveTarget.OnDateTime(
+                    java.time.LocalDate.parse(action.morningDate), java.time.LocalTime.of(6, 0))
+                    else if (action.command == "0D") MoveTarget.After(Duration.ZERO)
                     else if (action.command.endsWith("H")) MoveTarget.After(Duration.ofHours(action.command.dropLast(1).toLong()))
                     else MoveTarget.After(Duration.ofDays(action.command.dropLast(1).toLong()))
                 val moved = moveCalendarEvent(token, event, target, Instant.ofEpochMilli(action.stagedAtMillis))

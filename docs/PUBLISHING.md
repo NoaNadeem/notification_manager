@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 10`, and `versionName = "1.9"`. Version 10 (1.9) was signed with the existing upload key and published to the existing internal-testing track on October 31, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 11`, and `versionName = "1.10"`. Version 11 (1.10) was signed with the existing upload key and published to the existing internal-testing track on November 4, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -111,3 +111,12 @@ Published **1.9 internal release** on October 31, 2026 at 12:42 AM; Google Play 
 Validation: 59 Android unit tests pass (97 extension tests passed with the corresponding UI change), signed release build, successful signature verification, and matching signed/build artifact hashes. Play attached the ReTrace mapping file; only the existing nonblocking native-debug-symbol warning remains. No new terms were accepted and no real task/event actions were used for verification.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/9/details
+
+
+### Android 1.10 / version 11
+
+Published **1.10 internal release** on November 4, 2026; Google Play confirmed **Available to internal testers** for version 11 (1.10). Day buttons for normal-color short events without other attendees default to 6am device-local time on today's date plus the selected days. The app and widget preserve duration and handle daylight-saving transitions. **Small-event day moves** in the menu switches back to exact 24-hour increments; the phone preference is independent of Chrome.
+
+Validation: 61 Android unit tests pass, signed release build, successful signature verification, and matching signed/build artifact hashes. The feature also passed 99 extension tests and isolated browser fixture checks. ReTrace mapping is attached; only the existing nonblocking native-debug-symbol warning remains. No new terms were accepted; no real calendar events or Tasks were changed for verification.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/10/details

@@ -93,6 +93,19 @@ export function eventStartMs(event, calendarTimeZone) {
   return zonedMidnightMs(event.start.date, calendarTimeZone);
 }
 
+export function nextDayPreviewWindow(lastExclusive) {
+  const end = new Date(lastExclusive);
+  end.setDate(end.getDate() + 1);
+  return { first: lastExclusive, lastExclusive: end.getTime() };
+}
+
+export function itemsInWindow(items, bounds, zone) {
+  return items.filter(event => {
+    const start = eventStartMs(event, zone);
+    return Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive;
+  });
+}
+
 export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
   if (event.task?.due === null) return false;
   return eventStartMs(event, zone) < nowMs - DAY_MS;

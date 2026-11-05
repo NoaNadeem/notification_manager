@@ -62,15 +62,18 @@ export async function dismissedEventTitle(calendarId, eventId, request = googleR
   return event.summary || null;
 }
 
-export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null, request = googleRequest) {
+export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, preset = null, request = googleRequest, includePreview = false) {
   const now = Date.now();
   const { first, lastExclusive } = displayWindow(now, lookbackDays, lookaheadDays, preset);
+  const previewEnd = new Date(lastExclusive);
+  previewEnd.setDate(previewEnd.getDate() + 1);
+  const fetchEnd = includePreview ? previewEnd.getTime() : lastExclusive;
   const all = [];
   let pageToken;
   do {
     const url = primaryEventsUrl(calendarId);
     url.searchParams.set("timeMin", new Date(first).toISOString());
-    url.searchParams.set("timeMax", new Date(lastExclusive).toISOString());
+    url.searchParams.set("timeMax", new Date(fetchEnd).toISOString());
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("showDeleted", "false");
     url.searchParams.set("maxResults", "2500");
@@ -81,7 +84,7 @@ export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, 
     }
     pageToken = page.nextPageToken;
   } while (pageToken);
-  return { events: all, now, first, lastExclusive };
+  return { events: all, now, first, lastExclusive, previewLastExclusive: fetchEnd };
 }
 
 export async function searchPrimaryCalendar(calendarId, query, request = googleRequest) {

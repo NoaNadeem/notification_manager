@@ -80,3 +80,12 @@ Day buttons (1D, 2D, 3D, 4D, 7D) default to **6am in the device's local time**, 
 In **⋮ → Small-event day moves**, toggle between **6am local** and **24-hour increments** (the previous behavior, measured from the click). Android app and widget share the phone preference; Chrome stores a separate local preference. Local time follows travel and daylight saving rather than fixing every move to Pacific time. Queued actions retain the choice made when staged.
 
 The change passed 61 Android unit tests, 99 extension tests, and an isolated browser check of the default, stored option, and both move destinations, with real networking disabled. Android 1.10/version 11 was published to internal testing on November 4, 2026 with this change. Extension source is 0.3.26; live reload is blocked by the browser automation URL policy for `chrome://extensions` and must not be reported as deployed.
+
+
+### Read-only day after lookahead
+
+When the review range is empty, the app and extension show: “No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below”. Beneath it they show only the next local calendar day's events and dated Tasks. These rows have plain titles, dates, and locations/notes, with no links, action buttons, hover actions, or tap expansion. They do not count toward the actionable queue. If that day is also empty, “No events for that day.” appears; the preview does not skip ahead to find a busier day. Search and the real-events filter keep their separate empty states.
+
+The extra day is fetched and cached with the review range, using local date boundaries across daylight saving. The app fetches the expanded cache once after upgrade. The Android widget continues to show its normal actionable review range.
+
+Validation: 62 Android unit tests and 101 extension tests pass; isolated browser fixtures verified the exact message, next-day boundary, zero actionable count, and lack of buttons/links after pointer and click interactions. No real calendar or Tasks writes were performed. Extension source is 0.3.27; installed-extension reload remains blocked by browser automation URL policy for chrome://extensions. The Android release remains 1.10/version 11; this change awaits an explicitly requested phone release.

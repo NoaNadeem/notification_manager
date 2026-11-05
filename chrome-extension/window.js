@@ -1,6 +1,6 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, withoutDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
@@ -153,7 +153,9 @@ async function retrySavedActions(manual = false) {
 
 function currentVisibleEvents() {
   const hidden = new Set([...undo.committingActions].map(action => action.event.id));
-  const visible = withoutDismissals(events, dismissals, calendarZone).filter(event => !hidden.has(event.id));
+  const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
+  const visible = withoutDismissals(events, dismissals, calendarZone).filter(event => !hidden.has(event.id))
+    .filter(event => event.task?.due === null || itemsInWindow([event], bounds, calendarZone).length);
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
@@ -363,7 +365,7 @@ async function load(interactive = false, allowConsentRetry = false) {
       await chrome.storage.local.set({ signedOut: false });
       showInfo("");
     }
-    const recent = await recentEvents(account, lookbackDays, lookaheadDays, windowPreset);
+    const recent = await recentEvents(account, lookbackDays, lookaheadDays, windowPreset, googleRequest, true);
     let taskWarning = "";
     let tasks = [];
     try { tasks = await readTasks(googleRequest); }
@@ -371,7 +373,7 @@ async function load(interactive = false, allowConsentRetry = false) {
     events = [...recent.events, ...tasks].filter((event) => {
       if (event.task?.due === null) return true;
       const start = eventStartMs(event, calendarZone);
-      return Number.isFinite(start) && start >= recent.first && start < recent.lastExclusive;
+      return Number.isFinite(start) && start >= recent.first && start < (recent.previewLastExclusive ?? recent.lastExclusive);
     }).sort((a, b) => compareEvents(a, b));
     syncState.calendarAt = Date.now();
     syncState.tasksError = taskWarning || null;
@@ -448,8 +450,18 @@ function renderNow() {
     empty.textContent = !account ? "Connect Google Calendar to load events."
       : searchActive && searchQueryInput.value.trim() ? "No loaded events match this search."
       : realEventsOnly ? "No real events in this range."
-      : "No events in the selected lookback and lookahead range.";
+      : "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below";
     list.append(empty);
+    if (account && !searchActive && !realEventsOnly) {
+      const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
+      const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone);
+      preview.slice(0, renderedItemLimit).forEach(event => list.append(renderReadOnlyEvent(event)));
+      if (preview.length > renderedItemLimit) appendMoreItems();
+      if (!preview.length && !loading) {
+        const none = document.createElement("p"); none.className = "empty";
+        none.textContent = "No events for that day."; list.append(none);
+      }
+    }
   } else {
     const firstFutureIndex = filtered.findIndex((event) => isFutureEvent(event));
     filtered.slice(0, renderedItemLimit).forEach((event, index) => {
@@ -560,6 +572,20 @@ function renderSearchFooter() {
     more.textContent = "Showing the first 100 matches. Narrow your search to find more.";
     list.append(more);
   }
+}
+
+function renderReadOnlyEvent(event) {
+  const row = document.createElement("article");
+  row.className = "event read-only";
+  row.setAttribute("aria-label", "Read-only event");
+  if (isEmphasized(event, account)) row.classList.add("emphasized");
+  for (const [className, text] of [["title", event.summary || "(Untitled event)"],
+      ["age", eventAgeLabel(event, Date.now(), calendarZone)], ["location", event.location]]) {
+    if (!text) continue;
+    const line = document.createElement("div"); line.className = className;
+    line.textContent = text; row.append(line);
+  }
+  return row;
 }
 
 function renderEvent(event) {
@@ -723,7 +749,7 @@ async function commitAction(action) {
       events = events.filter((item) => item.id !== event.id);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
-      if (moved.task?.due === null || (Number.isFinite(start) && start >= bounds.first && start < bounds.lastExclusive)) {
+      if (moved.task?.due === null || (Number.isFinite(start) && start >= bounds.first && start < nextDayPreviewWindow(bounds.lastExclusive).lastExclusive)) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b));
       }

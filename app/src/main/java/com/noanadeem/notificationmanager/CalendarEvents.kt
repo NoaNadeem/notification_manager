@@ -126,12 +126,14 @@ internal suspend fun fetchRecentEvents(
     lookaheadDays: Int = 0,
     phoneZone: ZoneId = ZoneId.systemDefault(),
     now: Instant = Instant.now(),
-    preset: WindowPreset? = null
+    preset: WindowPreset? = null,
+    includePreview: Boolean = false
 ): List<CalendarEvent> = withContext(Dispatchers.IO) {
     require(lookbackDays in 1..365)
     require(lookaheadDays in 0..36500)
     val earliest = preset?.first(now, phoneZone) ?: now.minus(lookbackDays.toLong(), ChronoUnit.DAYS)
-    val latestExclusive = displayEndExclusive(now, lookaheadDays, phoneZone)
+    val latestExclusive = if (includePreview) nextDayPreviewBounds(now, lookaheadDays, phoneZone).second
+        else displayEndExclusive(now, lookaheadDays, phoneZone)
     val events = mutableListOf<CalendarEvent>()
     var eventPage: String? = null
     do {
@@ -148,7 +150,7 @@ internal suspend fun fetchRecentEvents(
         val response = getCalendarJson(url, accessToken)
         // timeMin filters by end time, so check the start time ourselves.
         events += parseCalendarPage(response, primaryCalendarId)
-            .filter { isInDisplayWindow(it.start, now, lookbackDays, lookaheadDays, phoneZone, preset) }
+            .filter { it.start >= earliest && it.start < latestExclusive }
         eventPage = response.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (eventPage != null)
     sortCalendarEvents(events)
@@ -497,6 +499,18 @@ internal fun shiftAllDayDates(
 internal fun isInPastWindow(start: Instant, now: Instant, lookbackDays: Int): Boolean {
     require(lookbackDays in 1..365)
     return start >= now.minus(lookbackDays.toLong(), ChronoUnit.DAYS) && start <= now
+}
+
+internal fun nextDayPreviewBounds(
+    now: Instant, ahead: Int, zone: ZoneId = ZoneId.systemDefault()
+): Pair<Instant, Instant> {
+    val first = displayEndExclusive(now, ahead, zone)
+    return first to first.atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone).toInstant()
+}
+
+internal fun CalendarEvent.isInNextDayPreview(now: Instant, ahead: Int, zone: ZoneId = ZoneId.systemDefault()): Boolean {
+    val (first, last) = nextDayPreviewBounds(now, ahead, zone)
+    return !isUndatedTask && start >= first && start < last
 }
 
 internal fun displayEndExclusive(now: Instant, lookaheadDays: Int, phoneZone: ZoneId): Instant {

@@ -420,7 +420,8 @@ private fun CalendarLoginScreen(
                         recentEvents = recentEvents.mapNotNull {
                             if (it.calendarId == action.event.calendarId && it.id == action.event.id) {
                                 movedEvent.takeIf { updated ->
-                                    isInDisplayWindow(updated.start, now, lookbackDays, lookaheadDays, preset = windowPreset)
+                                    (isInDisplayWindow(updated.start, now, lookbackDays, lookaheadDays, preset = windowPreset) ||
+                                        updated.isInNextDayPreview(now, lookaheadDays))
                                 }
                             } else it
                         }.let(::sortCalendarEvents)
@@ -585,7 +586,8 @@ private fun CalendarLoginScreen(
                     }
                 }
                 recentEvents = sortCalendarEvents((recentEvents.filterNot { it.id == restored.id } + restored)
-                    .filter { it.isUndatedTask || isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) })
+                    .filter { it.isUndatedTask || isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) ||
+                        it.isInNextDayPreview(Instant.now(), lookaheadDays) })
                 localStateStore.writeEvents(selectedAccount, recentEvents)
                 NotificationWidget.updateAll(activity)
                 if (lastUndoAction == action) {
@@ -711,7 +713,8 @@ private fun CalendarLoginScreen(
                 }
                 screen = ConnectionScreen.Connected
                 errorMessage = null
-                val fetchCalendar = forceRefresh || calendarAutoRefreshDue(syncState.calendarAt) || syncState.tasksAt == 0L
+                val fetchCalendar = forceRefresh || !preferences.getBoolean("preview_cache:$selectedAccount", false) || calendarAutoRefreshDue(syncState.calendarAt) || syncState.tasksAt == 0L ||
+                    recentEvents.none { it.isUndatedTask || isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) }
                 eventsLoading = fetchCalendar
                 eventsError = null
                 driveError = null
@@ -719,11 +722,14 @@ private fun CalendarLoginScreen(
                     val fetched = if (fetchCalendar) {
                         var tasksWarning: String? = null
                         fetchReviewItems(accessToken, primaryCalendarId, lookbackDays, lookaheadDays,
-                            windowPreset, tasksAllowed = !authorizationNeeded) { warning ->
+                            windowPreset, tasksAllowed = !authorizationNeeded, includePreview = true) { warning ->
                                 tasksWarning = warning
                                 eventsError = warning
                             }.also { loaded ->
-                            runCatching { localStateStore.writeEvents(selectedAccount, loaded) }
+                            runCatching {
+                                localStateStore.writeEvents(selectedAccount, loaded)
+                                preferences.edit().putBoolean("preview_cache:$selectedAccount", true).apply()
+                            }
                                 .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
                             saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null,
                                 tasksAt = if (tasksWarning == null) System.currentTimeMillis() else syncState.tasksAt,
@@ -1284,8 +1290,11 @@ private fun CalendarConnectedScreen(
     }
     val keyboardController = LocalSoftwareKeyboardController.current
     val searchFocusRequester = remember { FocusRequester() }
-    val filteredEvents = remember(events, searchQuery, searchActive, realEventsOnly) {
-        val matching = if (searchActive) filterLoadedEvents(events, searchQuery) else events
+    val reviewNow = Instant.now()
+    val reviewEvents = events.filter { it.isUndatedTask || isInDisplayWindow(it.start, reviewNow, lookbackDays, lookaheadDays, preset = windowPreset) }
+    val previewEvents = events.filter { it.isInNextDayPreview(reviewNow, lookaheadDays) }
+    val filteredEvents = remember(reviewEvents, searchQuery, searchActive, realEventsOnly) {
+        val matching = if (searchActive) filterLoadedEvents(reviewEvents, searchQuery) else reviewEvents
         if (realEventsOnly) matching.filter(CalendarEvent::isEmphasized) else matching
     }
     val firstFutureIndex = filteredEvents.indexOfFirst { it.isFutureForDisplay() }
@@ -1506,13 +1515,27 @@ private fun CalendarConnectedScreen(
             eventsLoading && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 item { Text("Loading events…", modifier = Modifier.padding(top = 16.dp)) }
             }
-            events.isEmpty() && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            reviewEvents.isEmpty() && !searchActive && !realEventsOnly -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 item {
                     Text(
                         if (eventsError != null) "Events could not be loaded. Pull down to try again."
-                        else "No events in the selected lookback and lookahead range.",
+                        else "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below",
                         modifier = Modifier.padding(top = 16.dp)
                     )
+                }
+                if (eventsError == null) {
+                    items(previewEvents, key = { "preview/${it.calendarId}/${it.id}" }) { event ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                            .background(skin.color(if (event.isEmphasized()) "emphasized" else "event", darkMode,
+                                if (event.isEmphasized()) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background),
+                                RoundedCornerShape(8.dp)).padding(8.dp)) {
+                            Text(event.title, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface))
+                            Text(event.ageDescription(), style = MaterialTheme.typography.bodySmall)
+                            event.location?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                        }
+                    }
+                    if (previewEvents.isEmpty()) item { Text("No events for that day.", modifier = Modifier.padding(top = 16.dp)) }
                 }
             }
             else -> LazyColumn(

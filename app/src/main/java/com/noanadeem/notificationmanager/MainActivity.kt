@@ -1554,15 +1554,7 @@ private fun CalendarConnectedScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.fillMaxWidth()
-                                    .clickable(enabled = !awaitingUndo) {
-                                    // Expanding actions is the touch equivalent of hover; keep Undo pending.
-                                    expandedEventId = if (expandedEventId == event.id) null else event.id
-                                    if (expandedEventId == event.id) actionScrollScope.launch {
-                                        withFrameNanos { }
-                                        if (expandedEventId == event.id) actionBringIntoViewRequester.bringIntoView()
-                                    }
-                                }) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (event.isTwoDaysOld()) Box(
                                         modifier = Modifier.padding(end = 7.dp).size(8.dp)
@@ -1576,14 +1568,21 @@ private fun CalendarConnectedScreen(
                                     maxLines = if (expandedEventId == event.id) Int.MAX_VALUE else 3,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
-                                        .clickable(enabled = !awaitingUndo, onClickLabel = "Open item to edit") { onOpenEvent(event) }
                                 )
                                 }
                                 Text(
                                     if (awaitingUndo) undoActionDescription.orEmpty() else event.ageDescription(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 2.dp)
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                        .clickable(enabled = !awaitingUndo, onClickLabel = "Show event actions") {
+                                    // Expanding actions is the touch equivalent of hover; keep Undo pending.
+                                    expandedEventId = if (expandedEventId == event.id) null else event.id
+                                    if (expandedEventId == event.id) actionScrollScope.launch {
+                                        withFrameNanos { }
+                                        if (expandedEventId == event.id) actionBringIntoViewRequester.bringIntoView()
+                                    }
+                                        }
                                 )
                                 }
                                 event.location?.let { location ->
@@ -1605,11 +1604,11 @@ private fun CalendarConnectedScreen(
                                 onClick = { expandedEventId = null; onUndo() }
                             )
                             else if (event.isRecurring) MoveTile(
-                                label = "✓",
-                                description = "Dismiss this occurrence in this app",
-                                enabled = movingEventId == null && event.id !in committingActionIds,
+                                label = "✎",
+                                description = "Open recurring occurrence in Google Calendar to edit",
+                                enabled = true,
                                 modifier = Modifier.size(44.dp),
-                                onClick = { onDismiss(event) }
+                                onClick = { onOpenEvent(event) }
                             )
                             else MoveTile(
                                 label = "1D",
@@ -1676,6 +1675,11 @@ private fun CalendarConnectedScreen(
                                         )
                                     }
                                     @Composable
+                                    fun EditChoice() {
+                                        MoveTile(label = "✎", description = if (event.isTask) "Open task to edit" else "Open event in Google Calendar to edit",
+                                            enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) })
+                                    }
+                                    @Composable
                                     fun DismissChoice() {
                                         MoveTile(label = "✓", description = if (event.isTask) "Complete task" else "Dismiss event in this app",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
@@ -1687,6 +1691,7 @@ private fun CalendarConnectedScreen(
                                             MoveChoice("2D", MoveTarget.After(Duration.ofDays(2)))
                                             MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
                                             DateChoice()
+                                            EditChoice()
                                             DismissChoice()
                                         } else {
                                             for (days in listOf(2L, 3L, 4L)) MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
@@ -1704,6 +1709,7 @@ private fun CalendarConnectedScreen(
                                             MoveChoice("0D", MoveTarget.After(Duration.ZERO))
                                             repeat(2) { Spacer(modifier = Modifier.size(44.dp)) }
                                         }
+                                        EditChoice()
                                         DismissChoice()
                                     }
                                     if (movingEventId == event.id || event.id in committingActionIds) {
@@ -1769,7 +1775,6 @@ private fun CalendarConnectedScreen(
                                                     .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
                                             )
                                             Text(event.title, fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.clickable(onClickLabel = "Open item to edit") { onOpenEvent(event) },
                                                 color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -1787,6 +1792,10 @@ private fun CalendarConnectedScreen(
                                                     .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier))
                                         }
                                     }
+                                    MoveTile(
+                                        label = "✎", description = "Open event in Google Calendar to edit",
+                                        enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) }
+                                    )
                                 }
                                 HorizontalDivider()
                             }

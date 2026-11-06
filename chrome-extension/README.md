@@ -55,7 +55,7 @@ Google Tasks now share the event list, local cache, search, action row, and Undo
 
 Missing Google permission now opens interactive reconnection once while the extension is visible. Cancelling does not loop; **Refresh** or **Reconnect Google access** can request consent again. Sync details are always accessible, and Tasks authorization failures remain diagnostic even when Drive synchronization succeeds. Network or API-disabled errors do not automatically open a consent dialog.
 
-Task rows use the normal short-event background. Their action row omits 4H completely; event controls are unchanged. Android task menus use one row: 2D, 7D, Calendar, Dismiss. The widget retains its existing menu.
+Task rows use the normal short-event background. Their action row omits 4H completely; event controls are unchanged. Android task menus use one row: 2D, 7D, Calendar, Pencil, Dismiss. The widget retains its existing menu.
 
 
 When the selected range is empty, a **read-only preview** shows events and dated Tasks for the next local day after lookahead. It keeps clickable title/location links and visible controls, with relative day/hour moves disabled and Calendar/Dismiss enabled. Titles open the direct Calendar edit URL; the redundant Pencil control is removed throughout the extension. Preview rows do not increase the actionable count. Only that one day is shown, with a separate empty message if needed. Search and real-event filtering retain their own empty states.

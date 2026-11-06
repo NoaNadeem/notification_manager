@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { calendarEditUrl, calendarEventAction, createOpenGuard, openInBrowser, openWithBackgroundSave } from "./open.js";
 
-test("title and pencil share validated Calendar URL rules and editor fallback", () => {
+test("titles default to the validated Calendar editor with safe fallback", () => {
   const event = { htmlLink: "https://www.google.com/calendar/event?eid=YWJj" };
-  assert.deepEqual(calendarEventAction(event), { kind: "view", url: event.htmlLink });
+  assert.deepEqual(calendarEventAction(event), { kind: "edit", url: "https://calendar.google.com/calendar/u/0/r/eventedit/YWJj" });
   assert.deepEqual(calendarEventAction(event, "edit"), {
     kind: "edit", url: "https://calendar.google.com/calendar/u/0/r/eventedit/YWJj"
   });
@@ -14,7 +14,7 @@ test("title and pencil share validated Calendar URL rules and editor fallback", 
   assert.equal(calendarEventAction({ htmlLink: "http://calendar.google.com/calendar?eid=YWJj" }), null);
 });
 
-test("pencil targets Google's edit route when the event link has an eid", () => {
+test("title targets Google's edit route when the event link has an eid", () => {
   assert.equal(calendarEditUrl("https://www.google.com/calendar/event?eid=YWJjIG1lQGV4YW1wbGUuY29t"),
     "https://calendar.google.com/calendar/u/0/r/eventedit/YWJjIG1lQGV4YW1wbGUuY29t");
   assert.equal(calendarEditUrl("https://example.com/calendar/event?eid=YWJj"), null);

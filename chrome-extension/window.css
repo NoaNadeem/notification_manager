@@ -144,4 +144,4 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 
 .location:not([href]):hover { text-decoration:none; }
 
-.event.read-only .title, .event.read-only .location { cursor: default; text-decoration: none; }
+.event.preview .actions { opacity: 1; pointer-events: auto; }

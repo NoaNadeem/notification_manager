@@ -76,7 +76,7 @@ export function calendarEditUrl(htmlLink) {
   } catch { return null; }
 }
 
-export function calendarEventAction(event, kind = "view") {
+export function calendarEventAction(event, kind = "edit") {
   if (kind !== "view" && kind !== "edit") throw new Error("Unsupported Calendar action.");
   try {
     const view = new URL(event?.htmlLink);

@@ -328,7 +328,7 @@ function moveTile(event, label, option, className = "tile") {
   return tile;
 }
 
-function openEventLink(event, kind = "view") {
+function openEventLink(event, kind = "edit") {
   const action = calendarEventAction(event, kind);
   if (!action) {
     showError("Google Calendar did not provide a valid event link.");
@@ -455,7 +455,7 @@ function renderNow() {
     if (account && !searchActive && !realEventsOnly) {
       const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
       const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone);
-      preview.slice(0, renderedItemLimit).forEach(event => list.append(renderReadOnlyEvent(event)));
+      preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event, true)));
       if (preview.length > renderedItemLimit) appendMoreItems();
       if (!preview.length && !loading) {
         const none = document.createElement("p"); none.className = "empty";
@@ -574,23 +574,10 @@ function renderSearchFooter() {
   }
 }
 
-function renderReadOnlyEvent(event) {
-  const row = document.createElement("article");
-  row.className = "event read-only";
-  row.setAttribute("aria-label", "Read-only event");
-  if (isEmphasized(event, account)) row.classList.add("emphasized");
-  for (const [className, text] of [["title", event.summary || "(Untitled event)"],
-      ["age", eventAgeLabel(event, Date.now(), calendarZone)], ["location", event.location]]) {
-    if (!text) continue;
-    const line = document.createElement("div"); line.className = className;
-    line.textContent = text; row.append(line);
-  }
-  return row;
-}
-
-function renderEvent(event) {
+function renderEvent(event, preview = false) {
   const row = document.createElement("article");
   row.className = "event";
+  if (preview) { row.classList.add("preview"); row.setAttribute("aria-label", "Next-day preview event"); }
   const pending = undo.current?.event.id === event.id ? undo.current : null;
   if (pending) row.classList.add("pending");
   if (isEmphasized(event, account)) row.classList.add("emphasized");
@@ -646,8 +633,7 @@ function renderEvent(event) {
     return row;
   }
   if (isRecurring(event)) {
-    actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"),
-      button("✎", "Edit recurring occurrence in Google Calendar", () => openEventLink(event, "edit"), "tile primary"));
+    actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     return row;
   }
   const calendarTile = button("📅", "Choose a date", () => {
@@ -664,16 +650,19 @@ function renderEvent(event) {
     catch { datePicker.focus(); }
   });
   const fourHours = moveTile(event, "4H", { hours: 4 });
-  if (event.start.date || event.task) {
+  if (preview || event.start.date || event.task) {
     fourHours.disabled = true;
-    fourHours.title = "Hour moves are unavailable for all-day events";
+    fourHours.title = preview ? "Relative moves are disabled in the next-day preview" : "Hour moves are unavailable for all-day events";
   }
   actions.append(
     button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"),
-    button("✎", "Edit event in Google Calendar", () => openEventLink(event, "edit")),
     calendarTile,
     ...(event.task ? [] : [fourHours]),
-    ...[7, 3, 2, 1].map(days => moveTile(event, `${days}D`, { days }))
+    ...[7, 3, 2, 1].map(days => {
+      const tile = moveTile(event, `${days}D`, { days });
+      tile.disabled = preview;
+      return tile;
+    })
   );
   return row;
 }

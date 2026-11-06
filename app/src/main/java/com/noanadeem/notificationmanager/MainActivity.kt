@@ -2,7 +2,6 @@ package com.noanadeem.notificationmanager
 
 import android.app.Activity
 import android.app.TimePickerDialog
-import android.content.ActivityNotFoundException
 import android.accounts.Account
 import android.content.Context
 import android.content.Intent
@@ -611,16 +610,10 @@ private fun CalendarLoginScreen(
                     currentAccessToken ?: throw IllegalStateException("Reconnect Calendar before opening this event."),
                     event
                 )
-                val calendarLink = calendarEventOpenLink(link, edit = false)
+                val editLink = calendarEventOpenLink(link, edit = true)
                     ?: throw IllegalStateException("Google Calendar returned an invalid event link.")
-                try {
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(calendarLink))
-                        .setPackage(if (event.isTask) "com.google.android.apps.tasks" else "com.google.android.calendar"))
-                } catch (_: ActivityNotFoundException) {
-                    val webEditLink = calendarEventOpenLink(link, edit = true) ?: calendarLink
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webEditLink))
-                        .addCategory(Intent.CATEGORY_BROWSABLE))
-                }
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(editLink))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
                 actionError = null
             } catch (e: Exception) {
                 actionError = e.message ?: "Could not open this Calendar event."
@@ -1297,6 +1290,8 @@ private fun CalendarConnectedScreen(
         val matching = if (searchActive) filterLoadedEvents(reviewEvents, searchQuery) else reviewEvents
         if (realEventsOnly) matching.filter(CalendarEvent::isEmphasized) else matching
     }
+    val previewMode = reviewEvents.isEmpty() && !searchActive && !realEventsOnly && eventsError == null
+    val displayEvents = if (previewMode) previewEvents else filteredEvents
     val firstFutureIndex = filteredEvents.indexOfFirst { it.isFutureForDisplay() }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
@@ -1515,29 +1510,6 @@ private fun CalendarConnectedScreen(
             eventsLoading && !searchActive -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 item { Text("Loading events…", modifier = Modifier.padding(top = 16.dp)) }
             }
-            reviewEvents.isEmpty() && !searchActive && !realEventsOnly -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                item {
-                    Text(
-                        if (eventsError != null) "Events could not be loaded. Pull down to try again."
-                        else "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below",
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                }
-                if (eventsError == null) {
-                    items(previewEvents, key = { "preview/${it.calendarId}/${it.id}" }) { event ->
-                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                            .background(skin.color(if (event.isEmphasized()) "emphasized" else "event", darkMode,
-                                if (event.isEmphasized()) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background),
-                                RoundedCornerShape(8.dp)).padding(8.dp)) {
-                            Text(event.title, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                                color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface))
-                            Text(event.ageDescription(), style = MaterialTheme.typography.bodySmall)
-                            event.location?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                        }
-                    }
-                    if (previewEvents.isEmpty()) item { Text("No events for that day.", modifier = Modifier.padding(top = 16.dp)) }
-                }
-            }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 16.dp)
@@ -1545,8 +1517,16 @@ private fun CalendarConnectedScreen(
                 if (filteredEvents.isEmpty() && realEventsOnly && !searchActive && !eventsLoading) item {
                     Text("No real events in this range.", modifier = Modifier.padding(vertical = 16.dp))
                 }
-                itemsIndexed(filteredEvents, key = { _, event -> "${event.calendarId}/${event.id}" }) { index, event ->
-                    if (index == firstFutureIndex) Row(
+                if (reviewEvents.isEmpty() && !searchActive && !realEventsOnly) item {
+                    Text(if (eventsError != null) "Events could not be loaded. Pull down to try again."
+                        else "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below",
+                        modifier = Modifier.padding(top = 16.dp))
+                }
+                if (previewMode && previewEvents.isEmpty()) item {
+                    Text("No events for that day.", modifier = Modifier.padding(top = 16.dp))
+                }
+                itemsIndexed(displayEvents, key = { _, event -> "${event.calendarId}/${event.id}" }) { index, event ->
+                    if (!previewMode && index == firstFutureIndex) Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1596,6 +1576,7 @@ private fun CalendarConnectedScreen(
                                     maxLines = if (expandedEventId == event.id) Int.MAX_VALUE else 3,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.alpha(if (awaitingUndo) 0.35f else 1f)
+                                        .clickable(enabled = !awaitingUndo, onClickLabel = "Open item to edit") { onOpenEvent(event) }
                                 )
                                 }
                                 Text(
@@ -1624,17 +1605,17 @@ private fun CalendarConnectedScreen(
                                 onClick = { expandedEventId = null; onUndo() }
                             )
                             else if (event.isRecurring) MoveTile(
-                                label = "✎",
-                                description = "Open recurring occurrence in Google Calendar to edit",
-                                enabled = true,
+                                label = "✓",
+                                description = "Dismiss this occurrence in this app",
+                                enabled = movingEventId == null && event.id !in committingActionIds,
                                 modifier = Modifier.size(44.dp),
-                                onClick = { onOpenEvent(event) }
+                                onClick = { onDismiss(event) }
                             )
                             else MoveTile(
                                 label = "1D",
                                 description = "Move event one day from now",
                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1)), morning = smallEventMorning) },
-                                enabled = movingEventId == null && event.id !in committingActionIds,
+                                enabled = !previewMode && movingEventId == null && event.id !in committingActionIds,
                                 modifier = Modifier.size(44.dp),
                                 onClick = {
                                     expandedEventId = null
@@ -1642,7 +1623,7 @@ private fun CalendarConnectedScreen(
                                 }
                             )
                         }
-                        if (expandedEventId == event.id && !awaitingUndo) {
+                        if ((previewMode || expandedEventId == event.id) && !awaitingUndo) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                     .bringIntoViewRequester(actionBringIntoViewRequester),
@@ -1673,7 +1654,7 @@ private fun CalendarConnectedScreen(
                                             description = if (label == "0D") "Move all-day event to today"
                                                 else "Move event $label from now",
                                             tooltip = { event.moveDestinationTooltip(target, morning = smallEventMorning) },
-                                            enabled = movingEventId == null && event.id !in committingActionIds,
+                                            enabled = !previewMode && movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 expandedEventId = null
@@ -1695,11 +1676,6 @@ private fun CalendarConnectedScreen(
                                         )
                                     }
                                     @Composable
-                                    fun EditChoice() {
-                                        MoveTile(label = "✎", description = if (event.isTask) "Open task to edit" else "Open event in Google Calendar to edit",
-                                            enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) })
-                                    }
-                                    @Composable
                                     fun DismissChoice() {
                                         MoveTile(label = "✓", description = if (event.isTask) "Complete task" else "Dismiss event in this app",
                                             enabled = movingEventId == null && event.id !in committingActionIds,
@@ -1711,7 +1687,6 @@ private fun CalendarConnectedScreen(
                                             MoveChoice("2D", MoveTarget.After(Duration.ofDays(2)))
                                             MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
                                             DateChoice()
-                                            EditChoice()
                                             DismissChoice()
                                         } else {
                                             for (days in listOf(2L, 3L, 4L)) MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
@@ -1729,7 +1704,6 @@ private fun CalendarConnectedScreen(
                                             MoveChoice("0D", MoveTarget.After(Duration.ZERO))
                                             repeat(2) { Spacer(modifier = Modifier.size(44.dp)) }
                                         }
-                                        EditChoice()
                                         DismissChoice()
                                     }
                                     if (movingEventId == event.id || event.id in committingActionIds) {
@@ -1795,6 +1769,7 @@ private fun CalendarConnectedScreen(
                                                     .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
                                             )
                                             Text(event.title, fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.clickable(onClickLabel = "Open item to edit") { onOpenEvent(event) },
                                                 color = skin.color("title", darkMode, MaterialTheme.colorScheme.onSurface),
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -1812,13 +1787,6 @@ private fun CalendarConnectedScreen(
                                                     .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier))
                                         }
                                     }
-                                    MoveTile(
-                                        label = "✎",
-                                        description = "Open event in Google Calendar to edit",
-                                        enabled = true,
-                                        modifier = Modifier.size(44.dp),
-                                        onClick = { onOpenEvent(event) }
-                                    )
                                 }
                                 HorizontalDivider()
                             }

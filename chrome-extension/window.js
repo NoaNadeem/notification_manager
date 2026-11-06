@@ -8,7 +8,7 @@ import { PendingActionStore } from "./pending-actions.js";
 import { headerClockLabel, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openWithBackgroundSave } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
-import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState } from "./sync-state.js";
+import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState, latestSavingStatus } from "./sync-state.js";
 
 let smallEventMorning = true;
 const $ = (selector) => document.querySelector(selector);
@@ -83,6 +83,7 @@ const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
   rememberLastUndo();
+  void renderPendingSaves();
   render();
 }, undefined, undefined, undefined, persistAction, revertAction);
 
@@ -117,13 +118,18 @@ async function renderPendingSaves() {
     $("#retry-saves").hidden = true;
     return;
   }
+  const immediate = latestSavingStatus([...undo.committingActions, ...(undo.current ? [undo.current] : [])], undo.latestAction);
+  if (immediate) $("#save-warning").textContent = ` · ${immediate}`;
   try {
     const records = await storeFor(account).list();
     if (request !== saveStatusRequest) return;
     const failures = records.filter(record => record.error);
+    const active = [...records.filter(record => !record.error).map(record => record.action),
+      ...undo.committingActions, ...(undo.current ? [undo.current] : [])];
+    const actionStatus = latestSavingStatus(active, undo.latestAction);
     $("#save-warning").textContent = failures.length
       ? ` · ${failures.length} unsaved action${failures.length === 1 ? "" : "s"}: ${failures[0].error}`
-      : records.length ? ` · Saving ${records.length} action${records.length === 1 ? "" : "s"}…` : "";
+      : actionStatus ? ` · ${actionStatus}` : "";
     $("#retry-saves").hidden = records.length === 0;
     $("#retry-saves").textContent = `Retry unsaved actions (${records.length})`;
   } catch (error) { showError(`Could not read unsaved actions: ${error.message}`); }

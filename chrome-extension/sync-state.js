@@ -32,3 +32,22 @@ export function syncDetail(state) {
     (state.error ? `\nLast error: ${state.error}` : "") +
     (state.tasksError ? `\nTasks error: ${state.tasksError}` : "");
 }
+
+// The latest known action is a watermark: once it finishes, older saves must
+// not replace its message, even if they are still running in the background.
+export function latestSavingStatus(active, latest) {
+  const candidates = [...active, ...(latest ? [latest] : [])];
+  const newest = candidates.reduce((best, action) => !best || (action.stagedAtMs || 0) >= (best.stagedAtMs || 0) ? action : best, null);
+  if (!newest || !active.some(action => action.id === newest.id)) return "";
+  if (newest.type === "dismiss") return "Dismissing…";
+  const start = newest.destinationStart;
+  const date = start?.date ? new Date(`${start.date}T12:00:00`)
+    : start?.dateTime ? new Date(start.dateTime)
+    : newest.option?.date ? new Date(`${newest.option.date}T12:00:00`)
+    : new Date((newest.stagedAtMs || Date.now()) + (newest.option?.days || 0) * 86400000 + (newest.option?.hours || 0) * 3600000);
+  if (!Number.isFinite(date.getTime())) return "Moving…";
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    weekday: "long", day: "numeric", month: "short", year: "numeric"
+  }).formatToParts(date).map(part => [part.type, part.value]));
+  return `Moving to ${parts.weekday} ${parts.day} ${parts.month} ${parts.year}…`;
+}

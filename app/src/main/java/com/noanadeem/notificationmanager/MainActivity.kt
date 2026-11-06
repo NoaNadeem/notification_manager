@@ -159,6 +159,14 @@ internal sealed interface UndoState {
     data class Failed(val action: UndoableAction, val message: String) : UndoState
 }
 
+internal fun latestSavingStatus(latest: UndoableAction?, pending: UndoableAction?, committingIds: Set<String>): String? {
+    if (latest == null || latest != pending && latest.event.id !in committingIds) return null
+    return when (latest) {
+        is UndoableAction.Dismiss -> "Dismissing…"
+        is UndoableAction.Move -> movingSaveStatus(latest.event, latest.target, latest.stagedAt)
+    }
+}
+
 private val UndoState.pendingAction: UndoableAction?
     get() = (this as? UndoState.Pending)?.action
 
@@ -1098,6 +1106,7 @@ private fun CalendarLoginScreen(
             },
             movingEventId = movingEventId,
             committingActionIds = committingActionIds,
+            savingStatus = latestSavingStatus(lastUndoAction, undoState.pendingAction, committingActionIds),
             undoableEventId = undoState.pendingAction?.event?.id,
             undoActionDescription = undoState.pendingAction?.let { action ->
                 when (action) {
@@ -1211,6 +1220,7 @@ private fun CalendarConnectedScreen(
     onUndoSecondsChange: (Int) -> Unit,
     movingEventId: String?,
     committingActionIds: Set<String>,
+    savingStatus: String?,
     undoableEventId: String?,
     undoActionDescription: String?,
     undoDescription: String?,
@@ -1457,7 +1467,7 @@ private fun CalendarConnectedScreen(
                 }
             }
         }
-        if (accountName != null) AccountClock(syncState, syncStatusReady, eventsError != null || driveError != null)
+        if (accountName != null) AccountClock(syncState, syncStatusReady, eventsError != null || driveError != null, savingStatus)
             }
         }
         PullToRefreshBox(
@@ -2076,7 +2086,7 @@ private fun formatSyncTime(millis: Long): String = if (millis <= 0L) "Never" els
         .format(DateTimeFormatter.ofPattern("MMM d, h:mm a"))
 
 @Composable
-private fun AccountClock(syncState: LocalSyncState, syncStatusReady: Boolean, hasError: Boolean) {
+private fun AccountClock(syncState: LocalSyncState, syncStatusReady: Boolean, hasError: Boolean, savingStatus: String?) {
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -2087,10 +2097,11 @@ private fun AccountClock(syncState: LocalSyncState, syncStatusReady: Boolean, ha
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(headerClockLabel(now, ZoneId.systemDefault()), style = MaterialTheme.typography.bodyMedium)
-        if (syncStatusReady) {
-            val headline = if (hasError) "Sync needs attention" else syncState.headline(now.toEpochMilli())
-            if (headline != "Synced just now") Text(" · $headline", color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall)
+        if (syncStatusReady || savingStatus != null) {
+            val headline = if (hasError) "Sync needs attention" else savingStatus ?: syncState.headline(now.toEpochMilli())
+            if (headline != "Synced just now") Text(headline, color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp),
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

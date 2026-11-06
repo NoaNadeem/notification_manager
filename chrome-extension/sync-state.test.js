@@ -43,3 +43,18 @@ test("a Tasks authorization failure survives successful Drive status updates", (
   assert.match(syncDetail(driveSucceeded),/Tasks error: Tasks access required/);
   assert.equal(syncHeadline({...driveSucceeded,tasksError:null},now+1),"Synced just now");
 });
+
+test('header describes only the newest action across rapid saves and ignores older completions', async () => {
+  const {latestSavingStatus} = await import('./sync-state.js');
+  const first={id:'first',type:'dismiss',stagedAtMs:1};
+  const newest={id:'last',type:'move',stagedAtMs:10,destinationStart:{date:'2026-11-23'}};
+  const middle=Array.from({length:8},(_,i)=>({id:`queued-${i}`,type:'dismiss',stagedAtMs:i+2}));
+  assert.equal(latestSavingStatus([first],first),'Dismissing…');
+  assert.equal(latestSavingStatus([first,...middle,newest],newest),'Moving to Monday 23 Nov 2026…');
+  assert.equal(latestSavingStatus([...middle,newest],newest),'Moving to Monday 23 Nov 2026…');
+  assert.equal(latestSavingStatus([first,...middle],newest),'');
+  assert.equal(latestSavingStatus([],newest),'');
+  // A newer unsaved record after reopening outranks the previously retained Undo.
+  assert.equal(latestSavingStatus([newest],first),'Moving to Monday 23 Nov 2026…');
+  assert.equal(latestSavingStatus([{...newest,id:'later',type:'dismiss'}],{...newest,id:'later',type:'dismiss'}),'Dismissing…');
+});

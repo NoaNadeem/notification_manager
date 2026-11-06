@@ -213,11 +213,11 @@ internal fun smallEventMoveTarget(
     return MoveTarget.OnDateTime(now.atZone(zone).toLocalDate().plusDays(target.duration.toDays()), LocalTime.of(6, 0))
 }
 
-internal fun moveUndoDescription(
-    event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
-    phoneZone: ZoneId = ZoneId.systemDefault()
-): String {
-    val date = if (event.allDayDate != null) {
+internal fun moveDestinationDate(
+    event: CalendarEvent, target: MoveTarget, stagedAt: Instant, phoneZone: ZoneId
+): LocalDate {
+    if (event.isTask) return taskMoveDate(target, stagedAt, phoneZone)
+    return if (event.allDayDate != null) {
         shiftAllDayDates(event.allDayDate, event.allDayDate.plusDays(1), stagedAt,
             phoneZone, event.calendarZone, target).first
     } else when (target) {
@@ -225,6 +225,17 @@ internal fun moveUndoDescription(
         is MoveTarget.OnDate -> target.date
         is MoveTarget.OnDateTime -> target.date
     }
+}
+
+internal fun movingSaveStatus(event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
+    zone: ZoneId = ZoneId.systemDefault()): String =
+    "Moving to ${moveDestinationDate(event, target, stagedAt, zone).format(DateTimeFormatter.ofPattern("EEEE d MMM yyyy", Locale.US))}…"
+
+internal fun moveUndoDescription(
+    event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
+    phoneZone: ZoneId = ZoneId.systemDefault()
+): String {
+    val date = moveDestinationDate(event, target, stagedAt, phoneZone)
     val day = date.dayOfMonth
     val suffix = if (day % 100 in 11..13) "th" else when (day % 10) {
         1 -> "st"

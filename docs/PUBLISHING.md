@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 11`, and `versionName = "1.10"`. Version 11 (1.10) was signed with the existing upload key and published to the existing internal-testing track on November 4, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 12`, and `versionName = "1.11"`. Version 12 (1.11) was signed with the existing upload key and published to the existing internal-testing track on November 5, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -120,3 +120,12 @@ Published **1.10 internal release** on November 4, 2026; Google Play confirmed *
 Validation: 61 Android unit tests pass, signed release build, successful signature verification, and matching signed/build artifact hashes. The feature also passed 99 extension tests and isolated browser fixture checks. ReTrace mapping is attached; only the existing nonblocking native-debug-symbol warning remains. No new terms were accepted; no real calendar events or Tasks were changed for verification.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/10/details
+
+
+### Android 1.11 / version 12
+
+Published **1.11 internal release** on November 5, 2026; Google Play confirmed **Available to internal testers** for version 12 (1.11). Empty review ranges now show a read-only preview of the local calendar day immediately after lookahead, including dated Tasks. Preview rows have no action buttons, edit links, or tap expansion, and do not increase the actionable count. The expanded cache is fetched once after upgrade. The widget retains its normal actionable range.
+
+Validation: 62 Android unit tests pass, signed release build, successful signature verification, and matching signed/build artifact hashes. The feature also passed 101 extension tests and isolated browser checks. ReTrace mapping is attached; only the existing nonblocking native-debug-symbol warning remains. No new terms were accepted and no actual calendar events or Tasks were changed for verification.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/11/details

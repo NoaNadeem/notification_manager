@@ -227,9 +227,20 @@ internal fun moveDestinationDate(
     }
 }
 
+internal fun savingTitle(title: String): String {
+    val text = title.replace(Regex("\\s+"), " ").trim().ifBlank { "Untitled event" }
+    return if (text.codePointCount(0, text.length) > 20) text.substring(0, text.offsetByCodePoints(0, 20)) + "…" else text
+}
+
 internal fun movingSaveStatus(event: CalendarEvent, target: MoveTarget, stagedAt: Instant,
-    zone: ZoneId = ZoneId.systemDefault()): String =
-    "Moving to ${moveDestinationDate(event, target, stagedAt, zone).format(DateTimeFormatter.ofPattern("EEEE d MMM yyyy", Locale.US))}…"
+    zone: ZoneId = ZoneId.systemDefault()): String {
+    val date = moveDestinationDate(event, target, stagedAt, zone)
+    val day = date.dayOfMonth
+    val suffix = if (day % 100 in 11..13) "th" else when (day % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+    val weekday = date.format(DateTimeFormatter.ofPattern("EEE", Locale.US))
+    val month = date.format(DateTimeFormatter.ofPattern("MMM", Locale.US)).let { if (it == "Sep") "Sept" else it }
+    return "Moving ${savingTitle(event.title)} to $weekday $day$suffix $month ${date.year}"
+}
 
 internal fun moveUndoDescription(
     event: CalendarEvent, target: MoveTarget, stagedAt: Instant,

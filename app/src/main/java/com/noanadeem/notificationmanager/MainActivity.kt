@@ -162,7 +162,7 @@ internal sealed interface UndoState {
 internal fun latestSavingStatus(latest: UndoableAction?, pending: UndoableAction?, committingIds: Set<String>): String? {
     if (latest == null || latest != pending && latest.event.id !in committingIds) return null
     return when (latest) {
-        is UndoableAction.Dismiss -> "Dismissing…"
+        is UndoableAction.Dismiss -> savingTitle(latest.event.title).let { "Dismissing $it${if (it.endsWith("…")) "" else "…"}" }
         is UndoableAction.Move -> movingSaveStatus(latest.event, latest.target, latest.stagedAt)
     }
 }

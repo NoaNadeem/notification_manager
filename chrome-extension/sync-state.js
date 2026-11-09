@@ -35,19 +35,29 @@ export function syncDetail(state) {
 
 // The latest known action is a watermark: once it finishes, older saves must
 // not replace its message, even if they are still running in the background.
+export function savingTitle(title) {
+  const text = (title || "").replace(/\s+/g, " ").trim() || "Untitled event";
+  const chars = Array.from(text);
+  return chars.length > 20 ? chars.slice(0, 20).join("") + "…" : text;
+}
+
 export function latestSavingStatus(active, latest) {
   const candidates = [...active, ...(latest ? [latest] : [])];
   const newest = candidates.reduce((best, action) => !best || (action.stagedAtMs || 0) >= (best.stagedAtMs || 0) ? action : best, null);
   if (!newest || !active.some(action => action.id === newest.id)) return "";
-  if (newest.type === "dismiss") return "Dismissing…";
+  const title = savingTitle(newest.event?.summary);
+  if (newest.type === "dismiss") return `Dismissing ${title}${title.endsWith("…") ? "" : "…"}`;
   const start = newest.destinationStart;
   const date = start?.date ? new Date(`${start.date}T12:00:00`)
     : start?.dateTime ? new Date(start.dateTime)
     : newest.option?.date ? new Date(`${newest.option.date}T12:00:00`)
     : new Date((newest.stagedAtMs || Date.now()) + (newest.option?.days || 0) * 86400000 + (newest.option?.hours || 0) * 3600000);
-  if (!Number.isFinite(date.getTime())) return "Moving…";
+  if (!Number.isFinite(date.getTime())) return `Moving ${title}…`;
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    weekday: "long", day: "numeric", month: "short", year: "numeric"
+    weekday: "short", day: "numeric", month: "short", year: "numeric"
   }).formatToParts(date).map(part => [part.type, part.value]));
-  return `Moving to ${parts.weekday} ${parts.day} ${parts.month} ${parts.year}…`;
+  const day = Number(parts.day);
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : ({1:"st",2:"nd",3:"rd"}[day % 10] || "th");
+  const month = parts.month === "Sep" ? "Sept" : parts.month;
+  return `Moving ${title} to ${parts.weekday} ${day}${suffix} ${month} ${parts.year}`;
 }

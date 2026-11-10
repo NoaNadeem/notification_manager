@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 14`, and `versionName = "1.13"`. Version 14 (1.13) was signed with the existing upload key and published to the existing internal-testing track on November 9, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 15`, and `versionName = "1.14"`. Version 15 (1.14) was signed with the existing upload key and published to the existing internal-testing track on November 10, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -147,3 +147,14 @@ Published **1.13 internal release** on November 9, 2026; Google Play confirmed *
 Validation: 65 Android unit tests pass, successful signed release build, verified signature and matching signed/build artifact hashes. No actions on actual calendar events or Tasks were used to verify the change. ReTrace mapping is attached; the existing native-debug-symbol warning remains nonblocking. No new terms were accepted.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/13/details
+
+
+### Android 1.14 / version 15
+
+Published **1.14 internal release** on November 10, 2026; Google Play confirmed **Available to internal testers** for version 15 (1.14). Priority toggles append/remove `(pri)` in Calendar event or Google Task titles, sort priority items first, and show stars instead of age dots. The phone control replaces 2H; the extension control follows Calendar. Search and preview rows expose the toggle too. Writes update only the title, compare against the fetched title and use ETags; failed background saves revert local title/order. Tapping the star again reverses priority independently of move/dismiss Undo.
+
+Pencil explicitly launches the installed Google Calendar activity (Google Tasks for tasks), with browser fallback only when that activity is unavailable. The release also includes full-width Moving/Dismissing header messages that replace the clock/date temporarily.
+
+Validation: **67 Android and 105 extension tests pass**, plus mocked priority UI checks for toggle-on/off, ordering, age-star replacement, button placement, title-only writes and failure rollback. Signed artifact matches the final release build and passed signature verification. ReTrace mapping is attached; the known nonblocking native-debug-symbol warning remains. No real Calendar/Tasks actions or edit launches were used for verification. No new terms were accepted. Extension source is 0.3.32; installed reload remains blocked by the previously reported browser policy and must not be claimed as deployed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/14/details

@@ -107,7 +107,7 @@ Header title/date formatting update: 65 Android and 103 extension tests pass, in
 
 While a Moving/Dismissing message is shown, the app and extension hide the clock/date so the action status uses the entire header status line. The extension also suppresses the adjacent sync summary during this period and omits the leading separator; error details remain available. Once the action status clears, normal clock/sync display returns. The phone action label wraps across the available width without the clock or its spacing.
 
-Validation: 65 Android and 103 extension tests pass; delayed-save browser fixtures verified clock hiding during both action types, full-line status, no leading separator and clock restoration after saving. No real event/Task actions were used. Extension source is 0.3.31; its installed reload remains blocked by the previously reported browser policy, and no blocked reload was retried. The phone release remains 1.13/version 14, pending an explicit request to publish these layout changes.
+Validation: 65 Android and 103 extension tests pass; delayed-save browser fixtures verified clock hiding during both action types, full-line status, no leading separator and clock restoration after saving. No real event/Task actions were used. Extension source is 0.3.31; its installed reload remains blocked by the previously reported browser policy, and no blocked reload was retried. The full-width header changes shipped with Android 1.14/version 15 on November 10, 2026.
 
 
 ### Priority
@@ -118,6 +118,6 @@ The change updates the row and ordering immediately, then saves only Calendar `s
 
 Pencil now explicitly targets the installed Google Calendar app (or Google Tasks for tasks), using the browser editor only if the native activity cannot be opened. The phone event row continues to open its action flyout.
 
-Validation: 67 Android and 105 extension tests pass. Mocked priority UI checks covered toggling both ways, priority-first ordering, correct button placement, stars replacing age dots, title-only writes and failure rollback. No real event or Task write, edit-launch, or permission grant was used for verification. Native launch routing was checked in code; it was not exercised on a personal event. Extension source is 0.3.32; installed reload remains blocked by the previously reported browser policy. Android 1.14/version 15 is being prepared at the user's explicit request.
+Validation: 67 Android and 105 extension tests pass. Mocked priority UI checks covered toggling both ways, priority-first ordering, correct button placement, stars replacing age dots, title-only writes and failure rollback. No real event or Task write, edit-launch, or permission grant was used for verification. Native launch routing was checked in code; it was not exercised on a personal event. Extension source is 0.3.32; installed reload remains blocked by the previously reported browser policy. Android 1.14/version 15 was published to internal testing on November 10, 2026.
 
 API references: [conditional writes](https://developers.google.com/workspace/calendar/api/guides/version-resources), [partial updates and POST method override](https://developers.google.com/workspace/calendar/api/guides/performance).

@@ -1550,7 +1550,16 @@ private fun CalendarConnectedScreen(
                     }
                     val actionBringIntoViewRequester = remember(event.id) { BringIntoViewRequester() }
                     val awaitingUndo = undoableEventId == event.id
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    Column(modifier = Modifier.fillMaxWidth()
+                        .clickable(enabled = !awaitingUndo, onClickLabel = "Show event actions") {
+                            // Expanding actions is the touch equivalent of hover; keep Undo pending.
+                            expandedEventId = if (expandedEventId == event.id) null else event.id
+                            if (expandedEventId == event.id) actionScrollScope.launch {
+                                withFrameNanos { }
+                                if (expandedEventId == event.id) actionBringIntoViewRequester.bringIntoView()
+                            }
+                        }
+                        .padding(vertical = 8.dp)
                         .background(
                             skin.color(
                                 if (event.isEmphasized()) "emphasized" else "event",
@@ -1585,14 +1594,6 @@ private fun CalendarConnectedScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-                                        .clickable(enabled = !awaitingUndo, onClickLabel = "Show event actions") {
-                                    // Expanding actions is the touch equivalent of hover; keep Undo pending.
-                                    expandedEventId = if (expandedEventId == event.id) null else event.id
-                                    if (expandedEventId == event.id) actionScrollScope.launch {
-                                        withFrameNanos { }
-                                        if (expandedEventId == event.id) actionBringIntoViewRequester.bringIntoView()
-                                    }
-                                        }
                                 )
                                 }
                                 event.location?.let { location ->

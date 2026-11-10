@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 13`, and `versionName = "1.12"`. Version 13 (1.12) was signed with the existing upload key and published to the existing internal-testing track on November 9, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 14`, and `versionName = "1.13"`. Version 14 (1.13) was signed with the existing upload key and published to the existing internal-testing track on November 9, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -138,3 +138,12 @@ Published **1.12 internal release** on November 9, 2026; Google Play confirmed *
 Validation: 64 Android unit tests pass, signed release build, verified signature, and matching signed/build artifact hashes. The corresponding extension changes passed 102 tests and delayed-save UI fixtures. ReTrace mapping is attached; only the known nonblocking native-debug-symbol warning remains. No new terms were accepted, and no actual Calendar or Tasks writes were used for verification.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/12/details
+
+
+### Android 1.13 / version 14
+
+Published **1.13 internal release** on November 9, 2026; Google Play confirmed **Available to internal testers** for version 14 (1.13). The entire event-row touch area opens/toggles the action flyout again, including title, date and padding. Nested links and action tiles keep their own click handling; the default 1D tile still moves events. Expanding the flyout does not commit pending Undo. The release also includes shortened titles, abbreviated weekdays, ordinal dates and “Sept” in latest-action header messages.
+
+Validation: 65 Android unit tests pass, successful signed release build, verified signature and matching signed/build artifact hashes. No actions on actual calendar events or Tasks were used to verify the change. ReTrace mapping is attached; the existing native-debug-symbol warning remains nonblocking. No new terms were accepted.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/13/details

@@ -2096,6 +2096,11 @@ private fun AccountClock(syncState: LocalSyncState, syncStatusReady: Boolean, ha
             now = Instant.now()
         }
     }
+    if (savingStatus != null && !hasError) {
+        Text(savingStatus, color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+        return
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(headerClockLabel(now, ZoneId.systemDefault()), style = MaterialTheme.typography.bodyMedium)
         if (syncStatusReady || savingStatus != null) {

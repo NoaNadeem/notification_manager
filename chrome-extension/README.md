@@ -62,3 +62,6 @@ When the selected range is empty, a **read-only preview** shows events and dated
 
 
 The header reports the newest action as **Dismissing [short title]…** or **Moving [short title] to Mon 23rd Nov 2026**, using the destination captured when clicked. Older saves continue silently and their completion does not replace the latest message. Errors remain visible; the generic “Saving N actions…” count is removed.
+
+
+Moving/Dismissing messages temporarily replace the clock/date and adjacent sync summary on the header status line, using its full width. Normal clock and sync display returns when the action message clears.

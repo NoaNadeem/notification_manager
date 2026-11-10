@@ -145,3 +145,6 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 .location:not([href]):hover { text-decoration:none; }
 
 .event.preview .actions { opacity: 1; pointer-events: auto; }
+
+.account.saving-action #account-clock, .account.saving-action #sync-warning { display: none; }
+.account.saving-action #save-warning { flex-basis: 100%; font-size: 13px; }

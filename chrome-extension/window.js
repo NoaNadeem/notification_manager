@@ -111,15 +111,20 @@ function storeFor(accountId) {
   return pendingStores.get(key);
 }
 
+function showSaveStatus(message, action = false) {
+  $("#account").classList.toggle("saving-action", action);
+  $("#save-warning").textContent = action ? message : message ? ` · ${message}` : "";
+}
+
 async function renderPendingSaves() {
   const request = ++saveStatusRequest;
   if (!account || signedOut) {
-    $("#save-warning").textContent = "";
+    showSaveStatus("");
     $("#retry-saves").hidden = true;
     return;
   }
   const immediate = latestSavingStatus([...undo.committingActions, ...(undo.current ? [undo.current] : [])], undo.latestAction);
-  if (immediate) $("#save-warning").textContent = ` · ${immediate}`;
+  if (immediate) showSaveStatus(immediate, true);
   try {
     const records = await storeFor(account).list();
     if (request !== saveStatusRequest) return;
@@ -127,9 +132,9 @@ async function renderPendingSaves() {
     const active = [...records.filter(record => !record.error).map(record => record.action),
       ...undo.committingActions, ...(undo.current ? [undo.current] : [])];
     const actionStatus = latestSavingStatus(active, undo.latestAction);
-    $("#save-warning").textContent = failures.length
-      ? ` · ${failures.length} unsaved action${failures.length === 1 ? "" : "s"}: ${failures[0].error}`
-      : actionStatus ? ` · ${actionStatus}` : "";
+    showSaveStatus(failures.length
+      ? `${failures.length} unsaved action${failures.length === 1 ? "" : "s"}: ${failures[0].error}`
+      : actionStatus, !failures.length && !!actionStatus);
     $("#retry-saves").hidden = records.length === 0;
     $("#retry-saves").textContent = `Retry unsaved actions (${records.length})`;
   } catch (error) { showError(`Could not read unsaved actions: ${error.message}`); }

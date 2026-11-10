@@ -101,3 +101,10 @@ Validation: 64 Android and 102 extension tests pass, including latest-action sel
 
 
 Header title/date formatting update: 65 Android and 103 extension tests pass, including rapid-action ownership, ordinal day exceptions, September abbreviation, whitespace/blank titles and emoji-safe truncation. Extension source is 0.3.30. The installed-extension reload remains blocked by the previously reported browser policy; no retry or workaround was attempted. Android 1.13/version 14 was published to internal testing on November 9, 2026 with the formatting update and full event-row flyout touch target. No real event/task writes were performed.
+
+
+### Full-width action status
+
+While a Moving/Dismissing message is shown, the app and extension hide the clock/date so the action status uses the entire header status line. The extension also suppresses the adjacent sync summary during this period and omits the leading separator; error details remain available. Once the action status clears, normal clock/sync display returns. The phone action label wraps across the available width without the clock or its spacing.
+
+Validation: 65 Android and 103 extension tests pass; delayed-save browser fixtures verified clock hiding during both action types, full-line status, no leading separator and clock restoration after saving. No real event/Task actions were used. Extension source is 0.3.31; its installed reload remains blocked by the previously reported browser policy, and no blocked reload was retried. The phone release remains 1.13/version 14, pending an explicit request to publish these layout changes.

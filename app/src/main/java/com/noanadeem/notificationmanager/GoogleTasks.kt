@@ -127,3 +127,15 @@ private fun taskRequest(url: String, token: String, body: JSONObject? = null, et
         return JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
     } finally { connection.disconnect() }
 }
+
+
+internal suspend fun setTaskPriority(token: String, event: CalendarEvent, enabled: Boolean): CalendarEvent = withContext(Dispatchers.IO) {
+    val url = "$TASKS_ROOT/lists/${Uri.encode(requireNotNull(event.taskListId))}/tasks/${Uri.encode(requireNotNull(event.taskId))}"
+    val current = taskRequest(url,token)
+    require(!current.optBoolean("deleted") && current.optString("status") != "completed") { "This task is no longer active. Refresh before changing priority." }
+    val desired = priorityTitle(event.title,enabled)
+    if (current.optString("title") == desired) return@withContext event.copy(title=desired)
+    require(current.optString("title").ifBlank { "(Untitled task)" } == event.title) { "This title changed elsewhere. Refresh before changing priority." }
+    taskRequest(url,token,JSONObject().put("title",desired),current.optString("etag").takeIf(String::isNotBlank))
+    event.copy(title=desired)
+}

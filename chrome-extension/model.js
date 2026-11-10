@@ -132,6 +132,7 @@ function eventLocalDate(event, zone) {
 }
 
 export function compareEvents(a, b, zone) {
+  if (isPriority(a) !== isPriority(b)) return isPriority(a) ? -1 : 1;
   if ((a.task?.due === null) !== (b.task?.due === null)) return a.task?.due === null ? 1 : -1;
   const dateOrder = eventLocalDate(a, zone).localeCompare(eventLocalDate(b, zone));
   if (dateOrder) return dateOrder;
@@ -140,6 +141,7 @@ export function compareEvents(a, b, zone) {
 }
 
 export function compareSearchEvents(a, b, zone) {
+  if (isPriority(a) !== isPriority(b)) return isPriority(a) ? -1 : 1;
   if ((a.task?.due === null) !== (b.task?.due === null)) return a.task?.due === null ? 1 : -1;
   const dateOrder = eventLocalDate(b, zone).localeCompare(eventLocalDate(a, zone));
   if (dateOrder) return dateOrder;
@@ -260,4 +262,11 @@ export function locationHref(location) {
     if (["https:", "http:"].includes(url.protocol)) return url.href;
   } catch { /* Address rather than a URL. */ }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}`;
+}
+
+
+export const isPriority = event => /\(pri\)/i.test(event.summary || "");
+export function priorityTitle(title, enabled) {
+  if (enabled) return /\(pri\)/i.test(title || "") ? title : `${(title || "").trimEnd()} (pri)`.trimStart();
+  return (title || "").replace(/\s*\(pri\)/gi, "").trim();
 }

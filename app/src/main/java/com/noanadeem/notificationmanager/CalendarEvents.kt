@@ -39,6 +39,7 @@ internal data class CalendarEvent(
     val taskListId: String? = null,
     val taskId: String? = null
 ) {
+    val isPriority: Boolean get() = Regex("\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
     val isTask: Boolean get() = taskListId != null
     val isUndatedTask: Boolean get() = isTask && allDayDate == null
     val locationIsLink: Boolean get() = !isTask || taskNoteUrl(location) != null
@@ -189,7 +190,7 @@ internal suspend fun searchPrimaryCalendar(
 internal fun sortCalendarEvents(
     events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
 ): List<CalendarEvent> = events.sortedWith(
-    compareBy<CalendarEvent> { it.isUndatedTask }.thenBy { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+    compareByDescending<CalendarEvent> { it.isPriority }.thenBy { it.isUndatedTask }.thenBy { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
         .thenByDescending { it.allDayDate != null }
         .thenBy { it.start }
 )
@@ -197,7 +198,7 @@ internal fun sortCalendarEvents(
 internal fun sortCalendarSearchEvents(
     events: List<CalendarEvent>, phoneZone: ZoneId = ZoneId.systemDefault()
 ): List<CalendarEvent> = events.sortedWith(
-    compareByDescending<CalendarEvent> { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
+    compareByDescending<CalendarEvent> { it.isPriority }.thenByDescending { it.allDayDate ?: it.start.atZone(phoneZone).toLocalDate() }
         .thenByDescending { it.allDayDate != null }
         .thenByDescending { it.start }
 )
@@ -589,4 +590,34 @@ private fun getCalendarJson(url: String, accessToken: String): JSONObject {
     } finally {
         connection.disconnect()
     }
+}
+
+
+internal fun priorityTitle(title: String, enabled: Boolean): String {
+    val marker = Regex("\\(pri\\)", RegexOption.IGNORE_CASE)
+    return if (enabled) { if (marker.containsMatchIn(title)) title else "${title.trimEnd()} (pri)".trimStart() }
+        else Regex("\\s*\\(pri\\)", RegexOption.IGNORE_CASE).replace(title, "").trim()
+}
+
+internal suspend fun setEventPriority(token: String, event: CalendarEvent, enabled: Boolean): CalendarEvent = withContext(Dispatchers.IO) {
+    if (event.isTask) return@withContext setTaskPriority(token,event,enabled)
+    val url = "${primaryCalendarEventsUrl(event.calendarId)}/${Uri.encode(event.id)}"
+    val current = getCalendarJson(url,token)
+    require(current.optString("status") != "cancelled") { "This event was deleted. Refresh before changing priority." }
+    val desired = priorityTitle(event.title,enabled)
+    if (current.optString("summary") == desired) return@withContext event.copy(title=desired)
+    require(current.optString("summary").ifBlank { "(Untitled event)" } == event.title) { "This title changed elsewhere. Refresh before changing priority." }
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        current.optString("etag").takeIf(String::isNotBlank)?.let { connection.setRequestProperty("If-Match", it) }
+        connection.connectTimeout=15000; connection.readTimeout=15000; connection.doOutput=true
+        connection.outputStream.use { it.write(JSONObject().put("summary",desired).toString().toByteArray(Charsets.UTF_8)) }
+        if (connection.responseCode !in 200..299) throw calendarApiError(connection)
+        connection.inputStream.close()
+    } finally { connection.disconnect() }
+    event.copy(title=desired)
 }

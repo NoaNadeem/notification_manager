@@ -108,3 +108,16 @@ Header title/date formatting update: 65 Android and 103 extension tests pass, in
 While a Moving/Dismissing message is shown, the app and extension hide the clock/date so the action status uses the entire header status line. The extension also suppresses the adjacent sync summary during this period and omits the leading separator; error details remain available. Once the action status clears, normal clock/sync display returns. The phone action label wraps across the available width without the clock or its spacing.
 
 Validation: 65 Android and 103 extension tests pass; delayed-save browser fixtures verified clock hiding during both action types, full-line status, no leading separator and clock restoration after saving. No real event/Task actions were used. Extension source is 0.3.31; its installed reload remains blocked by the previously reported browser policy, and no blocked reload was retried. The phone release remains 1.13/version 14, pending an explicit request to publish these layout changes.
+
+
+### Priority
+
+The ★/☆ Priority control toggles a case-insensitive `(pri)` title marker. Enabling appends ` (pri)` only when no marker exists; disabling removes the marker. Priority events and Tasks sort above every non-priority item, retaining the existing ordering within each group. A star replaces the age dot on priority rows. The extension control follows Calendar; the phone control replaces 2H (Tasks add it alongside their other actions, and all-day/recurring rows also expose it). Search results include the toggle too. Priority in the next-day preview is allowed.
+
+The change updates the row and ordering immediately, then saves only Calendar `summary` or Tasks `title` in the background. Each write reads the current title, checks for conflicting edits and uses its ETag; it does not change dates, guests or descriptions. Failed saves revert the optimistic title/order and show an error. Repeated toggles on an in-flight item are blocked; tap the star again after saving to reverse priority. This title toggle is separate from move/dismiss Undo. Refresh imports title markers created on another client. The widget retains its existing action buttons.
+
+Pencil now explicitly targets the installed Google Calendar app (or Google Tasks for tasks), using the browser editor only if the native activity cannot be opened. The phone event row continues to open its action flyout.
+
+Validation: 67 Android and 105 extension tests pass. Mocked priority UI checks covered toggling both ways, priority-first ordering, correct button placement, stars replacing age dots, title-only writes and failure rollback. No real event or Task write, edit-launch, or permission grant was used for verification. Native launch routing was checked in code; it was not exercised on a personal event. Extension source is 0.3.32; installed reload remains blocked by the previously reported browser policy. Android 1.14/version 15 is being prepared at the user's explicit request.
+
+API references: [conditional writes](https://developers.google.com/workspace/calendar/api/guides/version-resources), [partial updates and POST method override](https://developers.google.com/workspace/calendar/api/guides/performance).

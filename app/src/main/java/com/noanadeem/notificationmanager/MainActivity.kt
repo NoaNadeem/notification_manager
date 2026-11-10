@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.TimePickerDialog
 import android.accounts.Account
 import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -338,6 +339,7 @@ private fun CalendarLoginScreen(
         }
     }
 
+    var priorityIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var movingEventId by remember { mutableStateOf<String?>(null) }
     var committingActionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dismissals by remember { mutableStateOf(
@@ -610,6 +612,34 @@ private fun CalendarLoginScreen(
         }
     }
 
+    fun togglePriority(event: CalendarEvent) {
+        if (event.id in priorityIds || event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
+        val token = currentAccessToken ?: run { actionError="Reconnect Google access before changing priority."; return }
+        val selectedAccount = accountName ?: event.calendarId
+        undoState.pendingAction?.let(::commitAction)
+        val enabled = !event.isPriority
+        val updated = event.copy(title=priorityTitle(event.title,enabled))
+        priorityIds = priorityIds + event.id
+        recentEvents = sortCalendarEvents(recentEvents.map { if(it.id==event.id) updated else it })
+        calendarSearchResults = calendarSearchResults?.let { it.copy(events=sortCalendarSearchEvents(it.events.map { item->if(item.id==event.id) updated else item })) }
+        coroutineScope.launch {
+            try {
+                setEventPriority(token,event,enabled)
+                if (accountName == selectedAccount) {
+                    recentEvents=sortCalendarEvents(recentEvents.map { if(it.id==event.id) it.copy(title=updated.title) else it })
+                    actionError = runCatching { localStateStore.writeEvents(selectedAccount,recentEvents) }
+                        .exceptionOrNull()?.let { "Priority saved; could not update offline cache: ${it.message}" }
+                }
+            } catch (e: Exception) {
+                if (accountName == selectedAccount) {
+                    recentEvents=sortCalendarEvents(recentEvents.map { if(it.id==event.id) it.copy(title=event.title) else it })
+                    calendarSearchResults=calendarSearchResults?.let { it.copy(events=sortCalendarSearchEvents(it.events.map { item->if(item.id==event.id) item.copy(title=event.title) else item })) }
+                    actionError="Could not change priority: ${e.message}"
+                }
+            } finally { priorityIds=priorityIds-event.id }
+        }
+    }
+
     fun openEvent(event: CalendarEvent) {
         undoState.pendingAction?.let(::commitAction)
         coroutineScope.launch {
@@ -620,8 +650,13 @@ private fun CalendarLoginScreen(
                 )
                 val editLink = calendarEventOpenLink(link, edit = true)
                     ?: throw IllegalStateException("Google Calendar returned an invalid event link.")
-                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(editLink))
-                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                try {
+                    val nativeLink = calendarEventOpenLink(link, edit = false) ?: editLink
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(nativeLink))
+                        .setPackage(if(event.isTask) "com.google.android.apps.tasks" else "com.google.android.calendar"))
+                } catch (_: ActivityNotFoundException) {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(editLink)).addCategory(Intent.CATEGORY_BROWSABLE))
+                }
                 actionError = null
             } catch (e: Exception) {
                 actionError = e.message ?: "Could not open this Calendar event."
@@ -892,7 +927,7 @@ private fun CalendarLoginScreen(
             actionError = "Recurring events can only be dismissed or edited in Google Calendar."
             return
         }
-        if (event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
+        if (event.id in priorityIds || event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
             stageForUndo(UndoableAction.Move(event, target, token))
             actionError = null
@@ -932,7 +967,7 @@ private fun CalendarLoginScreen(
     }
 
     fun dismissEvent(event: CalendarEvent) {
-        if (event.id in committingActionIds) return
+        if (event.id in priorityIds || event.id in committingActionIds) return
         stageForUndo(UndoableAction.Dismiss(event))
         actionError = null
     }
@@ -1105,7 +1140,8 @@ private fun CalendarLoginScreen(
                 preferences.edit().putInt(UNDO_SECONDS_KEY, undoSeconds).apply()
             },
             movingEventId = movingEventId,
-            committingActionIds = committingActionIds,
+            committingActionIds = committingActionIds + priorityIds,
+            onPriority = ::togglePriority,
             savingStatus = latestSavingStatus(lastUndoAction, undoState.pendingAction, committingActionIds),
             undoableEventId = undoState.pendingAction?.event?.id,
             undoActionDescription = undoState.pendingAction?.let { action ->
@@ -1237,6 +1273,7 @@ private fun CalendarConnectedScreen(
     onLookbackChange: (Int) -> Unit,
     onLookaheadChange: (Int) -> Unit,
     onPresetChange: (WindowPreset) -> Unit,
+    onPriority: (CalendarEvent) -> Unit,
     onMove: (CalendarEvent, MoveTarget) -> Unit,
     onDismiss: (CalendarEvent) -> Unit,
     onEstimateStorage: () -> Unit,
@@ -1295,14 +1332,14 @@ private fun CalendarConnectedScreen(
     val searchFocusRequester = remember { FocusRequester() }
     val reviewNow = Instant.now()
     val reviewEvents = events.filter { it.isUndatedTask || isInDisplayWindow(it.start, reviewNow, lookbackDays, lookaheadDays, preset = windowPreset) }
-    val previewEvents = events.filter { it.isInNextDayPreview(reviewNow, lookaheadDays) }
+    val previewEvents = sortCalendarEvents(events.filter { it.isInNextDayPreview(reviewNow, lookaheadDays) })
     val filteredEvents = remember(reviewEvents, searchQuery, searchActive, realEventsOnly) {
-        val matching = if (searchActive) filterLoadedEvents(reviewEvents, searchQuery) else reviewEvents
+        val matching = sortCalendarEvents(if (searchActive) filterLoadedEvents(reviewEvents, searchQuery) else reviewEvents)
         if (realEventsOnly) matching.filter(CalendarEvent::isEmphasized) else matching
     }
     val previewMode = reviewEvents.isEmpty() && !searchActive && !realEventsOnly && eventsError == null
     val displayEvents = if (previewMode) previewEvents else filteredEvents
-    val firstFutureIndex = filteredEvents.indexOfFirst { it.isFutureForDisplay() }
+    val firstFutureIndex = filteredEvents.indexOfFirst { !it.isPriority && it.isFutureForDisplay() }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
     }
@@ -1575,7 +1612,8 @@ private fun CalendarConnectedScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (event.isTwoDaysOld()) Box(
+                                    if (event.isPriority) Text("★", color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 7.dp))
+                                    else if (event.isTwoDaysOld()) Box(
                                         modifier = Modifier.padding(end = 7.dp).size(8.dp)
                                             .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
                                     )
@@ -1645,6 +1683,8 @@ private fun CalendarConnectedScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.End
                                     ) {
+                                        MoveTile(label=if(event.isPriority) "★" else "☆", description="Toggle priority",
+                                            enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
                                         MoveTile(
                                             label = "✓",
                                             description = "Dismiss only this occurrence in this app",
@@ -1686,6 +1726,12 @@ private fun CalendarConnectedScreen(
                                         )
                                     }
                                     @Composable
+                                    fun PriorityChoice() {
+                                        MoveTile(label=if(event.isPriority) "★" else "☆", description=if(event.isPriority) "Remove priority" else "Mark as priority",
+                                            enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp),
+                                            onClick={ expandedEventId=null; onPriority(event) })
+                                    }
+                                    @Composable
                                     fun EditChoice() {
                                         MoveTile(label = "✎", description = if (event.isTask) "Open task to edit" else "Open event in Google Calendar to edit",
                                             enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) })
@@ -1703,6 +1749,7 @@ private fun CalendarConnectedScreen(
                                             MoveChoice("7D", MoveTarget.After(Duration.ofDays(7)))
                                             DateChoice()
                                             EditChoice()
+                                            PriorityChoice()
                                             DismissChoice()
                                         } else {
                                             for (days in listOf(2L, 3L, 4L)) MoveChoice("${days}D", MoveTarget.After(Duration.ofDays(days)))
@@ -1715,10 +1762,12 @@ private fun CalendarConnectedScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         if (event.allDayDate == null) {
-                                            for (hours in listOf(2L, 3L, 4L)) MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
+                                            PriorityChoice()
+                                            for (hours in listOf(3L, 4L)) MoveChoice("${hours}H", MoveTarget.After(Duration.ofHours(hours)))
                                         } else {
                                             MoveChoice("0D", MoveTarget.After(Duration.ZERO))
-                                            repeat(2) { Spacer(modifier = Modifier.size(44.dp)) }
+                                            PriorityChoice()
+                                            Spacer(modifier = Modifier.size(44.dp))
                                         }
                                         EditChoice()
                                         DismissChoice()
@@ -1781,7 +1830,8 @@ private fun CalendarConnectedScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (event.isTwoDaysOld()) Box(
+                                            if (event.isPriority) Text("★", color = skin.color("dot", darkMode, MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 7.dp))
+                                    else if (event.isTwoDaysOld()) Box(
                                                 modifier = Modifier.padding(end = 7.dp).size(8.dp)
                                                     .background(skin.color("dot", darkMode, Color.Green), androidx.compose.foundation.shape.CircleShape)
                                             )
@@ -1803,6 +1853,8 @@ private fun CalendarConnectedScreen(
                                                     .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier))
                                         }
                                     }
+                                    MoveTile(label=if(event.isPriority) "★" else "☆", description=if(event.isPriority) "Remove priority" else "Mark as priority",
+                                        enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
                                     MoveTile(
                                         label = "✎", description = "Open event in Google Calendar to edit",
                                         enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) }

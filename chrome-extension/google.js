@@ -1,5 +1,5 @@
 import { moveTask, taskReference, setTaskCompleted } from "./tasks.js";
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
@@ -257,3 +257,18 @@ async function syncRecentMovesNow(account) {
 }
 
 export function completeTask(id, completed, request = googleRequest) { return setTaskCompleted(id, completed, request); }
+
+
+export async function setPriority(account, event, enabled, request = googleRequest) {
+  const ref = taskReference(event.id);
+  const url = ref ? `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(ref.listId)}/tasks/${encodeURIComponent(ref.id)}`
+    : `${CALENDAR}/${encodeURIComponent(account)}/events/${encodeURIComponent(event.id)}`;
+  const current = await request(url);
+  const field = ref ? "title" : "summary";
+  const desired = priorityTitle(event.summary || "", enabled);
+  if (current.deleted || current.status === "cancelled" || ref && current.status === "completed") throw new Error("This item is no longer active. Refresh before changing priority.");
+  if ((current[field] || "") === desired) return {...event, summary:desired};
+  if ((current[field] || "") !== (event.summary || "")) throw new Error("This title changed elsewhere. Refresh before changing priority.");
+  await request(url, {method:"PATCH", headers:{"Content-Type":"application/json", ...(current.etag ? {"If-Match":current.etag} : {})}, body:JSON.stringify({[field]:desired})});
+  return {...event, summary:desired};
+}

@@ -1,7 +1,7 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
-import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask } from "./google.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
+import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask, setPriority } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
@@ -10,6 +10,7 @@ import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerW
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState, latestSavingStatus } from "./sync-state.js";
 
+const prioritizing = new Set();
 let smallEventMorning = true;
 const $ = (selector) => document.querySelector(selector);
 const list = $("#event-list");
@@ -170,7 +171,7 @@ function currentVisibleEvents() {
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
-  return realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched;
+  return (realEventsOnly ? searched.filter((event) => isEmphasized(event, account)) : searched).sort((a,b) => searchActive ? compareSearchEvents(a,b) : compareEvents(a,b));
 }
 
 function renderSync() {
@@ -465,7 +466,7 @@ function renderNow() {
     list.append(empty);
     if (account && !searchActive && !realEventsOnly) {
       const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
-      const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone);
+      const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone).sort(compareEvents);
       preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event, true)));
       if (preview.length > renderedItemLimit) appendMoreItems();
       if (!preview.length && !loading) {
@@ -474,7 +475,7 @@ function renderNow() {
       }
     }
   } else {
-    const firstFutureIndex = filtered.findIndex((event) => isFutureEvent(event));
+    const firstFutureIndex = filtered.findIndex((event) => !isPriority(event) && isFutureEvent(event));
     filtered.slice(0, renderedItemLimit).forEach((event, index) => {
       if (index === firstFutureIndex) {
         const divider = document.createElement("div");
@@ -542,7 +543,9 @@ function renderSearchFooter() {
     if (isEmphasized(event, account)) row.classList.add("emphasized");
     const titleLine = document.createElement("div");
     titleLine.className = "title-line";
-    if (isTwoDaysOld(event, calendarZone)) {
+    if (isPriority(event)) {
+    const star = document.createElement("span"); star.className = "priority-star"; star.textContent = "★"; star.setAttribute("aria-label", "Priority"); titleLine.append(star);
+  } else if (isTwoDaysOld(event, calendarZone)) {
       const dot = document.createElement("span");
       dot.className = "old-dot";
       dot.setAttribute("aria-label", "At least two days old");
@@ -574,6 +577,7 @@ function renderSearchFooter() {
       if (event.task && !taskNoteUrl(event.location)) location.removeAttribute("href");
       row.append(location);
     }
+    row.append(priorityButton(event));
     list.append(row);
   }
   if (results.length > renderedItemLimit) appendMoreItems();
@@ -610,7 +614,9 @@ function renderEvent(event, preview = false) {
   age.textContent = pending ? actionDescription(pending) : eventAgeLabel(event, Date.now(), calendarZone);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
-  if (isTwoDaysOld(event, calendarZone)) {
+  if (isPriority(event)) {
+    const star = document.createElement("span"); star.className = "priority-star"; star.textContent = "★"; star.setAttribute("aria-label", "Priority"); titleLine.append(star);
+  } else if (isTwoDaysOld(event, calendarZone)) {
     const dot = document.createElement("span");
     dot.className = "old-dot";
     dot.setAttribute("aria-label", "At least two days old");
@@ -644,6 +650,7 @@ function renderEvent(event, preview = false) {
     return row;
   }
   if (isRecurring(event)) {
+    actions.append(priorityButton(event));
     actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     return row;
   }
@@ -668,6 +675,7 @@ function renderEvent(event, preview = false) {
   actions.append(
     button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"),
     calendarTile,
+    priorityButton(event),
     ...(event.task ? [] : [fourHours]),
     ...[7, 3, 2, 1].map(days => {
       const tile = moveTile(event, `${days}D`, { days });
@@ -675,11 +683,44 @@ function renderEvent(event, preview = false) {
       return tile;
     })
   );
+  if (prioritizing.has(event.id)) for (const tile of actions.children) tile.disabled = true;
   return row;
 }
 
+function priorityButton(event) {
+  const selected = isPriority(event);
+  const tile = button("★", selected ? "Remove priority" : "Mark as priority", () => void togglePriority(event), selected ? "tile primary" : "tile");
+  tile.setAttribute("aria-pressed", String(selected));
+  tile.disabled = prioritizing.has(event.id);
+  return tile;
+}
+
+async function togglePriority(event) {
+  if (prioritizing.has(event.id) || undo.current?.event.id === event.id || [...undo.committingActions].some(a=>a.event.id===event.id)) return;
+  const selectedAccount = account;
+  const enabled = !isPriority(event);
+  const updated = {...event,summary:priorityTitle(event.summary,enabled)};
+  void undo.commit(); prioritizing.add(event.id);
+  events = events.map(item=>item.id===event.id ? updated : item).sort(compareEvents);
+  if (remoteSearch?.events) remoteSearch.events = remoteSearch.events.map(item=>item.id===event.id ? updated : item).sort(compareSearchEvents);
+  showError(""); render();
+  try {
+    await setPriority(selectedAccount,event,enabled);
+    if (account !== selectedAccount) return;
+    events = events.map(item=>item.id===event.id ? {...item,summary:updated.summary} : item).sort(compareEvents);
+    try { await chrome.storage.local.set({[`cachedEvents:${selectedAccount.toLowerCase()}`]:{events,zone:calendarZone}}); }
+    catch (cacheError) { showError(`Priority saved; could not update offline cache: ${cacheError.message}`); }
+  } catch (error) {
+    if (account === selectedAccount) {
+      events = events.map(item=>item.id===event.id ? {...item,summary:event.summary} : item).sort(compareEvents);
+      if (remoteSearch?.events) remoteSearch.events = remoteSearch.events.map(item=>item.id===event.id ? {...item,summary:event.summary} : item).sort(compareSearchEvents);
+      showError(`Could not change priority for “${event.summary || "event"}”: ${error.message}`);
+    }
+  } finally { prioritizing.delete(event.id); render(); }
+}
+
 async function stageAction(event, type, option) {
-  if (undo.current?.event.id === event.id || [...undo.committingActions].some(action => action.event.id === event.id)) return;
+  if (prioritizing.has(event.id) || undo.current?.event.id === event.id || [...undo.committingActions].some(action => action.event.id === event.id)) return;
   showError("");
   if (type === "move" && isRecurring(event)) {
     showError("Recurring events can only be dismissed or edited in Google Calendar.");

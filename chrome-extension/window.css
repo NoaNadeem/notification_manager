@@ -148,3 +148,5 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 
 .account.saving-action #account-clock, .account.saving-action #sync-warning { display: none; }
 .account.saving-action #save-warning { flex-basis: 100%; font-size: 13px; }
+
+.priority-star { color: var(--dot-color); margin-right: 7px; flex-shrink: 0; }

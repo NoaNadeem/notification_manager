@@ -65,3 +65,6 @@ The header reports the newest action as **Dismissing [short title]…** or **Mov
 
 
 Moving/Dismissing messages temporarily replace the clock/date and adjacent sync summary on the header status line, using its full width. Normal clock and sync display returns when the action message clears.
+
+
+Priority ★ follows Calendar and toggles `(pri)` in the event/task title. Priority rows sort first and show a star instead of the age dot. The title-only background update is conditional on the current title/ETag; failure restores the prior title and ordering. Tap the selected star again to remove priority. Tests use mocked APIs; real event/Task data is never modified by agent verification.

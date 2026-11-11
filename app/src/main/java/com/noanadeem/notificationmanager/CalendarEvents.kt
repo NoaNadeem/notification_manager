@@ -37,9 +37,10 @@ internal data class CalendarEvent(
     val hasOtherAttendees: Boolean = false,
     val isRecurring: Boolean = false,
     val taskListId: String? = null,
-    val taskId: String? = null
+    val taskId: String? = null,
+    val canChangePriority: Boolean = !hasOtherAttendees
 ) {
-    val isPriority: Boolean get() = Regex("\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
+    val isPriority: Boolean get() = Regex("★\\s*$|\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
     val isTask: Boolean get() = taskListId != null
     val isUndatedTask: Boolean get() = isTask && allDayDate == null
     val locationIsLink: Boolean get() = !isTask || taskNoteUrl(location) != null
@@ -339,6 +340,7 @@ internal fun parseCalendarPage(response: JSONObject, calendarId: String): List<C
                 location = item.optString("location").takeIf { it.isNotBlank() },
                 end = end,
                 hasOtherAttendees = hasOtherAttendees,
+                canChangePriority = calendarPriorityAllowed(item, calendarId),
                 isRecurring = item.optString("recurringEventId").isNotBlank() || item.has("recurrence")
             ))
         }
@@ -594,15 +596,33 @@ private fun getCalendarJson(url: String, accessToken: String): JSONObject {
 
 
 internal fun priorityTitle(title: String, enabled: Boolean): String {
-    val marker = Regex("\\(pri\\)", RegexOption.IGNORE_CASE)
-    return if (enabled) { if (marker.containsMatchIn(title)) title else "${title.trimEnd()} (pri)".trimStart() }
-        else Regex("\\s*\\(pri\\)", RegexOption.IGNORE_CASE).replace(title, "").trim()
+    val base = Regex("\\s*\\(pri\\)", RegexOption.IGNORE_CASE).replace(title, "")
+        .replace(Regex("(?:\\s*★)+\\s*$"), "").trim()
+    return if (enabled) "$base ★".trimStart() else base
+}
+
+internal fun personalPriorityAllowed(
+    attendees: List<Pair<String, Boolean>>, account: String, omitted: Boolean = false,
+    organizer: String = "", organizerSelf: Boolean = false
+): Boolean = !omitted && (organizer.isBlank() || organizerSelf || organizer.equals(account, true)) &&
+    attendees.none { (email, self) -> !self && !email.equals(account, true) }
+
+private fun calendarPriorityAllowed(row: JSONObject, account: String): Boolean {
+    val attendees = row.optJSONArray("attendees")
+    val people = (0 until (attendees?.length() ?: 0)).map { index ->
+        val person = attendees?.optJSONObject(index)
+        person?.optString("email").orEmpty() to (person?.optBoolean("self") == true)
+    }
+    val organizer = row.optJSONObject("organizer")
+    return personalPriorityAllowed(people, account, row.optBoolean("attendeesOmitted"),
+        organizer?.optString("email").orEmpty(), organizer?.optBoolean("self") == true)
 }
 
 internal suspend fun setEventPriority(token: String, event: CalendarEvent, enabled: Boolean): CalendarEvent = withContext(Dispatchers.IO) {
     if (event.isTask) return@withContext setTaskPriority(token,event,enabled)
     val url = "${primaryCalendarEventsUrl(event.calendarId)}/${Uri.encode(event.id)}"
     val current = getCalendarJson(url,token)
+    require(calendarPriorityAllowed(current,event.calendarId)) { "Priority is only available for personal events without other invitees." }
     require(current.optString("status") != "cancelled") { "This event was deleted. Refresh before changing priority." }
     val desired = priorityTitle(event.title,enabled)
     if (current.optString("summary") == desired) return@withContext event.copy(title=desired)

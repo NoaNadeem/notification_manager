@@ -47,7 +47,8 @@ internal fun calendarEventFromLocalJson(row: JSONObject): CalendarEvent = Calend
     hasOtherAttendees = row.optBoolean("otherAttendees"),
     isRecurring = row.optBoolean("recurring"),
     taskListId = row.optString("taskListId").takeIf(String::isNotBlank),
-    taskId = row.optString("taskId").takeIf(String::isNotBlank)
+    taskId = row.optString("taskId").takeIf(String::isNotBlank),
+    canChangePriority = row.optBoolean("priorityAllowed", !row.optBoolean("otherAttendees"))
 )
 
 internal fun calendarEventToLocalJson(event: CalendarEvent): JSONObject = JSONObject()
@@ -57,7 +58,7 @@ internal fun calendarEventToLocalJson(event: CalendarEvent): JSONObject = JSONOb
     .put("zone", event.calendarZone.id).put("htmlLink", event.htmlLink ?: "")
     .put("location", event.location ?: "").put("end", event.end?.toEpochMilli() ?: 0L)
     .put("taskListId", event.taskListId ?: "").put("taskId", event.taskId ?: "")
-    .put("otherAttendees", event.hasOtherAttendees).put("recurring", event.isRecurring)
+    .put("priorityAllowed", event.canChangePriority).put("otherAttendees", event.hasOtherAttendees).put("recurring", event.isRecurring)
 
 internal class LocalStateStore(private val context: Context) {
     private val preferences = context.getSharedPreferences("notification_manager_local_state", Context.MODE_PRIVATE)

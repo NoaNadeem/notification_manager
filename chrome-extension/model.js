@@ -265,8 +265,15 @@ export function locationHref(location) {
 }
 
 
-export const isPriority = event => /\(pri\)/i.test(event.summary || "");
+export const isPriority = event => /★\s*$|\(pri\)/i.test(event.summary || "");
 export function priorityTitle(title, enabled) {
-  if (enabled) return /\(pri\)/i.test(title || "") ? title : `${(title || "").trimEnd()} (pri)`.trimStart();
-  return (title || "").replace(/\s*\(pri\)/gi, "").trim();
+  const base = (title || "").replace(/\s*\(pri\)/gi, "").replace(/(?:\s*★)+\s*$/, "").trim();
+  return enabled ? `${base} ★`.trimStart() : base;
+}
+
+export function canChangePriority(event, account) {
+  if (event.attendeesOmitted) return false;
+  const mine = email => !!email && email.toLowerCase() === account?.toLowerCase();
+  if (event.organizer?.email && !event.organizer.self && !mine(event.organizer.email)) return false;
+  return !(event.attendees || []).some(attendee => !attendee.self && !mine(attendee.email));
 }

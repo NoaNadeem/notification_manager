@@ -613,6 +613,7 @@ private fun CalendarLoginScreen(
     }
 
     fun togglePriority(event: CalendarEvent) {
+        if (!event.canChangePriority) { actionError="Priority is only available for personal events without other invitees."; return }
         if (event.id in priorityIds || event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         val token = currentAccessToken ?: run { actionError="Reconnect Google access before changing priority."; return }
         val selectedAccount = accountName ?: event.calendarId
@@ -1684,7 +1685,7 @@ private fun CalendarConnectedScreen(
                                         horizontalArrangement = Arrangement.End
                                     ) {
                                         MoveTile(label=if(event.isPriority) "★" else "☆", description="Toggle priority",
-                                            enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
+                                            enabled=event.canChangePriority && event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
                                         MoveTile(
                                             label = "✓",
                                             description = "Dismiss only this occurrence in this app",
@@ -1728,7 +1729,7 @@ private fun CalendarConnectedScreen(
                                     @Composable
                                     fun PriorityChoice() {
                                         MoveTile(label=if(event.isPriority) "★" else "☆", description=if(event.isPriority) "Remove priority" else "Mark as priority",
-                                            enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp),
+                                            enabled=event.canChangePriority && event.id !in committingActionIds, modifier=Modifier.size(44.dp),
                                             onClick={ expandedEventId=null; onPriority(event) })
                                     }
                                     @Composable
@@ -1854,7 +1855,7 @@ private fun CalendarConnectedScreen(
                                         }
                                     }
                                     MoveTile(label=if(event.isPriority) "★" else "☆", description=if(event.isPriority) "Remove priority" else "Mark as priority",
-                                        enabled=event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
+                                        enabled=event.canChangePriority && event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
                                     MoveTile(
                                         label = "✎", description = "Open event in Google Calendar to edit",
                                         enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) }

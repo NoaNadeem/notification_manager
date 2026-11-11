@@ -1,6 +1,6 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, canChangePriority, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask, setPriority } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
@@ -691,11 +691,13 @@ function priorityButton(event) {
   const selected = isPriority(event);
   const tile = button("★", selected ? "Remove priority" : "Mark as priority", () => void togglePriority(event), selected ? "tile primary" : "tile");
   tile.setAttribute("aria-pressed", String(selected));
-  tile.disabled = prioritizing.has(event.id);
+  tile.disabled = prioritizing.has(event.id) || !canChangePriority(event, account);
+  if (!canChangePriority(event, account)) tile.title = "Priority is only available for personal events without other invitees";
   return tile;
 }
 
 async function togglePriority(event) {
+  if (!canChangePriority(event, account)) { showError("Priority is only available for personal events without other invitees."); return; }
   if (prioritizing.has(event.id) || undo.current?.event.id === event.id || [...undo.committingActions].some(a=>a.event.id===event.id)) return;
   const selectedAccount = account;
   const enabled = !isPriority(event);

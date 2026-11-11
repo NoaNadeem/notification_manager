@@ -1,5 +1,5 @@
 import { moveTask, taskReference, setTaskCompleted } from "./tasks.js";
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle, canChangePriority } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
@@ -264,6 +264,7 @@ export async function setPriority(account, event, enabled, request = googleReque
   const url = ref ? `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(ref.listId)}/tasks/${encodeURIComponent(ref.id)}`
     : `${CALENDAR}/${encodeURIComponent(account)}/events/${encodeURIComponent(event.id)}`;
   const current = await request(url);
+  if (!ref && !canChangePriority(current, account)) throw new Error("Priority is only available for personal events without other invitees.");
   const field = ref ? "title" : "summary";
   const desired = priorityTitle(event.summary || "", enabled);
   if (current.deleted || current.status === "cancelled" || ref && current.status === "completed") throw new Error("This item is no longer active. Refresh before changing priority.");

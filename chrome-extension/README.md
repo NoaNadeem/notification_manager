@@ -58,7 +58,7 @@ Missing Google permission now opens interactive reconnection once while the exte
 Task rows use the normal short-event background. Their action row omits 4H completely; event controls are unchanged. Android task menus use one row: 2D, 7D, Calendar, Pencil, Dismiss. The widget retains its existing menu.
 
 
-When the selected range is empty, a **read-only preview** shows events and dated Tasks for the next local day after lookahead. It keeps clickable title/location links and visible controls, with relative day/hour moves disabled and Calendar/Dismiss enabled. Titles open the direct Calendar edit URL; the redundant Pencil control is removed throughout the extension. Preview rows do not increase the actionable count. Only that one day is shown, with a separate empty message if needed. Search and real-event filtering retain their own empty states.
+When the selected range is empty, a **read-only preview** shows events and dated Tasks for the next local day after lookahead. It keeps clickable title/location links and controls revealed on row hover/focus, with relative day/hour moves disabled and Calendar/Dismiss enabled. Titles open the direct Calendar edit URL; the redundant Pencil control is removed throughout the extension. Preview rows do not increase the actionable count. Only that one day is shown, with a separate empty message if needed. Search and real-event filtering retain their own empty states.
 
 
 The header reports the newest action as **Dismissing [short title]…** or **Moving [short title] to Mon 23rd Nov 2026**, using the destination captured when clicked. Older saves continue silently and their completion does not replace the latest message. Errors remain visible; the generic “Saving N actions…” count is removed.

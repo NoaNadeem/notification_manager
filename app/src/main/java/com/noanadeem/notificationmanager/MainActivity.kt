@@ -1672,7 +1672,7 @@ private fun CalendarConnectedScreen(
                                 }
                             )
                         }
-                        if ((previewMode || expandedEventId == event.id) && !awaitingUndo) {
+                        if (expandedEventId == event.id && !awaitingUndo) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                     .bringIntoViewRequester(actionBringIntoViewRequester),

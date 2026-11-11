@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 15`, and `versionName = "1.14"`. Version 15 (1.14) was signed with the existing upload key and published to the existing internal-testing track on November 10, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 16`, and `versionName = "1.15"`. Version 16 (1.15) was signed with the existing upload key and published to the existing internal-testing track on November 10, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -158,3 +158,14 @@ Pencil explicitly launches the installed Google Calendar activity (Google Tasks 
 Validation: **67 Android and 105 extension tests pass**, plus mocked priority UI checks for toggle-on/off, ordering, age-star replacement, button placement, title-only writes and failure rollback. Signed artifact matches the final release build and passed signature verification. ReTrace mapping is attached; the known nonblocking native-debug-symbol warning remains. No real Calendar/Tasks actions or edit launches were used for verification. No new terms were accepted. Extension source is 0.3.32; installed reload remains blocked by the previously reported browser policy and must not be claimed as deployed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/14/details
+
+
+### Android 1.15 / version 16
+
+Published **1.15 internal release** on November 10, 2026; Google Play confirmed **Available to internal testers** for version 16 (1.15). Next-day preview flyouts start closed and open only on row tap. Extension 0.3.34 preview actions use normal hover/focus reveal instead of being forced visible. Relative moves remain disabled in previews.
+
+The release also ships trailing-star priority titles and personal-event eligibility: Calendar priority controls are disabled for events with other invitees, and a fresh API read plus ETag protects the write. Legacy `(pri)` titles remain recognized. Tasks retain priority support. No bulk rewrite of titles occurs.
+
+Validation: 68 Android and 106 extension tests pass, plus isolated preview-focus/visibility and priority guard fixtures. The signed bundle passed signature verification and matches the final build artifact. ReTrace mapping is attached; only the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension source is pushed, but installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/15/details

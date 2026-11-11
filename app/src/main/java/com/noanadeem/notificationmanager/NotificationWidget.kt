@@ -586,6 +586,9 @@ internal class WidgetActionWorker(context: Context, params: WorkerParameters) : 
                     val cache = LocalStateStore(context)
                     cache.writeEvents(action.account, cache.readEvents(action.account).filterNot { it.id == event.id })
                 }
+                if (!event.isTask && event.isPriority && event.canChangePriority) runCatching {
+                    clearDismissedPriority(widgetToken(context,action.account,edit=true),event)
+                }.onFailure { android.util.Log.w("NotificationManager","Widget dismissal priority cleanup skipped",it) }
                 val store = DismissalStore(context)
                 val record = DismissalRecord(event.id, event.start.toEpochMilli(),
                     System.currentTimeMillis(), event.title)

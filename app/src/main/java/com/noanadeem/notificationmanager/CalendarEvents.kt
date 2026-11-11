@@ -40,7 +40,7 @@ internal data class CalendarEvent(
     val taskId: String? = null,
     val canChangePriority: Boolean = !hasOtherAttendees
 ) {
-    val isPriority: Boolean get() = Regex("★\\s*$|\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
+    val isPriority: Boolean get() = isPriorityTitle(title)
     val isTask: Boolean get() = taskListId != null
     val isUndatedTask: Boolean get() = isTask && allDayDate == null
     val locationIsLink: Boolean get() = !isTask || taskNoteUrl(location) != null
@@ -595,6 +595,8 @@ private fun getCalendarJson(url: String, accessToken: String): JSONObject {
 }
 
 
+internal fun isPriorityTitle(title: String): Boolean = Regex("★\\s*$|\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
+
 internal fun priorityTitle(title: String, enabled: Boolean): String {
     val base = Regex("\\s*\\(pri\\)", RegexOption.IGNORE_CASE).replace(title, "")
         .replace(Regex("(?:\\s*★)+\\s*$"), "").trim()
@@ -640,4 +642,19 @@ internal suspend fun setEventPriority(token: String, event: CalendarEvent, enabl
         connection.inputStream.close()
     } finally { connection.disconnect() }
     event.copy(title=desired)
+}
+
+
+internal suspend fun clearDismissedPriority(token: String, event: CalendarEvent): Boolean {
+    if (event.isTask || !event.isPriority || !event.canChangePriority) return false
+    return runCatching { setEventPriority(token,event,false); true }.getOrElse {
+        android.util.Log.w("NotificationManager", "Dismissal priority cleanup skipped", it); false
+    }
+}
+
+internal suspend fun restoreDismissedPriority(token: String, event: CalendarEvent): CalendarEvent {
+    val cleared = event.copy(title=priorityTitle(event.title,false))
+    return runCatching { setEventPriority(token,cleared,true) }.getOrElse {
+        android.util.Log.w("NotificationManager", "Dismissal priority restoration skipped", it); cleared
+    }
 }

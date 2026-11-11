@@ -149,7 +149,8 @@ internal sealed interface UndoableAction {
 
     data class Dismiss(
         override val event: CalendarEvent,
-        override val createdAtNanos: Long = System.nanoTime()
+        override val createdAtNanos: Long = System.nanoTime(),
+        var priorityCleared: Boolean = false
     ) : UndoableAction
 }
 
@@ -332,7 +333,7 @@ private fun CalendarLoginScreen(
         accountName?.let { selected ->
             lastUndoStore.read(selected)?.let { saved ->
                 val action = if (saved.move) UndoableAction.Move(saved.event, MoveTarget.After(java.time.Duration.ZERO), "")
-                    else UndoableAction.Dismiss(saved.event)
+                    else UndoableAction.Dismiss(saved.event, priorityCleared=saved.priorityCleared)
                 lastUndoAction = action
                 saved.moved?.let { committedMoves[action.createdAtNanos] = it }
             }
@@ -491,6 +492,14 @@ private fun CalendarLoginScreen(
                         }
                         dismissals = merged
                         recentEvents = recentEvents.withoutDismissals(merged)
+                        if (!action.event.isTask) currentAccessToken?.let { token ->
+                            if (clearDismissedPriority(token,action.event)) {
+                                action.priorityCleared=true
+                                if (lastUndoAction == action) runCatching {
+                                    lastUndoStore.write(selectedAccount,LastUndoRecord(action.event,false,priorityCleared=true))
+                                }.onFailure { Log.w("NotificationManagerUndo","Could not remember priority cleanup",it) }
+                            }
+                        }
                         actionError = null
                         saveSync(selectedAccount, syncState.copy(pending = syncState.pending + record.key))
                         currentAccessToken?.let { token ->
@@ -578,7 +587,8 @@ private fun CalendarLoginScreen(
                             restoreOriginal = action.event, expectedMoved = expected)
                     }
                     is UndoableAction.Dismiss -> {
-                        if (action.event.isTask) completeTaskEvent(token, action.event, false)
+                        val restoredEvent = if (action.event.isTask) completeTaskEvent(token, action.event, false)
+                            else if (action.priorityCleared) restoreDismissedPriority(token,action.event) else action.event
                         dismissals = dismissalMutex.withLock {
                             val records = dismissalStore.read(selectedAccount)
                             val previous = records.find { it.eventId == action.event.id && it.eventStartMillis == action.event.start.toEpochMilli() }
@@ -588,10 +598,10 @@ private fun CalendarLoginScreen(
                         }
                         saveSync(selectedAccount, syncState.copy(pending = syncState.pending + "${action.event.id}/${action.event.start.toEpochMilli()}"))
                         // Restore the row locally even if publishing the restoration must be retried.
-                        recentEvents = sortCalendarEvents(recentEvents.filterNot { it.id == action.event.id } + action.event)
+                        recentEvents = sortCalendarEvents(recentEvents.filterNot { it.id == action.event.id } + restoredEvent)
                         dismissals = dismissalMutex.withLock { syncDismissals(token, dismissalStore, selectedAccount) }
                         saveSync(selectedAccount, syncState.copy(pending = syncState.pending - "${action.event.id}/${action.event.start.toEpochMilli()}"))
-                        action.event
+                        restoredEvent
                     }
                 }
                 recentEvents = sortCalendarEvents((recentEvents.filterNot { it.id == restored.id } + restored)

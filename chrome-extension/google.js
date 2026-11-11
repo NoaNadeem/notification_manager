@@ -1,5 +1,5 @@
 import { moveTask, taskReference, setTaskCompleted } from "./tasks.js";
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle, canChangePriority } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle, canChangePriority, isPriority } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
@@ -256,7 +256,7 @@ async function syncRecentMovesNow(account) {
   return merged;
 }
 
-export function completeTask(id, completed, request = googleRequest) { return setTaskCompleted(id, completed, request); }
+export function completeTask(id, completed, request = googleRequest, originalTitle) { return setTaskCompleted(id, completed, request, originalTitle); }
 
 
 export async function setPriority(account, event, enabled, request = googleRequest) {
@@ -272,4 +272,17 @@ export async function setPriority(account, event, enabled, request = googleReque
   if ((current[field] || "") !== (event.summary || "")) throw new Error("This title changed elsewhere. Refresh before changing priority.");
   await request(url, {method:"PATCH", headers:{"Content-Type":"application/json", ...(current.etag ? {"If-Match":current.etag} : {})}, body:JSON.stringify({[field]:desired})});
   return {...event, summary:desired};
+}
+
+
+export async function clearDismissedPriority(account, event, request = googleRequest) {
+  if (event.task || !isPriority(event) || !canChangePriority(event,account)) return false;
+  try { await setPriority(account,event,false,request); return true; }
+  catch (error) { console.warn("Dismissal priority cleanup skipped:",error.message); return false; }
+}
+
+export async function restoreDismissedPriority(account, event, request = googleRequest) {
+  const cleared = {...event,summary:priorityTitle(event.summary,false)};
+  try { return await setPriority(account,cleared,true,request); }
+  catch (error) { console.warn("Dismissal priority restoration skipped:",error.message); return cleared; }
 }

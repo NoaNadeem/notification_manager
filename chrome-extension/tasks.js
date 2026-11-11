@@ -1,3 +1,4 @@
+import {isPriority, priorityTitle} from "./model.js";
 const ROOT = "https://tasks.googleapis.com/tasks/v1";
 export const TASK_SCOPE = "https://www.googleapis.com/auth/tasks";
 
@@ -59,14 +60,18 @@ export async function moveTask(id, option, now, destination, request) {
   return taskAsEvent(updated, ref.listId);
 }
 
-export async function setTaskCompleted(id, completed, request) {
+export async function setTaskCompleted(id, completed, request, originalTitle) {
   const ref = taskReference(id);
   const url = `${ROOT}/lists/${encodeURIComponent(ref.listId)}/tasks/${encodeURIComponent(ref.id)}`;
   const current = await request(url);
   if (current.deleted) throw Object.assign(new Error("This task was deleted. Refresh before changing it."), {status:409});
   const status = completed ? "completed" : "needsAction";
-  if (current.status === status) return taskAsEvent(current, ref.listId);
+  const title = completed && isPriority({summary:current.title}) ? priorityTitle(current.title,false)
+    : !completed && isPriority({summary:originalTitle}) && current.title === priorityTitle(originalTitle,false) ? originalTitle : undefined;
+  if (current.status === status && title === undefined) return taskAsEvent(current, ref.listId);
+  const body = completed ? {status} : {status,completed:null};
+  if (title !== undefined) body.title = title;
   const updated = await request(url, {method:"PATCH",headers:{"Content-Type":"application/json",...(current.etag ? {"If-Match":current.etag} : {})},
-    body:JSON.stringify(completed ? {status} : {status,completed:null})});
+    body:JSON.stringify(body)});
   return taskAsEvent(updated, ref.listId);
 }

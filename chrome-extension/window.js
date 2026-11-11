@@ -1,7 +1,7 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, canChangePriority, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
-import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask, setPriority } from "./google.js";
+import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask, setPriority, clearDismissedPriority, restoreDismissedPriority } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
@@ -753,7 +753,9 @@ async function revertAction(action) {
     events.push(restored);
     events.sort(compareEvents);
   } else {
-    if (action.event.task) await completeTask(action.event.id, false);
+    const restoredEvent = action.event.task
+      ? await completeTask(action.event.id, false, googleRequest, action.event.summary)
+      : action.priorityCleared ? await restoreDismissedPriority(action.account,action.event) : action.event;
     const previous = dismissals.find(record => record.eventId === action.event.id && record.start === eventStartMs(action.event, calendarZone));
     try {
       dismissals = await saveDismissal(action.account, {
@@ -765,7 +767,7 @@ async function revertAction(action) {
       const key = `dismissals:${action.account.toLowerCase()}`;
       const stored = await chrome.storage.local.get(key);
       dismissals = stored[key] || dismissals;
-      if (!events.some(event => event.id === action.event.id)) events.push(action.event);
+      if (!events.some(event => event.id === action.event.id)) events.push(restoredEvent);
       events.sort(compareEvents);
     }
   }
@@ -830,6 +832,10 @@ async function commitAction(action) {
         applied = true;
         events = events.filter(item => item.id !== event.id);
         await chrome.storage.local.set({ [`cachedEvents:${action.account.toLowerCase()}`]: {events, zone:calendarZone} });
+      }
+      if (!event.task && await clearDismissedPriority(action.account,event)) {
+        action.priorityCleared = true;
+        rememberLastUndo();
       }
       dismissals = await saveDismissal(account, {
         eventId: event.id, start: eventStartMs(event, calendarZone), dismissed: Date.now(),

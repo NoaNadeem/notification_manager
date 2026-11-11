@@ -95,13 +95,21 @@ internal suspend fun moveTaskEvent(token: String, event: CalendarEvent, target: 
     val updated = taskRequest(url, token, body, current.optString("etag").takeIf(String::isNotBlank))
     parseTask(updated, event.taskListId, event.calendarId)
 }
+internal fun completionPriorityTitle(current: String, completed: Boolean, original: String?): String? = when {
+    completed && isPriorityTitle(current) -> priorityTitle(current,false)
+    !completed && original != null && isPriorityTitle(original) && current == priorityTitle(original,false) -> original
+    else -> null
+}
+
 internal suspend fun completeTaskEvent(token: String, event: CalendarEvent, completed: Boolean): CalendarEvent = withContext(Dispatchers.IO) {
     val url = "$TASKS_ROOT/lists/${Uri.encode(requireNotNull(event.taskListId))}/tasks/${Uri.encode(requireNotNull(event.taskId))}"
     val current = taskRequest(url, token)
     require(!current.optBoolean("deleted")) { "This task was deleted. Refresh before changing it." }
     val status = if (completed) "completed" else "needsAction"
-    if (current.optString("status") == status) return@withContext parseTask(current, event.taskListId, event.calendarId)
+    val title = completionPriorityTitle(current.optString("title"),completed,event.title)
+    if (current.optString("status") == status && title == null) return@withContext parseTask(current, event.taskListId, event.calendarId)
     val body = JSONObject().put("status", status)
+    if (title != null) body.put("title",title)
     if (!completed) body.put("completed", JSONObject.NULL)
     parseTask(taskRequest(url, token, body, current.optString("etag").takeIf(String::isNotBlank)), event.taskListId, event.calendarId)
 }

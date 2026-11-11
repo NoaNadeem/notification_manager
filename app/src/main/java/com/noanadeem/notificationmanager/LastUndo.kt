@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 
 // This device's last action, independent of the inline Undo timer. No tokens are stored.
-internal data class LastUndoRecord(val event: CalendarEvent, val move: Boolean, val moved: CalendarEvent? = null)
+internal data class LastUndoRecord(val event: CalendarEvent, val move: Boolean, val moved: CalendarEvent? = null, val priorityCleared: Boolean = false)
 
 internal class LastUndoStore(context: Context) {
     private val preferences = context.getSharedPreferences("notification_manager_last_undo", Context.MODE_PRIVATE)
@@ -12,13 +12,14 @@ internal class LastUndoStore(context: Context) {
         val raw = preferences.getString(account.lowercase(), null) ?: return null
         val json = JSONObject(raw)
         LastUndoRecord(calendarEventFromLocalJson(json.getJSONObject("event")), json.getBoolean("move"),
-            json.optJSONObject("moved")?.let(::calendarEventFromLocalJson))
+            json.optJSONObject("moved")?.let(::calendarEventFromLocalJson), json.optBoolean("priorityCleared"))
     }.getOrNull()
     fun write(account: String, record: LastUndoRecord?) {
         val editor = preferences.edit()
         if (record == null) editor.remove(account.lowercase()) else {
             val json = JSONObject().put("event", calendarEventToLocalJson(record.event)).put("move", record.move)
             record.moved?.let { json.put("moved", calendarEventToLocalJson(it)) }
+            json.put("priorityCleared",record.priorityCleared)
             editor.putString(account.lowercase(), json.toString())
         }
         check(editor.commit()) { "Could not remember the last action for Undo." }

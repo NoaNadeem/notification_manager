@@ -67,7 +67,7 @@ The header reports the newest action as **Dismissing [short title]…** or **Mov
 Moving/Dismissing messages temporarily replace the clock/date and adjacent sync summary on the header status line, using its full width. Normal clock and sync display returns when the action message clears.
 
 
-Priority ★ follows Calendar and toggles a trailing ` ★` in the event/task title; legacy `(pri)` titles remain recognized. Priority rows sort first and show a star instead of the age dot. Calendar Priority is disabled for shared events and the fresh API read rejects any other invitees before writing. The title-only background update is conditional on the current title/ETag; failure restores the prior title and ordering. Tap the selected star again to remove priority. Tests use mocked APIs; real event/Task data is never modified by agent verification.
+Priority ★ follows Calendar and toggles a trailing `.` in the event/task title; legacy trailing ★ and `(pri)` titles remain recognized. Priority rows sort first and show a star instead of the age dot. Calendar Priority is disabled for shared events and the fresh API read rejects any other invitees before writing. The title-only background update is conditional on the current title/ETag; failure restores the prior title and ordering. Tap the selected star again to remove priority. Tests use mocked APIs; real event/Task data is never modified by agent verification.
 
 
 Dismissal clears our backend priority title marker: Task completion includes title cleanup atomically; eligible personal-event dismissal attempts it quietly and skips failures/shared-event changes. Moves preserve priority. Undo restores priority when safe without overwriting a later title edit.

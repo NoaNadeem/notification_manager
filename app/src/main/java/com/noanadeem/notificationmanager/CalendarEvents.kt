@@ -595,12 +595,12 @@ private fun getCalendarJson(url: String, accessToken: String): JSONObject {
 }
 
 
-internal fun isPriorityTitle(title: String): Boolean = Regex("★\\s*$|\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
+internal fun isPriorityTitle(title: String): Boolean = Regex("[.★]\\s*$|\\(pri\\)", RegexOption.IGNORE_CASE).containsMatchIn(title)
 
 internal fun priorityTitle(title: String, enabled: Boolean): String {
     val base = Regex("\\s*\\(pri\\)", RegexOption.IGNORE_CASE).replace(title, "")
-        .replace(Regex("(?:\\s*★)+\\s*$"), "").trim()
-    return if (enabled) "$base ★".trimStart() else base
+        .replace(Regex("(?:\\s*[.★])+\\s*$"), "").trim()
+    return if (enabled) "$base." else base
 }
 
 internal fun personalPriorityAllowed(

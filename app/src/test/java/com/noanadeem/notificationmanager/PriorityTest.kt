@@ -6,8 +6,8 @@ class PriorityTest {
  private val now=Instant.parse("2026-11-10T12:00:00Z")
  private val event=CalendarEvent("fixture","fixture","Synthetic",now,null,ZoneId.of("UTC"))
  @Test fun markerToggleIsIdempotentAndCaseInsensitive() {
-  assertEquals("Synthetic ★",priorityTitle(event.title,true))
-  assertEquals("Synthetic ★",priorityTitle("Synthetic (PRI)",true))
+  assertEquals("Synthetic.",priorityTitle(event.title,true))
+  assertEquals("Synthetic.",priorityTitle("Synthetic (PRI)",true))
   assertEquals("Synthetic",priorityTitle("Synthetic (pri) (PRI)",false))
   assertTrue(event.copy(title="Synthetic (PRI)").isPriority)
   assertFalse(event.isPriority)
@@ -21,11 +21,17 @@ class PriorityTest {
   assertEquals("old",sortCalendarSearchEvents(listOf(old,future,undated,earlier)).last().id)
   assertFalse(event.copy(title=priorityTitle(future.title,false)).isPriority)
  }
- @Test fun starsAndPersonalEventEligibility() {
-  assertEquals("Event ★",priorityTitle("Event ★",true))
+ @Test fun periodsAndPersonalEventEligibility() {
+  assertEquals("Event.",priorityTitle("Event ★",true))
   assertEquals("Event",priorityTitle("Event (pri) ★ ★",false))
   assertTrue(event.copy(title="Event ★").isPriority)
   assertFalse(event.copy(title="★ inside title").isPriority)
+  assertTrue(event.copy(title="Event.").isPriority)
+  assertTrue(event.copy(title="Event.   ").isPriority)
+  assertFalse(event.copy(title="Dr. Example").isPriority)
+  assertEquals("Event.",priorityTitle("Event.",true))
+  assertEquals("Event",priorityTitle("Event...",false))
+  assertEquals("Event.",priorityTitle("Event (pri) ★",true))
   val mine="fixture@example.invalid"
   assertTrue(personalPriorityAllowed(emptyList(),mine))
   assertTrue(personalPriorityAllowed(listOf(mine to false,"alias@example.invalid" to true),mine))

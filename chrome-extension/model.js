@@ -265,10 +265,10 @@ export function locationHref(location) {
 }
 
 
-export const isPriority = event => /★\s*$|\(pri\)/i.test(event.summary || "");
+export const isPriority = event => /[.★]\s*$|\(pri\)/i.test(event.summary || "");
 export function priorityTitle(title, enabled) {
-  const base = (title || "").replace(/\s*\(pri\)/gi, "").replace(/(?:\s*★)+\s*$/, "").trim();
-  return enabled ? `${base} ★`.trimStart() : base;
+  const base = (title || "").replace(/\s*\(pri\)/gi, "").replace(/(?:\s*[.★])+\s*$/, "").trim();
+  return enabled ? `${base}.` : base;
 }
 
 export function canChangePriority(event, account) {

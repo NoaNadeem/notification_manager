@@ -3,7 +3,7 @@ import org.junit.Assert.*
 import org.junit.Test
 class DismissPriorityTest {
  @Test fun completionClearsPriorityAndUndoRestoresOnlyAnUnchangedTitle() {
-  for(title in listOf("Synthetic ★","Synthetic (pri)")) {
+  for(title in listOf("Synthetic.","Synthetic ★","Synthetic (pri)")) {
    assertEquals("Synthetic",completionPriorityTitle(title,true,title))
    assertNull(completionPriorityTitle("Synthetic",true,title))
    assertEquals(title,completionPriorityTitle("Synthetic",false,title))

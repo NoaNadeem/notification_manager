@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 16`, and `versionName = "1.15"`. Version 16 (1.15) was signed with the existing upload key and published to the existing internal-testing track on November 10, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 17`, and `versionName = "1.16"`. Version 17 (1.16) was signed with the existing upload key and published to the existing internal-testing track on November 11, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -169,3 +169,12 @@ The release also ships trailing-star priority titles and personal-event eligibil
 Validation: 68 Android and 106 extension tests pass, plus isolated preview-focus/visibility and priority guard fixtures. The signed bundle passed signature verification and matches the final build artifact. ReTrace mapping is attached; only the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension source is pushed, but installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/15/details
+
+
+### Android 1.16 / version 17
+
+Published **1.16 internal release** on November 11, 2026; Google Play confirmed **Available to internal testers** for version 17 (1.16). Priority now uses a trailing period, retaining legacy star/(pri) recognition without a bulk rewrite of backend titles. Dismissing completes Tasks and clears priority atomically; eligible personal Calendar dismissals attempt guarded title cleanup. Moves preserve priority, and header Undo restores it when safe. Remote read-only Calendar/Tasks search results no longer show the Priority action button.
+
+Validation: all 69 Android and 108 extension tests pass. The signed bundle passed signature verification and matches the final release build. Play attached ReTrace mapping; the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension source 0.3.37 is pushed, but its installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/16/details

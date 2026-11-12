@@ -577,7 +577,6 @@ function renderSearchFooter() {
       if (event.task && !taskNoteUrl(event.location)) location.removeAttribute("href");
       row.append(location);
     }
-    row.append(priorityButton(event));
     list.append(row);
   }
   if (results.length > renderedItemLimit) appendMoreItems();

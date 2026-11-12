@@ -71,3 +71,6 @@ Priority ★ follows Calendar and toggles a trailing ` ★` in the event/task ti
 
 
 Dismissal clears our backend priority title marker: Task completion includes title cleanup atomically; eligible personal-event dismissal attempts it quietly and skips failures/shared-event changes. Moves preserve priority. Undo restores priority when safe without overwriting a later title edit.
+
+
+Remote **Calendar & Tasks results · read only** rows show priority as an indicator only; no Priority toggle is rendered there. Normal review and preview-row controls are unchanged.

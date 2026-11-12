@@ -1864,8 +1864,6 @@ private fun CalendarConnectedScreen(
                                                     .then(if (event.locationIsLink) Modifier.clickable(onClickLabel = "Open item link") { onOpenLocation(location) } else Modifier))
                                         }
                                     }
-                                    MoveTile(label=if(event.isPriority) "★" else "☆", description=if(event.isPriority) "Remove priority" else "Mark as priority",
-                                        enabled=event.canChangePriority && event.id !in committingActionIds, modifier=Modifier.size(44.dp), onClick={onPriority(event)})
                                     MoveTile(
                                         label = "✎", description = "Open event in Google Calendar to edit",
                                         enabled = true, modifier = Modifier.size(44.dp), onClick = { onOpenEvent(event) }

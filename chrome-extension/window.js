@@ -467,6 +467,7 @@ function renderNow() {
     if (account && !searchActive && !realEventsOnly) {
       const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
       const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone).sort(compareEvents);
+      count.textContent = `${preview.length} read-only item${preview.length === 1 ? "" : "s"}`;
       preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event, true)));
       if (preview.length > renderedItemLimit) appendMoreItems();
       if (!preview.length && !loading) {

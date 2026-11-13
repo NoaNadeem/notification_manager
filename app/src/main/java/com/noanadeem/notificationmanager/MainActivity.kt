@@ -1889,13 +1889,13 @@ private fun CalendarConnectedScreen(
             modifier = Modifier.fillMaxWidth(),
             color = skin.color("panel", darkMode, MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
-        val eventCount = filteredEvents.size
+        val eventCount = displayEvents.size
             Box(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Text(
-                    if (eventsLoading) "Loading…" else "$eventCount event${if (eventCount == 1) "" else "s"}",
+                    if (eventsLoading) "Loading…" else "$eventCount ${if (previewMode) "read-only " else ""}event${if (eventCount == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -60,6 +60,7 @@ let loading = false;
 let syncAttempted = false;
 let refreshBusy = false;
 let movingPastItems = false;
+let moveNowRefreshPending = false;
 let suppressNextClick = false;
 let wheelResetTimer;
 let dateTarget;
@@ -85,6 +86,7 @@ const renderGuard = new InteractionRenderGuard(renderNow);
 
 const undo = new UndoController(commitAction, () => {
   rememberLastUndo();
+  void refreshAfterMoveToNow();
   void renderPendingSaves();
   render();
 }, undefined, undefined, undefined, persistAction, revertAction);
@@ -452,9 +454,18 @@ function moveToNowCandidates() {
     !prioritizing.has(event.id) && undo.current?.event.id !== event.id);
 }
 
+async function refreshAfterMoveToNow() {
+  if (!moveNowRefreshPending || movingPastItems || loading || refreshBusy || undo.reverting ||
+      undo.current || undo.committingActions.size) return;
+  moveNowRefreshPending = false;
+  await refreshEvents();
+}
+
 async function movePastItemsToNow() {
   if (movingPastItems || undo.reverting || !account) return;
   const candidates = moveToNowCandidates();
+  if (!candidates.length) return;
+  moveNowRefreshPending = true;
   movingPastItems = true;
   const stagedAtMs = Date.now();
   render();
@@ -462,15 +473,15 @@ async function movePastItemsToNow() {
     for (const event of candidates) {
       await stageAction(event, "move", { hours: 0, personalOnly: true }, stagedAtMs);
     }
-  } finally { movingPastItems = false; render(); }
+  } finally { movingPastItems = false; render(); void refreshAfterMoveToNow(); }
 }
 
 function renderNow() {
   $("#move-to-now").disabled = movingPastItems || loading || undo.reverting || !moveToNowCandidates().length;
   const latest = undo.latestAction;
-  $("#header-undo").disabled = !latest || undo.reverting;
-  $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
-  $("#header-undo").setAttribute("aria-label", $("#header-undo").title);
+  $("#undo-last").disabled = !latest || undo.reverting;
+  $("#undo-last").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
+  $("#undo-last").setAttribute("aria-label", $("#undo-last").title);
   const previousScroll = list.scrollTop;
   moreItemsObserver?.disconnect();
   moreItemsObserver = null;
@@ -1000,7 +1011,7 @@ $("#open-in-tab").addEventListener("click", async () => {
 });
 $("#retry-saves").addEventListener("click", () => { closeMenu(); void retrySavedActions(true); });
 $("#move-to-now").addEventListener("click", () => void movePastItemsToNow());
-$("#header-undo").addEventListener("click", () => { void undo.undoLast().catch(error => showError(`Could not undo: ${error.message}`)); });
+$("#undo-last").addEventListener("click", () => { closeMenu(); void undo.undoLast().catch(error => showError(`Could not undo: ${error.message}`)); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.
 document.addEventListener("pointerdown", (event) => {

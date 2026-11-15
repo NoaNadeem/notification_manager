@@ -13,7 +13,7 @@ The Google account contains real personal Calendar events. Never change or stage
 ## Current behavior
 
 - Inline event Undo defaults to 2 seconds; menu values are whole numbers 0–30. Zero starts background saving immediately.
-- Header Undo retains the last action independently, including after reopening; reversing a saved move must preserve exact original times without overwriting a later external edit. Dismissal restoration is synced as a newer marker.
+- Options-menu Undo (formerly the header arrow) retains the last action independently, including after reopening; reversing a saved move must preserve exact original times without overwriting a later external edit. Dismissal restoration is synced as a newer marker.
 - App and extension preferences remain independent local settings.
 - The extension shows one centered action row on event hover/focus: Dismiss, Pencil, Calendar, 4H, 7D, 3D, 2D, 1D. Titles clamp to three lines. Undo remains visible; touch actions remain accessible.
 - Successful moves return chronologically if still in range; no automatic scrolling or Saved placeholder.
@@ -27,3 +27,5 @@ The main focus is exported-component trust, OAuth/account isolation, race/lifecy
 The 1.8 permission recovery paths are in `AuthorizationFlow.kt`, `MainActivity.kt`, `chrome-extension/authorization.js`, and `window.js`. Review once-per-session prompting, foreground-only launch, cancellation and explicit retry, partial grants, and independent Tasks error persistence. Current checks: 71 Android tests and 110 extension tests.
 
 The new bulk header action uses `CalendarEvent.canMoveToNow` / JS `canMoveToNow`: only current loaded-list items with the more-than-24-hour purple dot, no priority marker, no emphasis, no recurrence and personal-event eligibility. Review fresh Calendar invitee guards (`moveCalendarEvent(personalOnly=true)` / `moveEvent` option), batch authorization, frozen tap time, per-item failure isolation and latest-item-only Undo. Tasks move to today; timed events preserve duration at tap time, bypassing 6am. No whole-batch Undo is promised. Extension source 0.3.39 is pushed; installed reload remains blocked and must not be claimed.
+
+Current source follow-up: retained Undo moved from the header to **⋮ → Undo last action** in both clients. Move to now now refetches after pending inline Undo and all commits finish (`moveNowRefreshPending` / `refreshAfterMoveToNow`). Android remains 1.17/version 18; this follow-up has not been published. Move-to-now icon alternatives were shown; retain the current icon until the user picks one. Extension source is 0.3.40, with installed reload still blocked by browser policy.

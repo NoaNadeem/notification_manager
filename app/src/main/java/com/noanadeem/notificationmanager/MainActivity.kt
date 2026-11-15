@@ -322,6 +322,7 @@ private fun CalendarLoginScreen(
     var eventsError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<PendingMove?>(null) }
+    var moveNowRefreshPending by remember(accountName) { mutableStateOf(false) }
     var undoState by remember { mutableStateOf<UndoState>(UndoState.Idle) }
     var lastUndoAction by remember { mutableStateOf<UndoableAction?>(null) }
     var lastUndoAccount by remember { mutableStateOf<String?>(null) }
@@ -727,6 +728,7 @@ private fun CalendarLoginScreen(
 
         if (move != null) {
             pendingMove = null
+            if (move.personalOnly) moveNowRefreshPending = true
             stageForUndo(UndoableAction.Move(move.event, move.target, accessToken, move.stagedAt, personalOnly=move.personalOnly))
             move.batch.forEach { event ->
                 stageForUndo(UndoableAction.Move(event, event.moveToNowTarget(move.stagedAt), accessToken,
@@ -939,6 +941,13 @@ private fun CalendarLoginScreen(
             }
     }
 
+    LaunchedEffect(moveNowRefreshPending, undoState, committingActionIds, undoInProgress) {
+        if (moveNowRefreshPending && undoState.pendingAction == null && committingActionIds.isEmpty() && !undoInProgress) {
+            moveNowRefreshPending = false
+            authorizeCalendar(interactive=false, forceRefresh=true, allowPrompt=false)
+        }
+    }
+
     fun moveEvent(event: CalendarEvent, target: MoveTarget, batch: List<CalendarEvent> = emptyList(), personalOnly: Boolean = false) {
         val stagedAt = Instant.now()
         if (event.isRecurring) {
@@ -947,6 +956,7 @@ private fun CalendarLoginScreen(
         }
         if (event.id in priorityIds || event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
+            if (personalOnly) moveNowRefreshPending = true
             stageForUndo(UndoableAction.Move(event, target, token, stagedAt, personalOnly=personalOnly))
             batch.forEach { item -> stageForUndo(UndoableAction.Move(item, item.moveToNowTarget(stagedAt), token, stagedAt, personalOnly=true)) }
             actionError = null
@@ -1170,7 +1180,7 @@ private fun CalendarLoginScreen(
                 }
             },
             undoDescription = lastUndoAction?.takeUnless { undoInProgress }?.let { "Undo: ${it.event.title}" },
-            onHeaderUndo = ::undoLastAction,
+            onLastActionUndo = ::undoLastAction,
             onUndo = ::cancelInlineUndo,
             onOtherAction = {
                 undoState.pendingAction?.let(::commitAction)
@@ -1287,7 +1297,7 @@ private fun CalendarConnectedScreen(
     undoableEventId: String?,
     undoActionDescription: String?,
     undoDescription: String?,
-    onHeaderUndo: () -> Unit,
+    onLastActionUndo: () -> Unit,
     onUndo: () -> Unit,
     onOtherAction: () -> Unit,
     onActionTile: () -> Unit,
@@ -1429,13 +1439,6 @@ private fun CalendarConnectedScreen(
                 onClick = { expandedEventId = null; onMoveToNow(moveToNowCandidates) }
             ) { Icon(painterResource(R.drawable.move_now_icon), "Move past personal items to now", modifier=Modifier.size(21.dp)) }
             IconButton(
-                modifier = Modifier.size(40.dp).semantics {
-                    contentDescription = undoDescription ?: "Undo last action"
-                },
-                enabled = undoDescription != null,
-                onClick = { expandedEventId = null; onHeaderUndo() }
-            ) { Text("↶", style = MaterialTheme.typography.headlineMedium) }
-            IconButton(
                 modifier = Modifier.size(40.dp),
                 enabled = !eventsLoading && !loading && movingEventId == null,
                 onClick = { onOtherAction(); onRefresh() }
@@ -1454,6 +1457,13 @@ private fun CalendarConnectedScreen(
                     Text("⋮", style = MaterialTheme.typography.headlineMedium)
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Undo last action") },
+                        leadingIcon = { Text("↶") },
+                        modifier = Modifier.semantics { contentDescription = undoDescription ?: "Undo last action" },
+                        enabled = undoDescription != null,
+                        onClick = { menuExpanded = false; expandedEventId = null; onLastActionUndo() }
+                    )
                     DropdownMenuItem(
                         text = { Text("Logout / Switch Account") },
                         leadingIcon = { Text("⇥") },

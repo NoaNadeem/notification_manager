@@ -174,3 +174,12 @@ The app and extension header include a clock-and-arrow **Move past personal item
 Events move to the tap time with duration preserved; dated Tasks move to the local calendar date of the tap. The 6am day-move preference does not apply. Each item uses the existing action/Undo path: prior actions save in the background and the header Undo retains only the last item, not the whole batch. Calendar saves freshly recheck eligibility and use the current ETag; a newly shared or changed event is skipped with an error. Failed items stay available for review; the extension retains its existing durable retry path. The phone reauthorizes once for the batch if needed.
 
 Validation: 71 Android and 110 extension tests pass. An isolated browser fixture verified that one personal event and one Task moved at a frozen tap time, shared/priority items were untouched, and the button disabled afterward. All real networking was disabled. No real Calendar/Tasks writes occurred. Android 1.17/version 18 was published to internal testing on November 14, 2026; Play confirmed availability to internal testers. Extension source is 0.3.39; its installed reload remains blocked by the previously reported browser access policy and is not claimed as deployed.
+
+
+### Undo menu and post-batch refresh
+
+In both clients, retained last-action Undo is now **⋮ → Undo last action**, replacing its header icon. It keeps the same pending/committed compensation behavior and is disabled when there is nothing to undo or reversal is running. The inline event Undo and Undo Time setting are unchanged. Opening the menu retains its existing commit-pending-action behavior; the menu action can still reverse that save.
+
+Move to now automatically refetches after the batch's inline Undo period and all saves finish, including when the last pending item was undone. It does not shorten the configured Undo delay. The current Move to now icon is unchanged pending a user selection.
+
+Validation: Android compilation and all 71 unit tests pass; 18 relevant extension Undo/Move-to-now tests pass. A synthetic browser fixture verified Undo absent from the header, enabled in the menu after a move, menu dismissal on Undo, and exactly one post-batch refetch with real networking disabled. No real Calendar/Tasks writes occurred. Extension source is 0.3.40; installed reload remains blocked by the previously reported browser policy. Android release stays 1.17/version 18; these changes await a requested phone release.

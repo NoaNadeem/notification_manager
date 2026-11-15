@@ -29,7 +29,7 @@ Store installation and Google OAuth are separate gates. While the OAuth audience
 
 ## Android: first store-installed build
 
-Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 18`, and `versionName = "1.17"`. Version 18 (1.17) was signed with the existing upload key and published to the existing internal-testing track on November 14, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
+Current repository state: `app/build.gradle.kts` uses package name `com.noanadeem.notificationmanager`, `versionCode = 19`, and `versionName = "1.18"`. Version 19 (1.18) was signed with the existing upload key and published to the existing internal-testing track on November 14, 2026. Play confirmed it was available to internal testers. The existing `app/build/outputs/apk/debug/app-debug.apk` is a **debug-signed APK** and is not the store release artifact. Increase `versionCode` for each later Play release. [Android signing guide](https://developer.android.com/studio/publish/app-signing), [app-bundle upload guide](https://developer.android.com/studio/publish/upload-bundle)
 
 1. Register a Play Console developer account under the Google account intended to own the app long term. Complete identity verification and pay the fee.
 2. Create **Notification Manager** in Play Console. Set the app category, free pricing, contact details, content declarations, and store listing as the dashboard requests. Prepare screenshots, icon, and a support contact. Do not include private Calendar content in screenshots. [Play app setup](https://support.google.com/googleplay/android-developer/answer/9859152)
@@ -187,3 +187,12 @@ Published **1.17 internal release** on November 14, 2026; Google Play confirmed 
 Validation: 71 Android and 110 extension tests pass. An isolated browser fixture verified eligible event/Task moves, excluded shared/priority rows, frozen tap time and button state after saving, with real networking disabled. The signed AAB passed signature verification and matched the final build. Play attached ReTrace mapping; only the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension 0.3.39 is pushed; installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/17/details
+
+
+### Android 1.18 / version 19
+
+Published **1.18 internal release** on November 14, 2026; Google Play confirmed **Available to internal testers** for version 19 (1.18). Retained last-action Undo is now in **⋮ → Undo last action** instead of the header. Move to now uses the selected arrow-to-line icon and automatically refetches once its inline Undo period and background saves finish. Existing inline Undo timing and last-item compensation behavior remain available.
+
+Validation: 71 Android and 110 extension tests pass. The preceding synthetic browser fixture verified Undo in the menu, successful last-action reversal and exactly one post-batch refetch with real networking disabled. The signed AAB passed signature verification and matched the final build; Play attached ReTrace mapping. Only the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension 0.3.41 is pushed; installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/18/details

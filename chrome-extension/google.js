@@ -1,5 +1,5 @@
 import { moveTask, taskReference, setTaskCompleted } from "./tasks.js";
-import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle, canChangePriority, isPriority } from "./model.js";
+import { DISMISSAL_FILE, mergeDismissals, parseDismissals, shiftEvent, compareSearchEvents, displayWindow, isRecurring, priorityTitle, canChangePriority, isPriority, canMoveToNow } from "./model.js";
 import { DISMISSAL_MARKER_PREFIX, parseDismissalMarker, publishMissingDismissals } from "./dismissal-sync.js";
 import { MOVE_MARKER_PREFIX, parseMoveMarker, recentMoves } from "./move-history.js";
 
@@ -116,6 +116,9 @@ export async function moveEvent(calendarId, eventId, option, now = new Date(), d
   if (current.status === "cancelled") throw Object.assign(new Error("This event was deleted in Google Calendar."), { status: 410 });
   if (isRecurring(current)) throw Object.assign(new Error("Recurring events can only be dismissed or edited in Google Calendar."), { status: 409 });
   if (destination && savedMoveState(current, destination) === "applied") return current;
+  if (option.personalOnly && !canMoveToNow(current, calendarId, undefined, now.getTime())) {
+    throw new Error("Move to now only applies to old personal items without invitees. Refresh and review this item.");
+  }
   const moved = destination
     ? { ...structuredClone(current), start: destination.start, end: destination.end }
     : shiftEvent(current, option, now);

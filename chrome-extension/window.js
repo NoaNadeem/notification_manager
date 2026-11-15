@@ -1,6 +1,6 @@
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
-import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, canChangePriority, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
+import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, canChangePriority, canMoveToNow, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
 import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal, searchPrimaryCalendar, dismissedEventTitle, syncRecentMoves, saveRecentMove, googleRequest, completeTask, setPriority, clearDismissedPriority, restoreDismissedPriority } from "./google.js";
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
@@ -59,6 +59,7 @@ let signedOut = false;
 let loading = false;
 let syncAttempted = false;
 let refreshBusy = false;
+let movingPastItems = false;
 let suppressNextClick = false;
 let wheelResetTimer;
 let dateTarget;
@@ -436,6 +437,7 @@ async function load(interactive = false, allowConsentRetry = false) {
     loading = false;
     syncAttempted = true;
     renderSync();
+    render();
     if (authorizationRetryNeeded && (allowConsentRetry || !automaticConsentOffered) && document.visibilityState === "visible") {
       automaticConsentOffered = true;
       reconnectGoogle();
@@ -445,7 +447,26 @@ async function load(interactive = false, allowConsentRetry = false) {
 
 function render() { renderGuard.request(); }
 
+function moveToNowCandidates() {
+  return currentVisibleEvents().filter(event => canMoveToNow(event, account, calendarZone) &&
+    !prioritizing.has(event.id) && undo.current?.event.id !== event.id);
+}
+
+async function movePastItemsToNow() {
+  if (movingPastItems || undo.reverting || !account) return;
+  const candidates = moveToNowCandidates();
+  movingPastItems = true;
+  const stagedAtMs = Date.now();
+  render();
+  try {
+    for (const event of candidates) {
+      await stageAction(event, "move", { hours: 0, personalOnly: true }, stagedAtMs);
+    }
+  } finally { movingPastItems = false; render(); }
+}
+
 function renderNow() {
+  $("#move-to-now").disabled = movingPastItems || loading || undo.reverting || !moveToNowCandidates().length;
   const latest = undo.latestAction;
   $("#header-undo").disabled = !latest || undo.reverting;
   $("#header-undo").title = latest ? `Undo: ${latest.event.summary || "event"}` : "Undo last action";
@@ -721,7 +742,7 @@ async function togglePriority(event) {
   } finally { prioritizing.delete(event.id); render(); }
 }
 
-async function stageAction(event, type, option) {
+async function stageAction(event, type, option, stagedAtMs = Date.now()) {
   if (prioritizing.has(event.id) || undo.current?.event.id === event.id || [...undo.committingActions].some(action => action.event.id === event.id)) return;
   showError("");
   if (type === "move" && isRecurring(event)) {
@@ -729,7 +750,6 @@ async function stageAction(event, type, option) {
     return;
   }
   try {
-    const stagedAtMs = Date.now();
     if (type === "move") option = dayMoveOption(event, option, new Date(stagedAtMs), smallEventMorning, account);
     const destination = type === "move" ? shiftEvent(event, option, new Date(stagedAtMs)) : undefined;
     await undo.stage({ id: crypto.randomUUID(), account, event, type, option, stagedAtMs,
@@ -979,6 +999,7 @@ $("#open-in-tab").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 $("#retry-saves").addEventListener("click", () => { closeMenu(); void retrySavedActions(true); });
+$("#move-to-now").addEventListener("click", () => void movePastItemsToNow());
 $("#header-undo").addEventListener("click", () => { void undo.undoLast().catch(error => showError(`Could not undo: ${error.message}`)); });
 $("#header-refresh").addEventListener("click", () => { void refreshEvents(); });
 // Repainting the list during a press detaches the target and Chrome drops its click.

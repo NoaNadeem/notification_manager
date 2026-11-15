@@ -111,6 +111,11 @@ export function isTwoDaysOld(event, zone, nowMs = Date.now()) {
   return eventStartMs(event, zone) < nowMs - DAY_MS;
 }
 
+export function canMoveToNow(event, account, zone, nowMs = Date.now()) {
+  return isTwoDaysOld(event, zone, nowMs) && !isPriority(event) &&
+    !isEmphasized(event, account) && !isRecurring(event) && canChangePriority(event, account);
+}
+
 export function isEmphasized(event, account) {
   if (event.task) return false;
   if (event.start?.date) return true;

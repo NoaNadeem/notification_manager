@@ -204,6 +204,13 @@ internal fun sortCalendarSearchEvents(
         .thenByDescending { it.start }
 )
 
+internal fun CalendarEvent.canMoveToNow(now: Instant = Instant.now()): Boolean =
+    isTwoDaysOld(now) && !isPriority && !isEmphasized() && !isRecurring && canChangePriority
+
+internal fun CalendarEvent.moveToNowTarget(now: Instant, zone: ZoneId = ZoneId.systemDefault()): MoveTarget =
+    if (isTask) MoveTarget.OnDate(now.atZone(zone).toLocalDate())
+    else now.atZone(zone).let { MoveTarget.OnDateTime(it.toLocalDate(), it.toLocalTime()) }
+
 internal const val SMALL_EVENT_MORNING_KEY = "small_event_morning"
 
 internal fun smallEventMoveTarget(
@@ -376,7 +383,8 @@ internal suspend fun moveCalendarEvent(
     target: MoveTarget,
     now: Instant = Instant.now(),
     restoreOriginal: CalendarEvent? = null,
-    expectedMoved: CalendarEvent? = null
+    expectedMoved: CalendarEvent? = null,
+    personalOnly: Boolean = false
 ): CalendarEvent = withContext(Dispatchers.IO) {
     if (calendarEvent.isTask) return@withContext moveTaskEvent(accessToken, calendarEvent, target, now, restoreOriginal, expectedMoved)
     require(!calendarEvent.isRecurring) { "Recurring events can only be dismissed or edited in Google Calendar." }
@@ -396,6 +404,13 @@ internal suspend fun moveCalendarEvent(
     }
     val originalStart = event.getJSONObject("start")
     val originalEnd = event.getJSONObject("end")
+    if (personalOnly) {
+        require(calendarPriorityAllowed(event, calendarEvent.calendarId) && !originalStart.has("date") &&
+            calendarEvent.copy(title=event.optString("summary"), start=parseEventInstant(originalStart),
+                end=parseEventInstant(originalEnd)).canMoveToNow(now)) {
+            "Move to now only applies to old personal items without invitees. Refresh and review this item."
+        }
+    }
     val movedEvent = if (restoreOriginal != null) {
         val currentStart = parseEventInstant(originalStart, calendarEvent.calendarZone)
         val currentEnd = parseEventInstant(originalEnd, calendarEvent.calendarZone)

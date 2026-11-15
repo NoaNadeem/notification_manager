@@ -134,7 +134,7 @@ private const val WINDOW_PRESET_KEY = "window_preset"
 private const val DARK_MODE_KEY = "dark_mode"
 
 private enum class ConnectionScreen { Checking, Disconnected, Connected, Error }
-private data class PendingMove(val event: CalendarEvent, val target: MoveTarget)
+private data class PendingMove(val event: CalendarEvent, val target: MoveTarget, val batch: List<CalendarEvent> = emptyList(), val personalOnly: Boolean = false, val stagedAt: Instant = Instant.now())
 internal sealed interface UndoableAction {
     val event: CalendarEvent
     val createdAtNanos: Long
@@ -144,6 +144,7 @@ internal sealed interface UndoableAction {
         val target: MoveTarget,
         val accessToken: String,
         val stagedAt: Instant = Instant.now(),
+        val personalOnly: Boolean = false,
         override val createdAtNanos: Long = System.nanoTime()
     ) : UndoableAction
 
@@ -420,7 +421,7 @@ private fun CalendarLoginScreen(
                     committingActionIds = committingActionIds + action.event.id
                     try {
                         val movedEvent = moveCalendarEvent(action.accessToken, action.event, action.target,
-                            action.stagedAt)
+                            action.stagedAt, personalOnly = action.personalOnly)
                         if (lastUndoAction == action) {
                             committedMoves.clear()
                             committedMoves[action.createdAtNanos] = movedEvent
@@ -438,7 +439,7 @@ private fun CalendarLoginScreen(
                         val cacheAccount = accountName ?: action.event.calendarId
                         runCatching { localStateStore.writeEvents(cacheAccount, recentEvents) }
                             .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
-                        actionError = null
+                        if (!action.personalOnly) actionError = null
                         if (action.event.start != movedEvent.start) {
                             val record = newMoveRecord(action.event, movedEvent, now)
                             try {
@@ -466,7 +467,8 @@ private fun CalendarLoginScreen(
                             }
                         }
                     } catch (e: Exception) {
-                        actionError = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
+                        val message = "Could not move “${action.event.title}”: ${e.message ?: "Calendar update failed."}"
+                        actionError = if (action.personalOnly) listOfNotNull(actionError, message).joinToString("\n") else message
                         commitError = actionError
                     } finally {
                         committingActionIds = committingActionIds - action.event.id
@@ -725,7 +727,11 @@ private fun CalendarLoginScreen(
 
         if (move != null) {
             pendingMove = null
-            stageForUndo(UndoableAction.Move(move.event, move.target, accessToken))
+            stageForUndo(UndoableAction.Move(move.event, move.target, accessToken, move.stagedAt, personalOnly=move.personalOnly))
+            move.batch.forEach { event ->
+                stageForUndo(UndoableAction.Move(event, event.moveToNowTarget(move.stagedAt), accessToken,
+                    move.stagedAt, personalOnly=true))
+            }
             movingEventId = null
             return
         }
@@ -933,20 +939,22 @@ private fun CalendarLoginScreen(
             }
     }
 
-    fun moveEvent(event: CalendarEvent, target: MoveTarget) {
+    fun moveEvent(event: CalendarEvent, target: MoveTarget, batch: List<CalendarEvent> = emptyList(), personalOnly: Boolean = false) {
+        val stagedAt = Instant.now()
         if (event.isRecurring) {
             actionError = "Recurring events can only be dismissed or edited in Google Calendar."
             return
         }
         if (event.id in priorityIds || event.id in committingActionIds || undoState.pendingAction?.event?.id == event.id) return
         cachedMoveToken(currentAccessToken, tokenAuthorizedAtMillis, System.currentTimeMillis())?.let { token ->
-            stageForUndo(UndoableAction.Move(event, target, token))
+            stageForUndo(UndoableAction.Move(event, target, token, stagedAt, personalOnly=personalOnly))
+            batch.forEach { item -> stageForUndo(UndoableAction.Move(item, item.moveToNowTarget(stagedAt), token, stagedAt, personalOnly=true)) }
             actionError = null
             return
         }
         if (movingEventId != null) return
         undoState.pendingAction?.let(::commitAction)
-        pendingMove = PendingMove(event, target)
+        pendingMove = PendingMove(event, target, batch, personalOnly, stagedAt)
         movingEventId = event.id
         actionError = null
         val request = AuthorizationRequest.builder()
@@ -1197,7 +1205,15 @@ private fun CalendarLoginScreen(
                     .putInt(LOOKAHEAD_DAYS_KEY, preset.aheadDays).apply()
                 authorizeCalendar(interactive = false)
             },
-            onMove = ::moveEvent,
+            onMove = { event, target -> moveEvent(event, target) },
+            onMoveToNow = { candidates ->
+                val now = Instant.now()
+                val eligible = candidates.filter { it.canMoveToNow(now) && it.id !in priorityIds &&
+                    it.id !in committingActionIds && it.id != undoState.pendingAction?.event?.id }
+                eligible.firstOrNull()?.let { first ->
+                    moveEvent(first, first.moveToNowTarget(now), eligible.drop(1), personalOnly=true)
+                }
+            },
             onDismiss = ::dismissEvent,
             onEstimateStorage = ::estimateStorage,
             onDarkModeChange = onDarkModeChange,
@@ -1286,6 +1302,7 @@ private fun CalendarConnectedScreen(
     onPresetChange: (WindowPreset) -> Unit,
     onPriority: (CalendarEvent) -> Unit,
     onMove: (CalendarEvent, MoveTarget) -> Unit,
+    onMoveToNow: (List<CalendarEvent>) -> Unit,
     onDismiss: (CalendarEvent) -> Unit,
     onEstimateStorage: () -> Unit,
     onDarkModeChange: (Boolean) -> Unit,
@@ -1350,6 +1367,8 @@ private fun CalendarConnectedScreen(
     }
     val previewMode = reviewEvents.isEmpty() && !searchActive && !realEventsOnly && eventsError == null
     val displayEvents = if (previewMode) previewEvents else filteredEvents
+    val moveToNowCandidates = filteredEvents.filter { it.canMoveToNow(reviewNow) &&
+        it.id !in committingActionIds && it.id != undoableEventId }
     val firstFutureIndex = filteredEvents.indexOfFirst { !it.isPriority && it.isFutureForDisplay() }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
@@ -1404,6 +1423,11 @@ private fun CalendarConnectedScreen(
                         else MaterialTheme.colorScheme.onSurface)
                 }
             }
+            IconButton(
+                modifier = Modifier.size(40.dp).semantics { contentDescription = "Move past personal items to now" },
+                enabled = moveToNowCandidates.isNotEmpty() && !eventsLoading && !loading && movingEventId == null,
+                onClick = { expandedEventId = null; onMoveToNow(moveToNowCandidates) }
+            ) { Icon(painterResource(R.drawable.move_now_icon), "Move past personal items to now", modifier=Modifier.size(21.dp)) }
             IconButton(
                 modifier = Modifier.size(40.dp).semantics {
                     contentDescription = undoDescription ?: "Undo last action"

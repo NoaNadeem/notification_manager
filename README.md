@@ -180,6 +180,6 @@ Validation: 71 Android and 110 extension tests pass. An isolated browser fixture
 
 In both clients, retained last-action Undo is now **⋮ → Undo last action**, replacing its header icon. It keeps the same pending/committed compensation behavior and is disabled when there is nothing to undo or reversal is running. The inline event Undo and Undo Time setting are unchanged. Opening the menu retains its existing commit-pending-action behavior; the menu action can still reverse that save.
 
-Move to now automatically refetches after the batch's inline Undo period and all saves finish, including when the last pending item was undone. It does not shorten the configured Undo delay. The current Move to now icon is unchanged pending a user selection.
+Move to now automatically refetches after the batch's inline Undo period and all saves finish, including when the last pending item was undone. It does not shorten the configured Undo delay. Move to now uses the selected **Jump to now** arrow pointing to a vertical line in both clients.
 
 Validation: Android compilation and all 71 unit tests pass; 18 relevant extension Undo/Move-to-now tests pass. A synthetic browser fixture verified Undo absent from the header, enabled in the menu after a move, menu dismissal on Undo, and exactly one post-batch refetch with real networking disabled. No real Calendar/Tasks writes occurred. Extension source is 0.3.40; installed reload remains blocked by the previously reported browser policy. Android release stays 1.17/version 18; these changes await a requested phone release.

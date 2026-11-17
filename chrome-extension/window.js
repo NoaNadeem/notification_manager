@@ -574,6 +574,10 @@ function renderSearchFooter() {
     const row = document.createElement("div");
     row.className = "search-result";
     if (isEmphasized(event, account)) row.classList.add("emphasized");
+    const top = document.createElement("div");
+    top.className = "event-top";
+    const details = document.createElement("div");
+    details.className = "details";
     const titleLine = document.createElement("div");
     titleLine.className = "title-line";
     if (isPriority(event)) {
@@ -595,7 +599,7 @@ function renderSearchFooter() {
       ? `${event.start.date} · all day`
       : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.start.dateTime));
     titleLine.append(title);
-    row.append(titleLine, date);
+    details.append(titleLine, date);
     if (event.location) {
       const location = document.createElement("a");
       location.className = "location";
@@ -608,8 +612,24 @@ function renderSearchFooter() {
           .catch((error) => showError(`Could not open location: ${error.message}`));
       });
       if (event.task && !taskNoteUrl(event.location)) location.removeAttribute("href");
-      row.append(location);
+      details.append(location);
     }
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", `Actions for ${event.summary || "event"}`);
+    const pending = undo.current?.event.id === event.id ? undo.current : null;
+    if (pending) {
+      date.textContent = actionDescription(pending);
+      actions.append(button("Undo", `Undo pending action for ${event.summary || "event"}`,
+        () => { void undo.undo(); }, "tile undo"));
+    } else {
+      const calendar = calendarButton(event);
+      calendar.disabled ||= prioritizing.has(event.id) || [...undo.committingActions].some(action => action.event.id === event.id);
+      actions.append(calendar);
+    }
+    top.append(details, actions);
+    row.append(top);
     list.append(row);
   }
   if (results.length > renderedItemLimit) appendMoreItems();
@@ -686,19 +706,7 @@ function renderEvent(event, preview = false) {
     actions.append(button("✓", "Dismiss only this occurrence in this app", () => void stageAction(event, "dismiss"), "tile danger"));
     return row;
   }
-  const calendarTile = button("📅", "Choose a date", () => {
-    void undo.commit();
-    dateTarget = event;
-    datePicker.value = "";
-    const eventTime = new Date(event.start.dateTime || 0);
-    timePicker.value = event.start.date ? "" : `${String(eventTime.getHours()).padStart(2, "0")}:${String(eventTime.getMinutes()).padStart(2, "0")}`;
-    timePicker.hidden = true;
-    timeToggle.hidden = !!event.start.date || !!event.task;
-    timeToggle.setAttribute("aria-label", `Choose move time${event.start.date ? "" : `, initially ${eventTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}`);
-    calendarDialog.showModal();
-    try { datePicker.showPicker(); }
-    catch { datePicker.focus(); }
-  });
+  const calendarTile = calendarButton(event);
   const fourHours = moveTile(event, "4H", { hours: 4 });
   if (preview || event.start.date || event.task) {
     fourHours.disabled = true;
@@ -717,6 +725,25 @@ function renderEvent(event, preview = false) {
   );
   if (prioritizing.has(event.id)) for (const tile of actions.children) tile.disabled = true;
   return row;
+}
+
+function calendarButton(event) {
+  const tile = button("📅", "Choose a date", () => {
+    void undo.commit();
+    dateTarget = event;
+    datePicker.value = "";
+    const eventTime = new Date(event.start.dateTime || 0);
+    timePicker.value = event.start.date ? "" : `${String(eventTime.getHours()).padStart(2, "0")}:${String(eventTime.getMinutes()).padStart(2, "0")}`;
+    timePicker.hidden = true;
+    timeToggle.hidden = !!event.start.date || !!event.task;
+    timeToggle.setAttribute("aria-label", `Choose move time${event.start.date ? "" : `, initially ${eventTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}`);
+    calendarDialog.showModal();
+    try { datePicker.showPicker(); }
+    catch { datePicker.focus(); }
+  });
+  tile.disabled = isRecurring(event);
+  if (tile.disabled) tile.title = "Recurring events can only be edited in Google Calendar";
+  return tile;
 }
 
 function priorityButton(event) {
@@ -780,6 +807,7 @@ async function revertAction(action) {
       originalStart: action.destinationStart, originalEnd: action.destinationEnd,
       ...(action.event.task ? {taskDue:action.event.task.due, originalTaskDue:action.destinationStart.date} : {})
     });
+    if (remoteSearch?.events) remoteSearch.events = remoteSearch.events.map(item => item.id === restored.id ? restored : item).sort(compareSearchEvents);
     events = events.filter(event => event.id !== restored.id);
     events.push(restored);
     events.sort(compareEvents);
@@ -822,6 +850,7 @@ async function commitAction(action) {
         start: action.destinationStart, end: action.destinationEnd, originalStart: event.start, originalEnd: event.end, ...(event.task ? {originalTaskDue:event.task.due} : {})
       });
       applied = true;
+      if (remoteSearch?.events) remoteSearch.events = remoteSearch.events.map(item => item.id === event.id ? moved : item).sort(compareSearchEvents);
       events = events.filter((item) => item.id !== event.id);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);

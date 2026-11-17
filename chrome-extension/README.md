@@ -74,3 +74,5 @@ Dismissal clears our backend priority title marker: Task completion includes tit
 
 
 Remote **Calendar & Tasks results · read only** rows show priority as an indicator only; no Priority toggle is rendered there. Normal review and preview-row controls are unchanged.
+
+Remote search results include a Calendar tile at the far right (the normal 1D position), using the existing date/time picker and Undo flow. Relative moves, dismissal, and priority toggles remain unavailable there; recurring events must be edited in Google Calendar.

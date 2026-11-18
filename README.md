@@ -183,3 +183,9 @@ In both clients, retained last-action Undo is now **⋮ → Undo last action**, 
 Move to now automatically refetches after the batch's inline Undo period and all saves finish, including when the last pending item was undone. It does not shorten the configured Undo delay. Move to now uses the selected **Jump to now** arrow pointing to a vertical line in both clients.
 
 Validation: Android compilation and all 71 unit tests pass; 18 relevant extension Undo/Move-to-now tests pass. A synthetic browser fixture verified Undo absent from the header, enabled in the menu after a move, menu dismissal on Undo, and exactly one post-batch refetch with real networking disabled. No real Calendar/Tasks writes occurred. Extension source is 0.3.41 with the selected Jump to now icon; installed reload remains blocked by the previously reported browser policy. Android 1.18/version 19 was published to internal testing on November 14, 2026; Play confirmed availability to internal testers.
+
+### Further-ahead events
+
+When the review range is empty, Android and the extension show a larger, bold “No events left. Further ahead events below.” heading. The next local day’s rows use normal controls, including relative moves with the usual event/Task restrictions, and the footer no longer labels them read-only. The extension also adds a far-right Calendar tile to remote search results and enlarges the priority indicator beside titles. Android priority-star styling is unchanged.
+
+Prepared Android 1.19/version 20 and extension 0.3.42. All 71 Android and 111 extension tests pass. The release bundle builds successfully. The installed unpacked extension was reloaded and its new heading, larger star, item count and enabled move controls verified visually without changing real Calendar events or Tasks. Store publication status is recorded in docs/PUBLISHING.md.

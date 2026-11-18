@@ -494,13 +494,14 @@ function renderNow() {
     empty.textContent = !account ? "Connect Google Calendar to load events."
       : searchActive && searchQueryInput.value.trim() ? "No loaded events match this search."
       : realEventsOnly ? "No real events in this range."
-      : "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below";
+      : "No events left. Further ahead events below.";
+    if (account && !searchActive && !realEventsOnly) empty.classList.add("further-ahead-heading");
     list.append(empty);
     if (account && !searchActive && !realEventsOnly) {
       const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
       const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone).sort(compareEvents);
-      count.textContent = `${preview.length} read-only item${preview.length === 1 ? "" : "s"}`;
-      preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event, true)));
+      count.textContent = `${preview.length} item${preview.length === 1 ? "" : "s"}`;
+      preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event)));
       if (preview.length > renderedItemLimit) appendMoreItems();
       if (!preview.length && !loading) {
         const none = document.createElement("p"); none.className = "empty";
@@ -641,10 +642,9 @@ function renderSearchFooter() {
   }
 }
 
-function renderEvent(event, preview = false) {
+function renderEvent(event) {
   const row = document.createElement("article");
   row.className = "event";
-  if (preview) { row.classList.add("preview"); row.setAttribute("aria-label", "Next-day preview event"); }
   const pending = undo.current?.event.id === event.id ? undo.current : null;
   if (pending) row.classList.add("pending");
   if (isEmphasized(event, account)) row.classList.add("emphasized");
@@ -708,20 +708,16 @@ function renderEvent(event, preview = false) {
   }
   const calendarTile = calendarButton(event);
   const fourHours = moveTile(event, "4H", { hours: 4 });
-  if (preview || event.start.date || event.task) {
+  if (event.start.date || event.task) {
     fourHours.disabled = true;
-    fourHours.title = preview ? "Relative moves are disabled in the next-day preview" : "Hour moves are unavailable for all-day events";
+    fourHours.title = "Hour moves are unavailable for all-day events";
   }
   actions.append(
     button("✓", "Dismiss event in this app", () => void stageAction(event, "dismiss"), "tile danger"),
     calendarTile,
     priorityButton(event),
     ...(event.task ? [] : [fourHours]),
-    ...[7, 3, 2, 1].map(days => {
-      const tile = moveTile(event, `${days}D`, { days });
-      tile.disabled = preview;
-      return tile;
-    })
+    ...[7, 3, 2, 1].map(days => moveTile(event, `${days}D`, { days }))
   );
   if (prioritizing.has(event.id)) for (const tile of actions.children) tile.disabled = true;
   return row;

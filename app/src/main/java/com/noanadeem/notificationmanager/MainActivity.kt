@@ -1611,7 +1611,9 @@ private fun CalendarConnectedScreen(
                 }
                 if (reviewEvents.isEmpty() && !searchActive && !realEventsOnly) item {
                     Text(if (eventsError != null) "Events could not be loaded. Pull down to try again."
-                        else "No events in the selected lookback and lookahead range. Read-only events for the day after lookahead below",
+                        else "No events left. Further ahead events below.",
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize,
+                        fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(top = 16.dp))
                 }
                 if (previewMode && previewEvents.isEmpty()) item {
@@ -1708,7 +1710,7 @@ private fun CalendarConnectedScreen(
                                 label = "1D",
                                 description = "Move event one day from now",
                                 tooltip = { event.moveDestinationTooltip(MoveTarget.After(Duration.ofDays(1)), morning = smallEventMorning) },
-                                enabled = !previewMode && movingEventId == null && event.id !in committingActionIds,
+                                enabled = movingEventId == null && event.id !in committingActionIds,
                                 modifier = Modifier.size(44.dp),
                                 onClick = {
                                     expandedEventId = null
@@ -1749,7 +1751,7 @@ private fun CalendarConnectedScreen(
                                             description = if (label == "0D") "Move all-day event to today"
                                                 else "Move event $label from now",
                                             tooltip = { event.moveDestinationTooltip(target, morning = smallEventMorning) },
-                                            enabled = !previewMode && movingEventId == null && event.id !in committingActionIds,
+                                            enabled = movingEventId == null && event.id !in committingActionIds,
                                             modifier = Modifier.size(44.dp),
                                             onClick = {
                                                 expandedEventId = null
@@ -1929,7 +1931,7 @@ private fun CalendarConnectedScreen(
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Text(
-                    if (eventsLoading) "Loading…" else "$eventCount ${if (previewMode) "read-only " else ""}event${if (eventCount == 1) "" else "s"}",
+                    if (eventsLoading) "Loading…" else "$eventCount event${if (eventCount == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -196,3 +196,14 @@ Published **1.18 internal release** on November 14, 2026; Google Play confirmed 
 Validation: 71 Android and 110 extension tests pass. The preceding synthetic browser fixture verified Undo in the menu, successful last-action reversal and exactly one post-batch refetch with real networking disabled. The signed AAB passed signature verification and matched the final build; Play attached ReTrace mapping. Only the existing nonblocking native-debug-symbol warning remains. No real Calendar/Tasks writes or new terms were used during agent work. Extension 0.3.41 is pushed; installed reload remains blocked by the previously reported browser policy and is not claimed as deployed.
 
 Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/18/details
+
+
+### Android 1.19 / version 20 and extension 0.3.42
+
+Published **1.19 internal release** on November 18, 2026. Google Play confirmed **Available to internal testers** for version 20 (1.19). Android and extension further-ahead rows now use normal move controls, and their empty-state heading is larger and bold: “No events left. Further ahead events below.” The footer no longer calls these rows read-only. Existing all-day, Task and recurring-event restrictions remain. Extension-only changes also include Calendar date moves in remote search results and the larger priority indicator beside titles.
+
+All 71 Android tests and 111 extension tests passed. Android Studio generated the signed bundle with the existing upload key; its signature verified, the build and release artifact SHA-256 hashes matched (`1b2a4dec55ff3d41c987cc9041a9fe6be02e774e346da3e92e47ed9ad528552e`), and Play attached the ReTrace mapping file. The existing nonblocking native-debug-symbol warning remains. No new terms were accepted and no real Calendar or Tasks writes were used for verification.
+
+Extension 0.3.42 was reloaded through chrome://extensions and verified visually with the bold heading, larger star, normal item count, and enabled move controls. A runtime-only ZIP was prepared. Chrome Web Store dashboard access returned “Not allowed,” so store submission/publication is blocked and is not claimed.
+
+Play release: https://play.google.com/console/u/0/developers/9098124276514928352/app/4973906443777390423/tracks/4699925379116272566/releases/19/details

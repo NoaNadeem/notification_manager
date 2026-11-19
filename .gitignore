@@ -19,3 +19,16 @@ local.properties
 mcp-server.log
 
 /app/release/
+
+# Keep local credentials and signing material out of public commits.
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*client_secret*.json
+*service-account*.json
+credentials.json

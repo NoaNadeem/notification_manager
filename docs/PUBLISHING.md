@@ -212,3 +212,8 @@ Play release: https://play.google.com/console/u/0/developers/9098124276514928352
 ### Chrome Web Store draft and OAuth client
 
 Store item `cbkjjccfcfjoblejbijmihjkadeokcjh` was created as a draft on November 19, 2026. With the owner’s approval, a separate Chrome Extension OAuth client was created in project `notification-manager-509623` for this Store ID: `411250810503-b830ol641mr8u7b970n1ujiruqcrub1i.apps.googleusercontent.com`. This is a public client identifier, not a credential. The source manifest continues using the existing unpacked ID and OAuth client. Store packaging strips `key`, replaces only the OAuth client ID and optionally overrides the version. Version 0.3.44 is prepared for the next Store upload. OAuth access is still restricted to listed test users; this record does not claim Store publication or a change to the OAuth audience.
+
+
+### Store submission materials
+
+The Chrome extension privacy policy is published at https://github.com/NoaNadeem/notification_manager/blob/main/PRIVACY.md. Store item `cbkjjccfcfjoblejbijmihjkadeokcjh` uses its separate OAuth client; version 0.3.44 is the prepared Store package. Initial distribution remains Private for the owner as a trusted tester. The Google OAuth audience remains in Testing, so Store visibility and the OAuth test-user list must both permit the intended user. Reviewer sign-in access must be provided through private Store review fields using a dedicated demo account, never the owner’s personal Calendar/Tasks account or credentials committed to Git. Store publication requires explicit dashboard confirmation and approval; a prepared ZIP, saved listing, or submission alone does not mean it is available to install.

@@ -10,6 +10,7 @@ import org.json.JSONObject
 internal data class LocalSyncState(
     val calendarAt: Long = 0,
     val dismissalAt: Long = 0,
+    val calendarRefreshFailed: Boolean = false,
     val pending: Set<String> = emptySet(),
     val error: String? = null,
     val remoteNewer: Boolean = false,
@@ -19,7 +20,7 @@ internal data class LocalSyncState(
 ) {
     fun headline(now: Long = System.currentTimeMillis()): String = when {
         pending.isNotEmpty() -> "Local changes waiting to sync"
-        error != null || tasksError != null || calendarAt == 0L || dismissalAt == 0L ||
+        error != null || tasksError != null || calendarRefreshFailed || calendarAt == 0L || dismissalAt == 0L ||
             now - calendarAt >= AUTO_REFRESH_INTERVAL_MILLIS ||
             now - dismissalAt >= AUTO_REFRESH_INTERVAL_MILLIS -> "Sync needs attention"
         else -> "Synced just now"
@@ -30,6 +31,9 @@ internal const val AUTO_REFRESH_INTERVAL_MILLIS = 12 * 60 * 60 * 1000L
 
 internal fun calendarAutoRefreshDue(calendarAt: Long, now: Long = System.currentTimeMillis()): Boolean =
     calendarAt <= 0L || now - calendarAt >= AUTO_REFRESH_INTERVAL_MILLIS
+
+internal fun shouldRetryCalendarRefresh(state: LocalSyncState, now: Long = System.currentTimeMillis()): Boolean =
+    state.calendarRefreshFailed || calendarAutoRefreshDue(state.calendarAt, now)
 
 internal fun shouldShowSyncStatus(
     state: LocalSyncState, sessionStartedAt: Long, refreshing: Boolean, hasCurrentError: Boolean
@@ -87,6 +91,7 @@ internal class LocalStateStore(private val context: Context) {
             val pending = json.optJSONArray("pending") ?: JSONArray()
             LocalSyncState(
                 calendarAt = json.optLong("calendarAt"), dismissalAt = json.optLong("dismissalAt"),
+                calendarRefreshFailed = json.optBoolean("calendarRefreshFailed"),
                 pending = (0 until pending.length()).map { pending.getString(it) }.toSet(),
                 error = json.optString("error").takeIf { it.isNotBlank() },
                 remoteNewer = json.optBoolean("remoteNewer"),
@@ -99,6 +104,7 @@ internal class LocalStateStore(private val context: Context) {
 
     fun writeSync(account: String, state: LocalSyncState) {
         val json = JSONObject().put("calendarAt", state.calendarAt).put("dismissalAt", state.dismissalAt)
+            .put("calendarRefreshFailed", state.calendarRefreshFailed)
             .put("pending", JSONArray(state.pending.toList())).put("error", state.error ?: "")
             .put("tasksAt", state.tasksAt).put("tasksError", state.tasksError ?: "")
             .put("remoteNewer", state.remoteNewer).put("conflictResolved", state.conflictResolved)

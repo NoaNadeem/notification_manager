@@ -20,6 +20,9 @@ class LocalSyncStateTest {
         assertEquals(true, calendarAutoRefreshDue(0, now))
         assertEquals(false, calendarAutoRefreshDue(now - AUTO_REFRESH_INTERVAL_MILLIS + 1, now))
         assertEquals(true, calendarAutoRefreshDue(now - AUTO_REFRESH_INTERVAL_MILLIS, now))
+        val fresh = LocalSyncState(calendarAt = now - 60_000)
+        assertEquals(false, shouldRetryCalendarRefresh(fresh, now))
+        assertEquals(true, shouldRetryCalendarRefresh(fresh.copy(calendarRefreshFailed = true), now))
     }
 
     @Test

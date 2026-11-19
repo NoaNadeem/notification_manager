@@ -515,7 +515,7 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
         val store = LocalStateStore(context)
         val before = store.readSync(selectedAccount)
         if (!inputData.getBoolean(EXTRA_FORCE, false) &&
-            !widgetRefreshDue(before.calendarAt, System.currentTimeMillis())) {
+            !widgetRefreshDue(before.calendarAt, System.currentTimeMillis()) && !before.calendarRefreshFailed) {
             NotificationWidget.updateAll(context)
             return Result.success()
         }
@@ -532,7 +532,8 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             var tasksWarning: String? = null
             val fetched = fetchReviewItems(token, primary, back, ahead, preset) { warning -> tasksWarning = warning }
             store.writeEvents(selectedAccount, fetched)
-            store.writeSync(selectedAccount, before.copy(calendarAt = System.currentTimeMillis(), error = null,
+            store.writeSync(selectedAccount, before.copy(calendarAt = System.currentTimeMillis(),
+                calendarRefreshFailed = false, error = null,
                 tasksAt = if (tasksWarning == null) System.currentTimeMillis() else before.tasksAt, tasksError = tasksWarning))
             try {
                 val local = DismissalStore(context)
@@ -557,7 +558,7 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
             Result.success()
         } catch (error: Exception) {
             store.writeSync(selectedAccount, store.readSync(selectedAccount).copy(
-                error = error.message ?: "Widget refresh failed"))
+                calendarRefreshFailed = true, error = error.message ?: "Widget refresh failed"))
             prefs(context).edit().putString("status", error.message ?: "Refresh failed").apply()
             NotificationWidget.updateAll(context)
             Result.success()

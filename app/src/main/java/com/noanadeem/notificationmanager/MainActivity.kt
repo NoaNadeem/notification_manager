@@ -768,7 +768,7 @@ private fun CalendarLoginScreen(
                 }
                 screen = ConnectionScreen.Connected
                 errorMessage = null
-                val fetchCalendar = forceRefresh || !preferences.getBoolean("preview_cache:$selectedAccount", false) || calendarAutoRefreshDue(syncState.calendarAt) || syncState.tasksAt == 0L ||
+                val fetchCalendar = forceRefresh || !preferences.getBoolean("preview_cache:$selectedAccount", false) || shouldRetryCalendarRefresh(syncState) || syncState.tasksAt == 0L ||
                     recentEvents.none { it.isUndatedTask || isInDisplayWindow(it.start, Instant.now(), lookbackDays, lookaheadDays, preset = windowPreset) }
                 eventsLoading = fetchCalendar
                 eventsError = null
@@ -786,7 +786,8 @@ private fun CalendarLoginScreen(
                                 preferences.edit().putBoolean("preview_cache:$selectedAccount", true).apply()
                             }
                                 .onFailure { Log.w("NotificationManagerSync", "Could not update offline event cache", it) }
-                            saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(), error = null,
+                            saveSync(selectedAccount, syncState.copy(calendarAt = System.currentTimeMillis(),
+                                calendarRefreshFailed = false, error = null,
                                 tasksAt = if (tasksWarning == null) System.currentTimeMillis() else syncState.tasksAt,
                                 tasksError = tasksWarning))
                         }
@@ -822,13 +823,18 @@ private fun CalendarLoginScreen(
                     }
                 } catch (e: Exception) {
                     eventsError = e.message ?: "Could not load recent events."
-                    saveSync(selectedAccount, syncState.copy(error = eventsError))
+                    saveSync(selectedAccount, syncState.copy(
+                        calendarRefreshFailed = fetchCalendar, error = eventsError))
                 } finally {
                     eventsLoading = false
                 }
             } catch (e: Exception) {
                 if (refreshing) {
                     eventsError = e.message ?: "Calendar refresh failed."
+                    accountName?.let { selectedAccount ->
+                        saveSync(selectedAccount, syncState.copy(calendarRefreshFailed = true,
+                            error = eventsError))
+                    }
                 } else {
                     screen = if (interactive) ConnectionScreen.Disconnected else ConnectionScreen.Error
                     errorMessage = e.message ?: "Calendar request failed."
@@ -1098,7 +1104,7 @@ private fun CalendarLoginScreen(
                         // The Wi-Fi widget worker may have refreshed the shared cache while the app was away.
                         val latestSync = accountName?.let(localStateStore::readSync) ?: syncState
                         if (latestSync.calendarAt > syncState.calendarAt) syncState = latestSync
-                        if (calendarAutoRefreshDue(latestSync.calendarAt)) {
+                        if (shouldRetryCalendarRefresh(latestSync)) {
                             authorizeCalendar(interactive = false, forceRefresh = false)
                         }
                     }

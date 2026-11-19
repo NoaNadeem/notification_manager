@@ -76,3 +76,7 @@ Dismissal clears our backend priority title marker: Task completion includes tit
 Remote **Calendar & Tasks results · read only** rows show priority as an indicator only; no Priority toggle is rendered there. Normal review and preview-row controls are unchanged.
 
 Remote search results include a Calendar tile at the far right (the normal 1D position), using the existing date/time picker and Undo flow. Relative moves, dismissal, and priority toggles remain unavailable there; recurring events must be edited in Google Calendar.
+
+### Update menu
+
+**⋮ → Update** opens a local instructions tab with the installed version, a GitHub download link, the steps to replace files in the existing unpacked folder, and an **Open Chrome extensions** button. That button opens `chrome://extensions` in a regular Chrome window. Chrome’s page-wide Update checks store releases; it does not fetch unpacked source from GitHub. Reload applies the local files after replacement. The page also includes installation steps for another laptop.

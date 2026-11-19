@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Update Notification Manager</title>
+  <link rel="stylesheet" href="update.css">
+  <script type="module" src="update.js"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">NOTIFICATION MANAGER</p>
+    <h1>Update your extension</h1>
+    <p>Installed version: <strong id="version"></strong></p>
+    <p>This is a manually installed extension. To get the latest changes, replace its local files and reload it.</p>
+    <ol>
+      <li>Open <a href="https://github.com/NoaNadeem/notification_manager" target="_blank" rel="noopener noreferrer">Notification Manager on GitHub</a> and choose <strong>Code → Download ZIP</strong>.</li>
+      <li>Extract the ZIP. Inside it, open the <strong>chrome-extension</strong> folder.</li>
+      <li>Copy that folder’s contents into the <strong>same chrome-extension folder you originally installed</strong>, replacing the old files. Keep the installed folder in its current location.</li>
+      <li>Open Chrome’s extensions page with the button below. Leave <strong>Developer mode</strong> enabled.</li>
+      <li>On the <strong>Notification Manager</strong> card, click <strong>Reload</strong> (the circular arrow). Its window will refresh with the updated code.</li>
+    </ol>
+    <button id="open-extensions" type="button">Open Chrome extensions</button>
+    <p id="error" role="alert"></p>
+    <p class="note">Chrome’s page-wide Update button checks store releases; it does not download this extension’s code from GitHub. Reload loads the files you have copied.</p>
+    <p class="note">Keep the existing installation instead of removing it to preserve local preferences. Let any pending move or dismissal finish before reloading.</p>
+    <details>
+      <summary>Installing on another laptop?</summary>
+      <p>Download and extract the same GitHub ZIP. Move the extracted folder to a permanent location, then open <code>chrome://extensions</code>, enable Developer mode, and choose <strong>Load unpacked</strong>. Select the <strong>chrome-extension</strong> folder that contains <code>manifest.json</code>.</p>
+      <p>Use the Chrome profile for the same Google account as your phone. Open Notification Manager and connect Google. Dismissals and recent move history sync through Drive; local preferences must be set again.</p>
+      <p>The extension ID should be <code>halmnakmjhbkchjgmbonmhadenodlhhd</code>.</p>
+    </details>
+  </main>
+</body>
+</html>

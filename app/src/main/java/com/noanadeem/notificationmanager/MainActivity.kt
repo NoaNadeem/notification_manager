@@ -1488,6 +1488,22 @@ private fun CalendarConnectedScreen(
                         )
                     }
                     DropdownMenuItem(
+                        text = { Text("Update") },
+                        onClick = {
+                            menuExpanded = false
+                            val storeUrl = Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, storeUrl).setPackage("com.android.vending"))
+                            } catch (_: ActivityNotFoundException) {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, storeUrl))
+                                } catch (_: Exception) {
+                                    android.widget.Toast.makeText(context, "Could not open Google Play.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Reconnect Google access") },
                         enabled = !loading && !eventsLoading,
                         onClick = { menuExpanded = false; onReconnect() }

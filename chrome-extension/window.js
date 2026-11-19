@@ -1021,6 +1021,11 @@ $("#refresh").addEventListener("click", () => {
   closeMenu();
   void refreshEvents();
 });
+$("#update-open").addEventListener("click", () => {
+  closeMenu();
+  void openLink(chrome.runtime.getURL("update.html"))
+    .catch(error => showError(`Could not open update instructions: ${error.message}`));
+});
 function updateWindowToggle(mode) {
   const label = mode === "normal" ? "Move back to extension window" : "Open in Chrome tab";
   $("#open-in-tab").title = label;

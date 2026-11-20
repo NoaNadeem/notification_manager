@@ -51,13 +51,19 @@
       <button id="theme-toggle">Dark mode: On</button>
       <button id="skins-open">Skins</button>
       <button id="update-open">Update</button>
+      <button id="request-access-menu">Request access</button>
     </nav>
   </header>
   <div id="notice" class="notice" role="status"></div>
   <div id="info" class="info" role="status"></div>
   <section id="connect-panel" class="connect-panel" hidden>
     <p>Connect this Chrome profile to access your Calendar, Tasks, and sync.</p>
-    <button id="connect">Reconnect Google access</button>
+    <div class="connect-actions">
+      <button id="connect">Reconnect Google access</button>
+      <button id="request-access" class="secondary">Request access</button>
+    </div>
+    <p class="access-help">Access is currently by invitation. Request approval for the Google account you want to connect.</p>
+    <p id="request-access-status" class="access-help" role="status" aria-live="polite"></p>
   </section>
   <div id="pull-indicator" role="status" hidden></div>
   <main id="event-list" aria-label="Calendar events"></main>

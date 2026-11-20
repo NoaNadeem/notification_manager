@@ -1,3 +1,4 @@
+import { requestAccess } from "./request-access.js";
 import { reconnectGoogleAccess, needsGoogleConsent } from "./authorization.js";
 import { readTasks, taskNoteUrl } from "./tasks.js";
 import { eventAgeLabel, isFutureEvent, dismissalKey, eventStartMs, locationHref, isTwoDaysOld, isEmphasized, isRecurring, compareEvents, compareSearchEvents, displayWindow, WINDOW_PRESETS, recentDismissals, shiftEvent, dayMoveOption, isPriority, priorityTitle, canChangePriority, canMoveToNow, nextDayPreviewWindow, itemsInWindow, withoutDismissals } from "./model.js";
@@ -1279,6 +1280,15 @@ function reconnectGoogle() {
   if (loading) return;
   void reconnectGoogleAccess(chrome.identity, load).catch(error => showError(`Could not reconnect Google access: ${error.message}`));
 }
+function requestGoogleAccess() {
+  closeMenu();
+  void requestAccess(url => { window.location.href = url; }, message => {
+    $("#request-access-status").textContent = message;
+    connectPanel.hidden = false;
+  });
+}
+$("#request-access").addEventListener("click", requestGoogleAccess);
+$("#request-access-menu").addEventListener("click", requestGoogleAccess);
 $("#connect").addEventListener("click", reconnectGoogle);
 $("#reconnect-google").addEventListener("click", () => { closeMenu(); reconnectGoogle(); });
 window.addEventListener("blur", () => { void undo.commit(); });

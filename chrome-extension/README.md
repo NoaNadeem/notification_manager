@@ -80,3 +80,7 @@ Remote search results include a Calendar tile at the far right (the normal 1D po
 ### Update menu
 
 **⋮ → Update** opens a local instructions tab with the installed version, a GitHub download link, the steps to replace files in the existing unpacked folder, and an **Open Chrome extensions** button. That button opens `chrome://extensions` in a regular Chrome window. Chrome’s page-wide Update checks store releases; it does not fetch unpacked source from GitHub. Reload applies the local files after replacement. The page also includes installation steps for another laptop.
+
+### Request access
+
+The sign-in panel and settings menu include **Request access**, which opens a prefilled `mailto:` draft to `noagoesplaces@gmail.com`. The draft asks the user to supply the Google account email to approve; it does not automatically include account or Calendar data and does not send automatically. A manual-email fallback appears immediately and remains visible because a successful browser navigation does not prove that an email handler opened. Reported launch errors show explicit manual-email instructions. Approval still requires the publisher to add the account to the OAuth test-user list. The public support/contact email is `noagoesplaces@gmail.com`; the private owner sign-in and tester account remain separate.

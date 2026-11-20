@@ -151,3 +151,9 @@ header,footer { background:var(--panel-custom,var(--panel)); }
 .priority-star { color: var(--dot-color); font-size: 18px; line-height: 1.05; margin-right: 7px; flex-shrink: 0; }
 
 .empty.further-ahead-heading { color:var(--text); font-size:16px; font-weight:800; }
+
+.connect-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.connect-panel button.secondary { background:var(--tile); color:var(--text); }
+.connect-panel button:focus-visible { outline:2px solid var(--link); outline-offset:3px; }
+.access-help { color:var(--muted); font-size:13px; line-height:1.5; max-width:680px; overflow-wrap:anywhere; user-select:text; }
+#request-access-status:empty { display:none; }

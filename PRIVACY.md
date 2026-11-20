@@ -1,6 +1,6 @@
 # Notification Manager Chrome Extension Privacy Policy
 
-Effective November 19, 2026. Publisher: Noa Nadeem. Contact: noamaan@gmail.com.
+Effective November 19, 2026. Publisher: Noa Nadeem. Contact: noagoesplaces@gmail.com.
 
 Notification Manager lets you review and organize your primary Google Calendar events and Google Tasks. This policy describes the Chrome extension and the synchronization records it shares with the optional Android companion.
 
@@ -24,7 +24,7 @@ Dismissal and recent-move synchronization records can include item identifiers, 
 
 The extension communicates directly with Google's Calendar, Tasks, and Drive APIs over HTTPS. It has no developer-operated backend receiving your Calendar, Task, or Drive content. Its current code does not send that content to advertising, analytics, data-broker, or AI-training services, and does not sell user data.
 
-Selecting an event, Task, location, support, update, or other external link opens the destination in your browser. Google, GitHub, and other destinations handle that visit under their own policies. Messages you choose to send to support are received by the publisher; do not include passwords, access tokens, or unnecessary private Calendar or Task content.
+Selecting an event, Task, location, support, update, or other external link opens the destination in your browser. Google, GitHub, and other destinations handle that visit under their own policies. Request access opens your configured email handler with a draft asking for the Google account email to approve. You choose whether to send it; the extension does not automatically send an email or create an access request on a server. Messages you choose to send to support are received by the publisher; do not include passwords, access tokens, or unnecessary private Calendar or Task content.
 
 Notification Manager's use and transfer to any other app of information received from Google APIs will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including its Limited Use requirements.
 

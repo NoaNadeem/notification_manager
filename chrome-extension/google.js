@@ -72,8 +72,12 @@ export async function recentEvents(calendarId, lookbackDays, lookaheadDays = 0, 
   let pageToken;
   do {
     const url = primaryEventsUrl(calendarId);
-    url.searchParams.set("timeMin", new Date(first).toISOString());
-    url.searchParams.set("timeMax", new Date(fetchEnd).toISOString());
+// Calendar filters date-only events in its own zone. Fetch a margin that
+    // covers any Calendar/device offset difference; the UI applies the exact
+    // device-local review/preview bounds, including to Tasks and all-day dates.
+    const margin = 36 * 3_600_000;
+    url.searchParams.set("timeMin", new Date(first - margin).toISOString());
+    url.searchParams.set("timeMax", new Date(fetchEnd + margin).toISOString());
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("showDeleted", "false");
     url.searchParams.set("maxResults", "2500");

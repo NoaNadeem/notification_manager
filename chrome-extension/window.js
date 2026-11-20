@@ -6,7 +6,7 @@ import { primaryCalendar, recentEvents, moveEvent, syncDismissals, saveDismissal
 import { UndoController, actionDescription, parseUndoSeconds, DEFAULT_UNDO_SECONDS } from "./undo.js";
 import { InteractionRenderGuard } from "./render-guard.js";
 import { PendingActionStore } from "./pending-actions.js";
-import { headerClockLabel, moveTooltip } from "./clock.js";
+import { headerClockLabel, displayContextKey, moveTooltip } from "./clock.js";
 import { calendarEventAction, createOpenGuard, managerWindowMode, toggleManagerWindow, openWithBackgroundSave } from "./open.js";
 import { PullRefreshGesture } from "./pull-refresh.js";
 import { syncHeadline, syncDetail, shouldShowSyncStatus, persistSyncState, latestSavingStatus } from "./sync-state.js";
@@ -45,6 +45,7 @@ const skinPresets = {
 };
 
 let account;
+// Used only to interpret stable Calendar identities (not presentation).
 let calendarZone;
 let events = [];
 let dismissals = [];
@@ -70,6 +71,7 @@ let realEventsOnly = false;
 let remoteSearch;
 let remoteSearchRequest = 0;
 let clockTimer;
+let renderedDisplayContext;
 let storageEstimateTimer;
 let storageEstimateRequest = 0;
 let storageEstimateMessage;
@@ -171,7 +173,7 @@ function currentVisibleEvents() {
   const hidden = new Set([...undo.committingActions].map(action => action.event.id));
   const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
   const visible = withoutDismissals(events, dismissals, calendarZone).filter(event => !hidden.has(event.id))
-    .filter(event => event.task?.due === null || itemsInWindow([event], bounds, calendarZone).length);
+    .filter(event => event.task?.due === null || itemsInWindow([event], bounds).length);
   const searched = searchActive && searchQueryInput.value.trim()
     ? visible.filter((event) => (event.summary || "").toLowerCase().includes(searchQueryInput.value.trim().toLowerCase()))
     : visible;
@@ -311,10 +313,21 @@ function applySkin() {
   root.style.setProperty("--dismiss-bg", preset[darkMode ? 2 : 3]);
 }
 
+function canRefreshDisplay() {
+  return account && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !undoTimeDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget;
+}
+
 function scheduleHeaderClock() {
   clearTimeout(clockTimer);
+  const context = displayContextKey();
+  const changed = renderedDisplayContext && renderedDisplayContext !== context;
+  renderedDisplayContext = context;
   updateHeaderClock();
   renderSync();
+  if (changed) {
+    render();
+    if (canRefreshDisplay()) void load();
+  }
   if (account) clockTimer = setTimeout(scheduleHeaderClock, 60_000 - Date.now() % 60_000);
 }
 
@@ -388,7 +401,7 @@ async function load(interactive = false, allowConsentRetry = false) {
     catch (error) { if (!interactive && (allowConsentRetry || !automaticConsentOffered) && needsGoogleConsent(error)) throw error; taskWarning = `Events loaded, but Tasks could not load: ${error.message}. Enable Google Tasks API and reconnect to grant Tasks access.`; showError(taskWarning); }
     events = [...recent.events, ...tasks].filter((event) => {
       if (event.task?.due === null) return true;
-      const start = eventStartMs(event, calendarZone);
+      const start = eventStartMs(event);
       return Number.isFinite(start) && start >= recent.first && start < (recent.previewLastExclusive ?? recent.lastExclusive);
     }).sort((a, b) => compareEvents(a, b));
     syncState.calendarAt = Date.now();
@@ -451,7 +464,7 @@ async function load(interactive = false, allowConsentRetry = false) {
 function render() { renderGuard.request(); }
 
 function moveToNowCandidates() {
-  return currentVisibleEvents().filter(event => canMoveToNow(event, account, calendarZone) &&
+  return currentVisibleEvents().filter(event => canMoveToNow(event, account) &&
     !prioritizing.has(event.id) && undo.current?.event.id !== event.id);
 }
 
@@ -500,7 +513,7 @@ function renderNow() {
     list.append(empty);
     if (account && !searchActive && !realEventsOnly) {
       const bounds = nextDayPreviewWindow(displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset).lastExclusive);
-      const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds, calendarZone).sort(compareEvents);
+      const preview = itemsInWindow(withoutDismissals(events, dismissals, calendarZone), bounds).sort(compareEvents);
       count.textContent = `${preview.length} item${preview.length === 1 ? "" : "s"}`;
       preview.slice(0, renderedItemLimit).forEach(event => list.append(renderEvent(event)));
       if (preview.length > renderedItemLimit) appendMoreItems();
@@ -584,7 +597,7 @@ function renderSearchFooter() {
     titleLine.className = "title-line";
     if (isPriority(event)) {
     const star = document.createElement("span"); star.className = "priority-star"; star.textContent = "★"; star.setAttribute("aria-label", "Priority"); titleLine.append(star);
-  } else if (isTwoDaysOld(event, calendarZone)) {
+  } else if (isTwoDaysOld(event)) {
       const dot = document.createElement("span");
       dot.className = "old-dot";
       dot.setAttribute("aria-label", "At least two days old");
@@ -664,12 +677,12 @@ function renderEvent(event) {
   });
   const age = document.createElement("div");
   age.className = "age";
-  age.textContent = pending ? actionDescription(pending) : eventAgeLabel(event, Date.now(), calendarZone);
+  age.textContent = pending ? actionDescription(pending) : eventAgeLabel(event);
   const titleLine = document.createElement("div");
   titleLine.className = "title-line";
   if (isPriority(event)) {
     const star = document.createElement("span"); star.className = "priority-star"; star.textContent = "★"; star.setAttribute("aria-label", "Priority"); titleLine.append(star);
-  } else if (isTwoDaysOld(event, calendarZone)) {
+  } else if (isTwoDaysOld(event)) {
     const dot = document.createElement("span");
     dot.className = "old-dot";
     dot.setAttribute("aria-label", "At least two days old");
@@ -851,7 +864,8 @@ async function commitAction(action) {
       events = events.filter((item) => item.id !== event.id);
       const start = eventStartMs(moved, calendarZone);
       const bounds = displayWindow(Date.now(), lookbackDays, lookaheadDays, windowPreset);
-      if (moved.task?.due === null || (Number.isFinite(start) && start >= bounds.first && start < nextDayPreviewWindow(bounds.lastExclusive).lastExclusive)) {
+      const displayStart = eventStartMs(moved);
+      if (moved.task?.due === null || (Number.isFinite(displayStart) && displayStart >= bounds.first && displayStart < nextDayPreviewWindow(bounds.lastExclusive).lastExclusive)) {
         events.push(moved);
         events.sort((a, b) => compareEvents(a, b));
       }
@@ -1296,7 +1310,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) void 
 window.addEventListener("focus", () => {
   updateHeaderClock();
   renderSync();
-  if (account && !loading && !undo.current && committing.size === 0 && undo.committingActions.size === 0 && !lookbackDialog.open && !lookaheadDialog.open && !presetsDialog.open && !syncDialog.open && !undoTimeDialog.open && !recentDismissalsDialog.open && !recentMovesDialog.open && !calendarDialog.open && !dateTarget) void load();
+  if (canRefreshDisplay()) void load();
 });
 window.addEventListener("online", () => {
   renderSync();

@@ -84,3 +84,8 @@ Remote search results include a Calendar tile at the far right (the normal 1D po
 ### Request access
 
 The sign-in panel and settings menu include **Request access**, which opens a prefilled `mailto:` draft to `noagoesplaces@gmail.com`. The draft asks the user to supply the Google account email to approve; it does not automatically include account or Calendar data and does not send automatically. A manual-email fallback appears immediately and remains visible because a successful browser navigation does not prove that an email handler opened. Reported launch errors show explicit manual-email instructions. Approval still requires the publisher to add the account to the OAuth test-user list. The public support/contact email is `noagoesplaces@gmail.com`; the private owner sign-in and tester account remain separate.
+
+
+### Device time zone
+
+The header, event labels, Today/Later classification, normal and search sorting, review/preview boundaries, and move controls use the device’s current time zone. Date-only Tasks and all-day events retain their dates. The Calendar’s zone remains in cached data only for interpreting stable all-day event identities and synchronization records. Calendar requests include a 36-hour margin to retrieve all-day rows across Calendar/device offset differences; exact device-local bounds filter the displayed results. A minute clock check detects a changed device zone or date, re-renders labels, and refreshes data when no action or date/settings dialog is active.

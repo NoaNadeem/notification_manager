@@ -29,6 +29,11 @@ function zoneLabels(date, zone) {
   return parts(date, { timeZoneName: "short" }, zone).timeZoneName;
 }
 
+export function displayContextKey(now = new Date(), zone = localZone()) {
+  const date = parts(now, { year: "numeric", month: "2-digit", day: "2-digit" }, zone);
+  return `${zone}/${date.year}-${date.month}-${date.day}`;
+}
+
 export function headerClockLabel(now = new Date(), zone = localZone()) {
   return `${dateLabel(now, zone)}, ${timeLabel(now, zone)} ${zoneLabels(now, zone)}`;
 }

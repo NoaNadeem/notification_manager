@@ -235,3 +235,10 @@ Draft scope explanations to check against the final submitted build:
 - `drive.appdata`: reads/writes Notification Manager synchronization records in its own app-data folder, including dismissal and recent-move information shared with the Android companion. It does not request general Drive file access.
 
 A demo video must show actual OAuth consent and the user-facing functionality for requested scopes. A mock-only UI does not establish working Google integration. Use sample data; never expose real personal Calendar/Task content or account credentials in public artifacts.
+
+
+### Extension 0.3.46 — consistent device time zone
+
+Device-local presentation now includes event age/Today labels, date-only Task and all-day window filtering, old-item indicators, and normal/preview lists. Existing device-local clock, sorting and move controls remain aligned. Calendar-zone timestamps are retained for dismissal and move-history identities. A timezone-safe Calendar fetch margin avoids dropping date-only rows at range edges, followed by exact local display filtering. The open window detects device-zone or date changes on its minute clock tick.
+
+Validation: 118 extension tests pass, including LA/Shanghai, local midnight, DST, stable dismissal identity and opposite-zone all-day fetch boundaries. An isolated UI using production `window.js`, a LA device and Shanghai Calendar showed Today for local all-day/Task rows and At 10:00 am for a local future event; tomorrow was excluded from the normal range. Mocked APIs and memory storage prevented real Calendar/Task changes. The installed extension page was blocked by the browser URL security policy; no installed reload or live-extension verification is claimed. The Store ZIP is prepared; this is not a Store upload or publication. Android was not changed.
